@@ -1509,16 +1509,12 @@
               : 0;
 
           // Regla 4 (acuerdo de servicio): los bloques de producción de Pony Malta deben
-          // contemplar como mínimo DOS cocimientos consecutivos, aunque el volumen a
-          // cocinar quepa completo en un solo cocimiento. Si el cálculo por volumen dio
-          // solo 1, se fuerza a 2 y se reparte el volumen entre ambos (en vez de dejar
-          // el primero lleno y el segundo en 0 hL).
-          let volumenPorCocimientoOverride = null;
-          if (mostoId === "pony" && numCocimientos === 1) {
+          // contemplar como mínimo DOS cocimientos consecutivos, pero SIN dividir el
+          // volumen de cada cocimiento. El tamaño de cada cocimiento sigue siendo el que
+          // define el catálogo (volumen fijo por cocimiento), y solo se aumenta la cantidad
+          // de cocimientos para respetar la regla de mínimo.
+          if (mostoId === "pony" && numCocimientos > 0 && numCocimientos < 2) {
             numCocimientos = 2;
-            if (volumenCocinar <= volXCoc) {
-              volumenPorCocimientoOverride = volumenCocinar / 2;
-            }
           }
 
           let starts = [];
@@ -1532,7 +1528,7 @@
             volumenEnvasar,
             volumenCocinar,
             numCocimientos,
-            volumenPorCocimientoOverride,
+            volumenPorCocimientoOverride: null,
             starts,
             fechaEnvasadoMinima: b.earliest,
             fechaEnvasadoFin: b.end || null,
@@ -1738,11 +1734,30 @@
     En SV se aplica la misma regla para los lotes transferidos desde FV. Se respeta
     A → B → C sin mezclar marcas.
   */
+        function getMaxCocimientosPorCapacidad(capacidadHL) {
+          const capacidad = Number(capacidadHL) || 0;
+          // Regla operativa de capacidad por FV:
+          // - FV EXT grandes: 7200 HL = 12 cocimientos máximos
+          // - FV EXT medianos: 4800 HL = 8 cocimientos máximos
+          // - FV de 900 HL: admiten 1,5 cocimientos por lote
+          // - FV de 750 HL: admiten 1,25 cocimientos por lote
+          // - Si la capacidad no cae en esos rangos, se usa una regla proporcional.
+          if (capacidad >= 7000) return 12;
+          if (capacidad >= 4500) return 8;
+          if (capacidad >= 850) return 1.5;
+          if (capacidad >= 700) return 1.25;
+          if (capacidad > 0) return Math.max(1, capacidad / 600);
+          return 1;
+        }
+
         const tanks = (tankCatalog || [])
           .map((t, idx) => ({
             ...t,
             idx,
             capacidadHL: Number(t.capacidadHL) || 0,
+            maxCocimientos: getMaxCocimientosPorCapacidad(
+              Number(t.capacidadHL) || 0,
+            ),
             prioridad: ["A", "B", "C"].includes(
               String(t.prioridad).toUpperCase(),
             )
@@ -1750,6 +1765,7 @@
               : "C",
             disponible: t.disponible !== false,
             volumenAsignado: 0,
+            cocimientosAsignados: 0,
             mostoId: null,
             releaseTime: null,
             loteCerrado: false,
@@ -1793,6 +1809,7 @@
               // debe pasar por aseo; por eso conservamos el último mosto para
               // calcular el tiempo de CIP al momento de la siguiente asignación.
               t.volumenAsignado = 0;
+              t.cocimientosAsignados = 0;
               t.ultimoMostoId = t.mostoId || t.ultimoMostoId || null;
               t.ultimoReleaseTime = t.releaseTime;
               t.mostoId = null;
@@ -1853,16 +1870,28 @@
 
           // Para el mismo mosto: primero tanques FV ya abiertos; luego vacíos, siempre A→B→C.
           while (restante > 1e-9) {
+            const volPorCoc = Number((m && m.volumenPorCocimiento) || 600);
             const candidatos = tanks
               .filter((t) => {
                 if (!canFV(t, r.mostoId)) return false;
                 if (!equipoDisponibleEn(t, r.start, r.mostoId)) return false;
                 const libre = t.capacidadHL - t.volumenAsignado;
+                const cargaPotencial = Math.min(restante, libre);
+                const cocimientosNuevos = cargaPotencial / volPorCoc;
+                const maxCocimientos = Number(t.maxCocimientos) || 999;
+                // Esta regla permite compartir cocimientos entre FV cuando la fracción es real,
+                // por ejemplo: 900 HL admite 1,5 cocimientos y 750 HL admite 1,25 cocimientos.
+                // No se divide el volumen de un cocimiento del catálogo; solo se acumula la
+                // fracción correspondiente de ese cocimiento en la capacidad del FV.
+                // Los FV EXTERIORES siguen teniendo un máximo entero de cocimientos (12 o 8),
+                // mientras que los FV pequeños tienen un máximo fraccional (1,5 o 1,25).
                 // Un cocimiento completo se mantiene en UN solo tanque.
                 // Varios cocimientos de la misma marca pueden compartir el tanque,
                 // pero no se parte un cocimiento entre dos FV.
-                if (libre + 1e-9 < restante || t.loteCerrado) return false;
+                if (libre <= 1e-9 || t.loteCerrado) return false;
                 if (t.mostoId && t.mostoId !== r.mostoId) return false;
+                if (t.cocimientosAsignados + cocimientosNuevos > maxCocimientos + 1e-9)
+                  return false;
                 return true;
               })
               .sort((a, b) => {
@@ -1872,6 +1901,7 @@
                   aa - bb ||
                   { A: 0, B: 1, C: 2 }[a.prioridad] -
                     { A: 0, B: 1, C: 2 }[b.prioridad] ||
+                  a.capacidadHL - b.capacidadHL ||
                   a.idx - b.idx
                 );
               });
@@ -1880,10 +1910,17 @@
             // El cocimiento completo entra al mismo tanque; nunca se fracciona.
             const carga = restante;
             tank.volumenAsignado += carga;
+            // Se acumulan cocimientos fraccionales según el volumen real del catálogo:
+            // 900 HL => 1,5 cocimientos, 750 HL => 1,25 cocimientos, etc.
+            // Esto permite compartir cocimientos entre FV pequeños sin dividir el
+            // volumen de un cocimiento del catálogo en dos mitades artificiales.
+            tank.cocimientosAsignados += carga / volPorCoc;
             tank.mostoId = r.mostoId;
             tank.ultimoMostoId = null;
             tank.ultimoReleaseTime = null;
-            const lleno = tank.volumenAsignado >= tank.capacidadHL - 1e-9;
+            const lleno =
+              tank.volumenAsignado >= tank.capacidadHL - 1e-9 ||
+              tank.cocimientosAsignados >= tank.maxCocimientos - 1e-9;
             const fermentEnd = new Date(
               r.end.getTime() + fermentHoras * 3600000,
             );
@@ -2023,16 +2060,22 @@
           let restante = tr.volumenHL;
           const asignaciones = [];
           while (restante > 1e-9) {
+            const volPorCoc = Number((mById(tr.mostoId) && mById(tr.mostoId).volumenPorCocimiento) || 600);
             const candidatos = tanks
               .filter((t) => {
                 if (!canSV(t, tr.mostoId)) return false;
                 if (!equipoDisponibleEn(t, tr.fecha, tr.mostoId)) return false;
                 const libre = t.capacidadHL - t.volumenAsignado;
+                const cargaPotencial = Math.min(restante, libre);
+                const cocimientosNuevos = cargaPotencial / volPorCoc;
+                const maxCocimientos = Number(t.maxCocimientos) || 999;
                 // Cada lote transferido desde FV entra completo en un solo SV.
                 // Varios lotes de la misma marca pueden compartir el SV hasta llenarlo,
                 // pero no se parte un lote entre dos SV.
-                if (libre + 1e-9 < restante || t.loteCerrado) return false;
+                if (libre <= 1e-9 || t.loteCerrado) return false;
                 if (t.mostoId && t.mostoId !== tr.mostoId) return false;
+                if (t.cocimientosAsignados + cocimientosNuevos > maxCocimientos + 1e-9)
+                  return false;
                 return true;
               })
               .sort((a, b) => {
@@ -2042,6 +2085,7 @@
                   aa - bb ||
                   { A: 0, B: 1, C: 2 }[a.prioridad] -
                     { A: 0, B: 1, C: 2 }[b.prioridad] ||
+                  a.capacidadHL - b.capacidadHL ||
                   a.idx - b.idx
                 );
               });
@@ -2050,10 +2094,13 @@
             // El lote completo permanece en un solo SV; no se fracciona entre tanques.
             const carga = restante;
             tank.volumenAsignado += carga;
+            tank.cocimientosAsignados += carga / volPorCoc;
             tank.mostoId = tr.mostoId;
             tank.ultimoMostoId = null;
             tank.ultimoReleaseTime = null;
-            const lleno = tank.volumenAsignado >= tank.capacidadHL - 1e-9;
+            const lleno =
+              tank.volumenAsignado >= tank.capacidadHL - 1e-9 ||
+              tank.cocimientosAsignados >= tank.maxCocimientos - 1e-9;
             tank.releaseTime = new Date(
               tr.fecha.getTime() + tr.maduracionHoras * 3600000,
             );
@@ -2180,10 +2227,7 @@
               numCocimientos: starts.length,
               volumenEnvasar: Number(r.volumenEnvasar) || 0,
               volumenCocinar: Number(r.volumenCocinar) || 0,
-              volumenPorCocimiento:
-                (r.volumenPorCocimientoOverride != null
-                  ? Number(r.volumenPorCocimientoOverride)
-                  : Number(m.volumenPorCocimiento)) || 0,
+              volumenPorCocimiento: Number(m.volumenPorCocimiento) || 0,
               cocinaHoras: Number(m.tiempoCocinaHoras) || 0,
               gapHoras: Number(m.tiempoEntreCarguesHoras) || 0,
               fermentacionHoras: Number(m.tiempoFermentacionHoras) || 0,
