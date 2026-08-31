@@ -521,48 +521,48 @@
         {
           origen: "Pilsen",
           destino: "Estandar",
-          duracionHoras: parseHMS("1:00:00"),
+          duracionHoras: parseHMS("3:50:00"),
         },
         {
           origen: "Light",
           destino: "Estandar",
-          duracionHoras: parseHMS("1:00:00"),
+          duracionHoras: parseHMS("3:50:00"),
         },
         {
           origen: "Estandar",
           destino: "Pony",
-          duracionHoras: parseHMS("1:50:00"),
+          duracionHoras: parseHMS("4:40:00"),
         },
         {
           origen: "Pilsen",
           destino: "Light",
-          duracionHoras: parseHMS("1:50:00"),
+          duracionHoras: parseHMS("4:40:00"),
         },
         {
           origen: "Light",
           destino: "Pony",
-          duracionHoras: parseHMS("1:50:00"),
+          duracionHoras: parseHMS("4:40:00"),
         },
         {
           origen: "Estandar",
           destino: "Light",
-          duracionHoras: parseHMS("1:50:00"),
+          duracionHoras: parseHMS("4:40:00"),
         },
         {
           origen: "Pilsen",
           destino: "Pony",
-          duracionHoras: parseHMS("1:50:00"),
+          duracionHoras: parseHMS("4:40:00"),
         },
       ];
-      let ASEO_DEFAULT_HORAS = parseHMS("1:00:00");
+      let ASEO_DEFAULT_HORAS = parseHMS("3:50:00");
 
       // Aseo periódico (general): un aseo (CIP) adicional que se inserta automáticamente cada N
       // cocimientos consecutivos en la secuencia semanal, independientemente del mosto o de si hay
       // cambio de marca. Totalmente editable desde el panel "Aseo periódico (general)".
       let ASEO_PERIODICO = {
         activo: false,
-        duracionHoras: parseHMS("3:10:00"),
-        cocimientosEntreAseos: 20,
+        duracionHoras: parseHMS("3:50:00"),
+        cocimientosEntreAseos: 18,
       };
 
       // Balance Semanal: inventario de cerveza YA DISPONIBLE para esta semana, por mosto
