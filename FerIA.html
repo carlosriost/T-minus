@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plan de Envasado — Programación de Cocinas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <img
+          class="logo logo-dark"
+          src="data:image/png;base64,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"
+          alt="Logo"
+        />
+        <img
+          class="logo logo-light"
+          src="data:image/png;base64,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"
+          alt="Logo"
+        />
+        <div class="divider"></div>
+        <div>
+          <h1>
+            Plan de Envasado → Programación de
+            <span class="accent">Cocinas</span>
+          </h1>
+          <p>
+            Sube el Excel semanal del plan de envasado y obtén el mosto, volumen
+            y fechas de inicio de cada cocimiento requerido.
+          </p>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn" id="themeToggleBtn">☀️ Modo claro</button>
+        <div id="weekMeta"></div>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="upload-zone" id="dropZone">
+        <h2>Arrastra el Excel del plan de envasado aquí</h2>
+        <p>
+          O selecciónalo manualmente. Se procesa 100% en tu navegador — el
+          archivo no se envía a ningún servidor.
+        </p>
+        <label class="btn primary" for="fileInput">Elegir archivo .xlsx</label>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+        <div id="status"></div>
+      </div>
+
+      <div class="upload-compact hidden" id="uploadCompact">
+        <div class="uc-file">
+          <b>✓ Archivo cargado</b
+          ><span class="uc-name" id="uploadCompactName"></span>
+        </div>
+        <button class="btn small" id="changeFileBtn">Cambiar archivo</button>
+      </div>
+
+      <div class="i0-panel">
+        <div>
+          <div class="i0-title">Fecha y hora I0 (momento de programación)</div>
+          <div class="i0-sub">
+            Ingresa manualmente el día y la hora en que haces el programa. Ese
+            momento se toma como <b>I0</b> para calcular la posición relativa de
+            las fechas, sin cambiar las fechas reales de envasado del Excel.
+            También se usa como el punto más temprano posible para arrancar el
+            primer cocimiento del plan, así se pueden programar cocimientos
+            enseguida el mismo día I0.
+          </div>
+        </div>
+        <input
+          type="datetime-local"
+          id="programI0Input"
+          aria-label="Fecha y hora I0"
+        />
+        <span class="i0-badge" id="i0Badge">I0: —</span>
+      </div>
+
+      <div class="panel hidden" id="ganttTopPanel">
+        <div class="panel-head">
+          <h3>Gantt — Líneas de envasado</h3>
+          <span class="sub"
+            >TREN-5, TREN-7, TREN-8, TREN-9 · tal como vienen en el Excel
+            semanal · desplázate horizontalmente para ver toda la semana</span
+          >
+        </div>
+        <div class="panel-body">
+          <div id="ganttContainer"></div>
+        </div>
+      </div>
+
+      <div class="catalogs-bar" id="catalogsBar">
+        <button class="btn small" id="toggleCatalogsBtn">
+          ▸ Ocultar catálogos
+        </button>
+      </div>
+      <button class="side-tab hidden" id="sideCatalogsTab">☰ Catálogos</button>
+
+      <div class="tabs-panel" id="configTabs">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="tab-catalogo">
+            Catálogo de mostos
+          </button>
+          <button class="tab-btn" data-tab="tab-balance">
+            Balance Semanal
+          </button>
+          <button class="tab-btn" data-tab="tab-aseos-cambio">
+            Aseos por cambio de marca
+          </button>
+          <button class="tab-btn" data-tab="tab-aseo-periodico">
+            Aseo periódico
+          </button>
+          <button class="tab-btn" data-tab="tab-equipos">
+            Equipos / Tanques
+          </button>
+          <button class="tab-btn" data-tab="tab-levadura">
+            Disponibilidad de levadura
+          </button>
+        </div>
+
+        <div class="tab-panel" id="tab-catalogo">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Factor de dilución, volumen por cocimiento y tiempos de proceso ·
+              homologación de marcas a mosto por palabra clave, ignorando el
+              tamaño del envase
+            </p>
+            <div class="table-scroll" id="catalogTableWrap"></div>
+            <div style="margin-top: 12px">
+              <button class="btn small" id="addMostoBtn">
+                + Agregar mosto
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" id="tab-balance">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Inventario de cerveza ya disponible para esta semana, por mosto
+              (en HL, mismas unidades del volumen a envasar). Ese inventario se
+              descuenta del volumen que hay que cocinar: si una marca tiene
+              inventario suficiente, se reduce o elimina el número de
+              cocimientos necesarios. El volumen a envasar del plan no cambia —
+              solo cambia cuánto de eso sale de cocina nueva vs. de lo que ya
+              está en inventario.
+            </p>
+            <div class="table-scroll" id="balanceTableWrap"></div>
+            <div class="hint" style="margin-top: 10px">
+              El inventario se consume en el orden del plan de envasado: primero
+              cubre el bloque más próximo de esa marca, y lo que sobra queda
+              disponible para el siguiente bloque de la misma marca esa semana.
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" id="tab-aseos-cambio">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Duración del aseo según la marca de origen y la marca de destino ·
+              se programa automáticamente en cada cambio de marca de la
+              secuencia de cocinas
+            </p>
+            <div class="table-scroll" id="aseoTableWrap"></div>
+            <div
+              style="
+                margin-top: 12px;
+                display: flex;
+                gap: 16px;
+                align-items: center;
+                flex-wrap: wrap;
+              "
+            >
+              <button class="btn small" id="addAseoBtn">+ Agregar aseo</button>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <label class="field" style="margin: 0"
+                  >Aseo por defecto (si no hay combinación definida)</label
+                >
+                <input
+                  type="text"
+                  class="cat-input cat-time"
+                  id="aseoDefaultInput"
+                  style="width: 110px"
+                  placeholder="hh:mm:ss"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" id="tab-aseo-periodico">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Aseo (CIP) adicional que el motor inserta automáticamente cada
+              cierto número de cocimientos, sin importar el mosto ni el cambio
+              de marca · totalmente editable
+            </p>
+            <div
+              style="
+                display: flex;
+                gap: 28px;
+                align-items: flex-end;
+                flex-wrap: wrap;
+              "
+            >
+              <div>
+                <label class="field" style="margin-bottom: 6px; display: block"
+                  >Tiempo de aseo (hh:mm:ss)</label
+                >
+                <input
+                  type="text"
+                  class="cat-input cat-time"
+                  id="aseoPeriodicoTiempoInput"
+                  style="width: 140px"
+                  placeholder="hh:mm:ss"
+                />
+              </div>
+              <div>
+                <label class="field" style="margin-bottom: 6px; display: block"
+                  >N° de cocimientos para este aseo</label
+                >
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="cat-input"
+                  id="aseoPeriodicoCocimientosInput"
+                  style="width: 110px"
+                />
+              </div>
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  padding-bottom: 9px;
+                "
+              >
+                <input
+                  type="checkbox"
+                  id="aseoPeriodicoActivoInput"
+                  style="width: 16px; height: 16px"
+                />
+                <label
+                  class="field"
+                  style="margin: 0"
+                  for="aseoPeriodicoActivoInput"
+                  >Activo</label
+                >
+              </div>
+            </div>
+            <div class="hint" style="margin-top: 10px">
+              Cada vez que se acumulan el número de cocimientos indicado
+              (contando todos los mostos en secuencia), se programa este aseo
+              antes de continuar con el siguiente cocimiento. Se aplica junto
+              con — no en reemplazo de — los aseos por cambio de marca definidos
+              arriba.
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" id="tab-equipos">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Inventario editable de equipos. El motor asigna cada cocimiento a
+              un tanque específico priorizando A → B → C. Varios cocimientos de
+              la misma marca pueden llenar el mismo tanque hasta su capacidad;
+              un cocimiento no se divide entre tanques.
+              <b>Aseo después de liberar</b> es el tiempo que tú defines para
+              dejar nuevamente disponible cada equipo. Desmarca
+              <b>Disponible</b> para impedir su uso.
+            </p>
+            <div class="table-scroll" id="tankTableWrap"></div>
+            <div
+              style="
+                margin-top: 12px;
+                display: flex;
+                gap: 10px;
+                align-items: center;
+                flex-wrap: wrap;
+              "
+            >
+              <button class="btn small" id="addTankBtn">
+                + Agregar equipo
+              </button>
+              <span class="hint"
+                >Si la capacidad disponible no alcanza, los cocimientos
+                restantes quedan marcados como <b>sin tanque</b>.</span
+              >
+            </div>
+          </div>
+        </div>
+        <div class="tab-panel hidden" id="tab-levadura">
+          <div class="tab-panel-body">
+            <p class="tab-panel-sub">
+              Registra las cosechas o disponibilidades iniciales de levadura por marca.
+              <b>Light solo puede sembrarse con levadura cosechada de Light.</b>
+              Las levaduras de las demás marcas pueden mezclarse entre sí, y la levadura
+              Light también puede utilizarse en las demás marcas. La restricción bloqueante
+              se aplica a los bloques Light.
+            </p>
+            <div id="yeastSummaryWrap" style="margin-bottom:12px;"></div>
+            <div class="table-scroll" id="yeastConfigWrap"></div>
+            <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button class="btn small" id="addYeastBtn">+ Agregar disponibilidad</button>
+              <span class="hint">Cada registro representa una cosecha disponible para sembrar un bloque. La información queda guardada en este navegador.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section id="results" class="hidden">
+        <div
+          style="display: flex; justify-content: flex-end; margin-bottom: 10px"
+        >
+          <button class="btn" id="refreshAnalysisBtn">
+            🔄 Refrescar análisis
+          </button>
+        </div>
+
+        <div class="kpis" id="kpiRow"></div>
+
+        <div class="tabs-panel" id="resultTabs">
+          <div class="tab-bar">
+            <button class="tab-btn active" data-tab="tab-programacion">
+              Programación de cocinas
+            </button>
+            <button class="tab-btn" data-tab="tab-secuencia">
+              Secuencia semanal
+            </button>
+            <button class="tab-btn" data-tab="tab-gantt-cocina">
+              Gantt de cocina
+            </button>
+            <button class="tab-btn" data-tab="tab-tanques">
+              Asignación de tanques<span
+                class="count"
+                id="sinTanqueCount"
+                style="display: none"
+              ></span>
+            </button>
+            <button class="tab-btn" data-tab="tab-levadura-resultado">
+              Estado de levadura<span class="count" id="yeastBlockedCount" style="display:none"></span>
+            </button>
+            <button class="tab-btn" data-tab="tab-conflictos">
+              Conflictos de capacidad<span
+                class="count"
+                id="conflictosCount"
+                style="display: none"
+              ></span>
+            </button>
+            <button class="tab-btn" data-tab="tab-reglas">
+              Reglas y recomendaciones
+            </button>
+            <button class="tab-btn" data-tab="tab-sin-homologar">
+              Sin homologar<span
+                class="count"
+                id="sinHomologarCount"
+                style="display: none"
+              ></span>
+            </button>
+          </div>
+
+          <div class="tab-panel" id="tab-programacion">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Bloque · mosto · volumen a envasar · volumen a cocinar · N° de
+                cocimientos · fecha/hora de necesidad e inicio calculado de cada
+                cocimiento
+              </p>
+              <div class="table-scroll" id="cocinaTableWrap"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-secuencia">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Orden real de cocimientos en la cocina, con los aseos (CIP)
+                programados en cada cambio de marca, aplicando las reglas
+                operativas vigentes
+              </p>
+              <div id="capacidadAlertWrap"></div>
+              <div class="table-scroll" id="secuenciaTableWrap"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-gantt-cocina">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Cada cocimiento y aseo (CIP) en la línea de tiempo de la cocina
+                compartida · los bloques con borde rojo exceden su fecha límite
+                de envasado · las líneas punteadas marcan cada fecha límite
+              </p>
+              <div id="ganttCocinaContainer"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-tanques">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Asignación de líquido según etapa y prioridad A → B → C. Los FV
+                son SOLO de fermentación y reciben el mosto desde cocina. Los SV
+                son SOLO de maduración y reciben producto transferido desde FV.
+                Los SV Pony son exclusivos de Pony. Los BBT/Equipo son SOLO para
+                producto terminado.
+              </p>
+              <div id="tanquesAlertWrap"></div>
+              <div class="table-scroll" id="tanquesTableWrap"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-levadura-resultado">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Validación de siembra por bloque. Light exige una cosecha Light disponible;
+                las demás marcas aceptan levadura general mezclada y también levadura Light.
+              </p>
+              <div id="yeastAlertWrap"></div>
+              <div class="table-scroll" id="yeastStatusWrap"></div>
+            </div>
+          </div>
+          <div class="tab-panel hidden" id="tab-conflictos">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Bloques cuya terminación real de proceso (cocina + fermentación
+                + maduración) supera la fecha límite de envasado, con la
+                fecha/hora exacta de fin y del límite
+              </p>
+              <div class="table-scroll" id="conflictosWrap"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-reglas">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                Estado de cada regla frente a la secuencia calculada. "No
+                verificable" = requiere datos de líneas de envasado, filtración,
+                mantenimiento o SUITE360 que no están en este archivo.
+              </p>
+              <div class="table-scroll" id="reglasWrap"></div>
+              <h3
+                style="
+                  margin: 22px 0 4px;
+                  font-size: 14px;
+                  color: var(--text);
+                  font-weight: 650;
+                "
+              >
+                Recomendaciones
+              </h3>
+              <p class="tab-panel-sub">
+                No son de cumplimiento obligatorio; el motor intenta aplicarlas
+                cuando no entran en conflicto con las fechas de envasado
+              </p>
+              <div class="table-scroll" id="recomendacionesWrap"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" id="tab-sin-homologar">
+            <div class="tab-panel-body">
+              <p class="tab-panel-sub">
+                No coinciden con ninguna palabra clave del catálogo de mostos —
+                no se incluyen en la programación de cocinas
+              </p>
+              <div class="table-scroll" id="sinHomologarWrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Prompt para el agente de Copilot</h3>
+            <span class="sub"
+              >Incluye el análisis completo (mosto, volumen a envasar/cocinar,
+              N° de cocimientos y fechas/horas) y la secuencia de envasado de la
+              semana cargada, ya calculada: línea, marca/formato, hL y
+              fecha/hora de inicio y fin</span
+            >
+          </div>
+          <div class="panel-body">
+            <div class="agent-config">
+              <label class="field">Agente de Copilot</label>
+              <div class="hint">
+                Pega aquí el enlace de TU agente ya configurado (Copilot Studio
+                / GPT). Solo se hace una vez; queda guardado.
+              </div>
+              <input
+                type="text"
+                id="agentUrlInput"
+                placeholder="https://copilot.microsoft.com/... (tu agente)"
+              />
+            </div>
+            <textarea id="promptBox" readonly></textarea>
+            <div class="prompt-actions">
+              <button class="btn primary" id="analyzeBtn">
+                🤖 Copiar datos y abrir agente
+              </button>
+              <button class="btn" id="copyBtn">Copiar prompt</button>
+              <button class="btn" id="openAgentBtn">Abrir agente</button>
+              <button class="btn" id="downloadBtn">Descargar .txt</button>
+              <span id="copyFeedback"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      Plan de Envasado · procesamiento local en el navegador · sin envío de
+      datos a terceros
+    </footer>
+
+    <div class="signature">By: Ing. Andrea Villanueva</div>
+    <script src="script.js"></script>
+  </body>
+</html>
