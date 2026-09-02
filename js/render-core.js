@@ -161,7 +161,7 @@ function renderKPIs(plan, seq) {
     { n: totalCocimientos, l: "Cocimientos totales", cls: "" },
     {
       n: numAlertas,
-      l: "Alertas de reglas/capacidad/tanques",
+      l: "Alertas",
       cls: numAlertas ? "danger" : "ok",
     },
     {
