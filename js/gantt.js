@@ -282,18 +282,24 @@ function renderGanttCocina(seq, weekStartRaw) {
 }
 
 /* =========================================================================
-   6.7) GANTT — FILTRACIÓN (registro horario: Fecha / Flujo de dilución /
-        Total diluido / Marca). Panel independiente con su propia carga de
-        Excel, pero dibujado con exactamente las mismas clases CSS y colores
-        que los Gantt de envasado y cocina (panel, lane-label, lane-track,
-        day-header, block, legend, etc. — definidos en style.css).
+   6.7) GANTT — FILTRACIÓN (entrada manual)
+        El usuario ya NO carga un Excel: ingresa a mano
+          · por fila: hL por diluir, marca y orden de dilución
+          · global : tamaño de ciclo (hL), duración del cambio de ciclo,
+                     duración del CIP de cambio a Light, flujo de filtración
+                     (hL/h) y el tiempo cero I0 (arranque de la filtración).
+        A partir de eso se calcula la línea de tiempo: se ordenan las filas por
+        "orden de dilución", se arranca en I0 y para cada bloque de marca se
+        filtran sus hL al flujo indicado, insertando un "cambio de ciclo" cada
+        vez que se completa un ciclo y un "CIP cambio a Light" antes de cada
+        marca Light. Se dibuja con las mismas clases/colores que los demás Gantt.
    ========================================================================= */
 
 // Reglas de color específicas de Filtración (categorías más generales que las
 // del Gantt de envasado: ESTANDAR, LIGHT, PILSEN, PONY, ASEO...). Se intenta
 // primero reutilizar PACKAGING_COLOR_RULES para que, cuando coincida una marca
 // exacta, el color sea IDÉNTICO al usado en el Gantt de envasado.
-const FILTRACION_ASEO_RE = /\baseo\b|\blimpieza\b|\bcip\b|\bsanitiz/;
+const FILTRACION_ASEO_RE = /\baseo\b|\blimpieza\b|\bcip\b|\bsanitiz|cambio de ciclo/;
 const FILTRACION_BRAND_FALLBACK = [
   { test: /estandar|standard/i, bg: "#FFF536", fg: "#000000" },
   { test: /\blight\b/i, bg: "#95DDD2", fg: "#000000" },
@@ -332,157 +338,181 @@ function colorForFiltracion(marca, cache) {
   return cache.map[key];
 }
 
-// Parseo flexible de fecha+hora para la columna "FECHA" del registro de
-// filtración: acepta celdas de fecha reales de Excel (cellDates:true) o texto
-// en formato dd/mm/aaaa hh:mm[:ss] / aaaa-mm-dd hh:mm[:ss].
-function parseFiltracionDateTimeUTC(v) {
-  if (isDateLike(v)) {
-    return new Date(
-      Date.UTC(
-        v.getUTCFullYear(),
-        v.getUTCMonth(),
-        v.getUTCDate(),
-        v.getUTCHours(),
-        v.getUTCMinutes(),
-        v.getUTCSeconds(),
-      ),
-    );
-  }
-  if (isBlank(v)) return null;
-  const s = String(v).trim();
-  let m = s.match(
-    /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/,
-  );
-  if (m)
-    return new Date(
-      Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0)),
-    );
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
-  if (m)
-    return new Date(
-      Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)),
-    );
-  const dOnly = parseDMYStringUTC(s);
-  if (dOnly) return dOnly;
-  const generic = new Date(s);
-  return isNaN(generic.getTime()) ? null : generic;
-}
-
-// Localiza la fila de encabezados y las columnas FECHA / FLUJO / TOTAL / MARCA
-// buscando por nombre (en vez de asumir posiciones fijas), igual que
-// findHeaderRow() hace para la plantilla tabular histórica.
-function findFiltracionHeaderRow(aoa) {
-  for (let r = 0; r < Math.min(aoa.length, 20); r++) {
-    const row = aoa[r] || [];
-    const norm = row.map((v) => (isBlank(v) ? "" : normalizeText(v)));
-    const fecha = norm.indexOf("fecha");
-    const marca = norm.findIndex((v) => v.includes("marca"));
-    if (fecha !== -1 && marca !== -1) {
-      const flujo = norm.findIndex((v) => v.includes("flujo"));
-      const total = norm.findIndex((v) => v.includes("total"));
-      return { row: r, fecha, flujo, total, marca };
+/* ---- Estado editable (se guarda en este navegador) --------------------- */
+const FILTRACION_LS_KEY = "planFiltracion";
+const FILTRACION_STATE = {
+  i0: "",
+  flujoHLh: 0,
+  cicloHL: 0,
+  cambioCicloH: 0,
+  cipLightH: 0,
+  filas: [{ orden: 1, marca: "", hl: 0 }],
+};
+(function loadFiltracionState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FILTRACION_LS_KEY) || "null");
+    if (raw && typeof raw === "object") {
+      FILTRACION_STATE.i0 = typeof raw.i0 === "string" ? raw.i0 : "";
+      FILTRACION_STATE.flujoHLh = Number(raw.flujoHLh) || 0;
+      FILTRACION_STATE.cicloHL = Number(raw.cicloHL) || 0;
+      FILTRACION_STATE.cambioCicloH = Number(raw.cambioCicloH) || 0;
+      FILTRACION_STATE.cipLightH = Number(raw.cipLightH) || 0;
+      if (Array.isArray(raw.filas) && raw.filas.length) {
+        FILTRACION_STATE.filas = raw.filas.map((f, i) => ({
+          orden: f.orden === "" || f.orden == null ? i + 1 : Number(f.orden),
+          marca: String(f.marca || ""),
+          hl: Number(f.hl) || 0,
+        }));
+      }
     }
-  }
-  return null;
+  } catch (_) {}
+})();
+function saveFiltracionState() {
+  try {
+    localStorage.setItem(FILTRACION_LS_KEY, JSON.stringify(FILTRACION_STATE));
+  } catch (_) {}
 }
 
-function parseFiltracionWorkbook(workbook) {
-  for (const sheetName of workbook.SheetNames) {
-    const ws = workbook.Sheets[sheetName];
-    const aoa = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      defval: null,
-      raw: true,
-    });
-    const header = findFiltracionHeaderRow(aoa);
-    if (!header) continue;
-    const rows = [];
-    for (let r = header.row + 1; r < aoa.length; r++) {
-      const row = aoa[r] || [];
-      const fecha = row[header.fecha];
-      const marca = row[header.marca];
-      if (isBlank(fecha) || isBlank(marca)) continue;
-      rows.push([
-        fecha,
-        header.flujo !== -1 ? row[header.flujo] : null,
-        header.total !== -1 ? row[header.total] : null,
-        marca,
-      ]);
-    }
-    return rows;
+/* ---- Cálculo de la línea de tiempo ----------------------------------- */
+// Parte un total de hL en tramos de "ciclo" hL (el último tramo puede ser menor).
+function chunkHLFiltracion(total, ciclo) {
+  if (!(ciclo > 0)) return [total];
+  const out = [];
+  let left = total;
+  while (left > 1e-6) {
+    const c = Math.min(ciclo, left);
+    out.push(c);
+    left -= c;
   }
-  return [];
+  return out.length ? out : [total];
 }
 
-// Un segmento por bloque consecutivo de la misma marca (se fusionan las horas),
-// igual que en la herramienta original de Filtración.
-function buildFiltracionSegments(rows) {
-  const clean = rows
-    .map((r) => ({
-      t: parseFiltracionDateTimeUTC(r[0]),
-      flujo: isBlank(r[1]) ? 0 : Number(r[1]),
-      total: isBlank(r[2]) ? 0 : Number(r[2]),
-      marca: String(r[3]).trim(),
+function buildFiltracionPlan(st) {
+  const i0 = parseInputDateTimeUTC(st.i0);
+  const flujo = Number(st.flujoHLh) || 0;
+  const ciclo = Number(st.cicloHL) || 0;
+  const cambioH = Number(st.cambioCicloH) || 0;
+  const cipH = Number(st.cipLightH) || 0;
+
+  const filas = (st.filas || [])
+    .map((f, i) => ({
+      orden: Number(f.orden),
+      marca: String(f.marca || "").trim(),
+      hl: Number(f.hl) || 0,
+      _i: i,
     }))
-    .filter((r) => r.t && r.marca)
-    .sort((a, b) => a.t - b.t);
+    .filter((f) => f.marca && f.hl > 0)
+    .sort(
+      (a, b) =>
+        (isNaN(a.orden) ? 1e9 : a.orden) - (isNaN(b.orden) ? 1e9 : b.orden) ||
+        a._i - b._i,
+    );
+
+  if (!i0)
+    return {
+      ok: false,
+      error: "Ingresa el tiempo cero (I0) para ubicar el inicio de la filtración.",
+    };
+  if (!(flujo > 0))
+    return {
+      ok: false,
+      error: "Ingresa el flujo de filtración (hL/h) para calcular las duraciones.",
+    };
+  if (!filas.length)
+    return {
+      ok: false,
+      error: "Agrega al menos una fila con marca y hL por diluir.",
+    };
 
   const segments = [];
-  let cur = null;
-  for (const r of clean) {
-    if (!cur || cur.marca !== r.marca) {
-      if (cur) segments.push(cur);
-      cur = {
-        marca: r.marca,
-        start: r.t,
-        end: r.t,
-        hours: 1,
-        hl: r.total,
-        flujoSum: r.flujo,
-        flujoCount: r.flujo > 0 ? 1 : 0,
-        flujoMin: r.flujo,
-        flujoMax: r.flujo,
-      };
-    } else {
-      cur.end = r.t;
-      cur.hl = r.total;
-      cur.hours += 1;
-      cur.flujoSum += r.flujo;
-      if (r.flujo > 0) cur.flujoCount += 1;
-      cur.flujoMin = Math.min(cur.flujoMin, r.flujo);
-      cur.flujoMax = Math.max(cur.flujoMax, r.flujo);
+  let cursor = i0.getTime();
+  let nCip = 0;
+  let nCambios = 0;
+  // Se inserta un "cambio de ciclo" antes de cada corrida de filtración que
+  // venga después de otra corrida de filtración: sea porque una misma marca
+  // supera un ciclo (varios tramos) o porque cambia de marca. NO se inserta
+  // antes de la primera corrida ni cuando justo antes hubo un CIP a Light.
+  let prevFueFiltracion = false;
+
+  filas.forEach((f) => {
+    const isLight = /\blight\b/.test(normalizeText(f.marca));
+    if (isLight && cipH > 0) {
+      segments.push({
+        tipo: "cip",
+        marca: "CIP cambio a Light",
+        start: new Date(cursor),
+        durH: cipH,
+      });
+      cursor += cipH * 3600000;
+      nCip += 1;
+      prevFueFiltracion = false;
     }
-  }
-  if (cur) segments.push(cur);
-  segments.forEach((s) => {
-    s.flujoAvg = s.flujoCount > 0 ? s.flujoSum / s.flujoCount : 0;
+    const chunks = chunkHLFiltracion(f.hl, ciclo);
+    chunks.forEach((c, idx) => {
+      if (prevFueFiltracion && cambioH > 0) {
+        segments.push({
+          tipo: "cambio",
+          marca: "Cambio de ciclo",
+          start: new Date(cursor),
+          durH: cambioH,
+        });
+        cursor += cambioH * 3600000;
+        nCambios += 1;
+      }
+      const durH = c / flujo;
+      segments.push({
+        tipo: "fil",
+        marca: f.marca,
+        start: new Date(cursor),
+        durH,
+        hl: c,
+        flujo,
+        ciclo: chunks.length > 1 ? idx + 1 : 0,
+        ciclos: chunks.length,
+      });
+      cursor += durH * 3600000;
+      prevFueFiltracion = true;
+    });
   });
-  return segments;
+
+  return {
+    ok: true,
+    segments,
+    i0,
+    end: new Date(cursor),
+    nCip,
+    nCambios,
+    totalHL: filas.reduce((s, f) => s + f.hl, 0),
+    filas: filas.length,
+  };
 }
 
-// Dibuja el Gantt de Filtración usando exactamente las mismas clases/variables
-// CSS que renderGanttEnvasado/renderGanttCocina (una sola línea "FILTRACIÓN").
-function renderGanttFiltracion(segments) {
+/* ---- Dibujo del Gantt (mismas clases CSS que envasado/cocina) --------- */
+function renderGanttFiltracion(plan) {
   const container = document.getElementById("ganttFiltracionContainer");
+  const legendEl = document.getElementById("ganttFiltracionLegend");
+  const totalsEl = document.getElementById("ganttFiltracionTotals");
   if (!container) return;
-  if (!segments.length) {
-    container.classList.remove("hidden");
-    container.innerHTML =
-      '<p class="empty-note">Sin datos de filtración cargados.</p>';
+  container.classList.remove("hidden");
+
+  if (!plan || !plan.ok) {
+    container.innerHTML = `<p class="empty-note">${escapeHtml(
+      (plan && plan.error) || "Completa los parámetros de filtración.",
+    )}</p>`;
+    if (legendEl) legendEl.innerHTML = "";
+    if (totalsEl) totalsEl.textContent = "";
     return;
   }
 
+  const segments = plan.segments;
   const rangeStart = new Date(
     Date.UTC(
-      segments[0].start.getUTCFullYear(),
-      segments[0].start.getUTCMonth(),
-      segments[0].start.getUTCDate(),
+      plan.i0.getUTCFullYear(),
+      plan.i0.getUTCMonth(),
+      plan.i0.getUTCDate(),
     ),
   );
-  const lastSeg = segments[segments.length - 1];
-  const lastEndTime = new Date(
-    lastSeg.end.getTime() + 3600 * 1000,
-  ).getTime(); // fin exclusivo (+1h de la última lectura)
+  const lastEndTime = plan.end.getTime();
   const totalHours = Math.max(
     24,
     Math.ceil((lastEndTime - rangeStart.getTime()) / 3600000),
@@ -507,36 +537,42 @@ function renderGanttFiltracion(segments) {
   const colorCache = {};
   let blocksHtml = "";
   segments.forEach((seg) => {
+    const endTime = new Date(seg.start.getTime() + seg.durH * 3600000);
     const left =
       ((seg.start.getTime() - rangeStart.getTime()) / 3600000) *
       GANTT_PX_PER_HOUR;
-    const width = Math.max(5, seg.hours * GANTT_PX_PER_HOUR);
-    const dur = fmtDuration(seg.hours * 3600000);
-    const segEndTime = new Date(seg.start.getTime() + seg.hours * 3600000);
-    const flujoTxt =
-      seg.flujoAvg > 0
-        ? `${Math.round(seg.flujoAvg).toLocaleString("es-CO")} L/h`
-        : null;
-    const detalleParts = [];
-    if (seg.hl > 0) detalleParts.push(`${Math.round(seg.hl).toLocaleString("es-CO")} HL`);
-    if (flujoTxt) detalleParts.push(flujoTxt);
-    detalleParts.push(dur);
-    const detalle = detalleParts.join(" · ");
-    const titleAttr = escapeHtml(
-      `${seg.marca} · ${fmtDateTime(seg.start)} → ${fmtDateTime(segEndTime)} (${dur})` +
-        (seg.hl > 0 ? ` · Total diluido: ${Math.round(seg.hl).toLocaleString("es-CO")} HL` : "") +
-        (flujoTxt ? ` · Flujo prom: ${flujoTxt} (${Math.round(seg.flujoMin).toLocaleString("es-CO")}–${Math.round(seg.flujoMax).toLocaleString("es-CO")} L/h)` : ""),
-    );
-    const col = colorForFiltracion(seg.marca, colorCache);
+    const width = Math.max(4, seg.durH * GANTT_PX_PER_HOUR);
+    const dur = fmtDuration(seg.durH * 3600000);
     const showText = width >= 46;
-    if (col.aseo) {
-      blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}">${showText ? `<b>${escapeHtml(seg.marca)}</b><span>${detalle}</span>` : `<b>🧽</b>`}</div>`;
+
+    if (seg.tipo === "fil") {
+      const label =
+        seg.ciclo > 0 ? `${seg.marca} · ciclo ${seg.ciclo}/${seg.ciclos}` : seg.marca;
+      const detalle = `${Math.round(seg.hl).toLocaleString("es-CO")} HL · ${Math.round(
+        seg.flujo,
+      ).toLocaleString("es-CO")} hL/h · ${dur}`;
+      const titleAttr = escapeHtml(
+        `${label} · ${fmtDateTime(seg.start)} → ${fmtDateTime(endTime)} (${dur}) · ${Math.round(
+          seg.hl,
+        ).toLocaleString("es-CO")} HL a ${Math.round(seg.flujo).toLocaleString("es-CO")} hL/h`,
+      );
+      const col = colorForFiltracion(seg.marca, colorCache);
+      blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${col.bg}; color:${col.fg};" title="${titleAttr}">${
+        showText
+          ? `<b style="color:${col.fg};">${escapeHtml(label)}</b><span style="color:${col.fg};">${detalle}</span>`
+          : ""
+      }</div>`;
     } else {
-      blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${col.bg}; color:${col.fg};" title="${titleAttr}">${showText ? `<b style="color:${col.fg};">${escapeHtml(seg.marca)}</b><span style="color:${col.fg};">${detalle}</span>` : ""}</div>`;
+      const icon = seg.tipo === "cip" ? "🧼" : "🔁";
+      const titleAttr = escapeHtml(
+        `${seg.marca} · ${fmtDateTime(seg.start)} → ${fmtDateTime(endTime)} (${dur})`,
+      );
+      blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}">${
+        showText ? `<b>${escapeHtml(seg.marca)}</b><span>${dur}</span>` : `<b>${icon}</b>`
+      }</div>`;
     }
   });
 
-  container.classList.remove("hidden");
   container.innerHTML = `
     <div id="ganttFiltracionScroll" style="overflow-x:auto; padding:0 0 16px;">
       <div style="position:relative; width:${labelWidth + totalWidth}px;">
@@ -552,11 +588,12 @@ function renderGanttFiltracion(segments) {
     </div>
   `;
 
-  // Leyenda + totales, con el mismo estilo (.legend/.item/.sw) que los demás Gantt.
+  // Leyenda (mismas clases .legend/.item/.sw que los demás Gantt).
   const legendMap = {};
   segments.forEach((s) => {
     const key = normalizeText(s.marca);
-    if (!(key in legendMap)) legendMap[key] = { label: s.marca, col: colorForFiltracion(s.marca, colorCache) };
+    if (!(key in legendMap))
+      legendMap[key] = { label: s.marca, col: colorForFiltracion(s.marca, colorCache) };
   });
   const legendItems = Object.values(legendMap)
     .map(({ label, col }) => {
@@ -566,26 +603,72 @@ function renderGanttFiltracion(segments) {
       return `<div class="item"><span class="sw" style="${sw}"></span>${escapeHtml(label)}</div>`;
     })
     .join("");
-  const legendEl = document.getElementById("ganttFiltracionLegend");
   if (legendEl) legendEl.innerHTML = legendItems;
 
-  const totalHL = segments.reduce((s, x) => s + (x.hl || 0), 0);
-  const totalDurH = segments.reduce((s, x) => s + x.hours, 0);
-  const flujoSumGlobal = segments.reduce((s, x) => s + (x.flujoSum || 0), 0);
-  const flujoCountGlobal = segments.reduce((s, x) => s + (x.flujoCount || 0), 0);
-  const flujoAvgGlobal = flujoCountGlobal > 0 ? flujoSumGlobal / flujoCountGlobal : 0;
-  const totalsEl = document.getElementById("ganttFiltracionTotals");
   if (totalsEl) {
+    const durTotal = fmtDuration(lastEndTime - plan.i0.getTime());
     totalsEl.textContent =
-      `Periodo: ${fmtDateTime(rangeStart)} → ${fmtDateTime(new Date(lastEndTime))}` +
-      `  ·  Duración total: ${fmtDuration(totalDurH * 3600000)}` +
-      `  ·  Bloques: ${segments.length}` +
-      (totalHL > 0 ? `  ·  Total diluido: ${Math.round(totalHL).toLocaleString("es-CO")} HL` : "") +
-      (flujoAvgGlobal > 0 ? `  ·  Flujo de dilución promedio: ${Math.round(flujoAvgGlobal).toLocaleString("es-CO")} L/h` : "");
+      `Inicio (I0): ${fmtDateTime(plan.i0)} → Fin: ${fmtDateTime(plan.end)}` +
+      `  ·  Duración total: ${durTotal}` +
+      `  ·  Bloques de marca: ${plan.filas}` +
+      `  ·  Total a diluir: ${Math.round(plan.totalHL).toLocaleString("es-CO")} HL` +
+      `  ·  Cambios de ciclo: ${plan.nCambios}` +
+      `  ·  CIP cambio a Light: ${plan.nCip}`;
   }
 }
 
-/* ---- Panel de UI (auto-inyectado) para cargar el Excel de Filtración ---- */
+/* ---- Panel de UI: parámetros + tabla editable ------------------------- */
+function recomputeFiltracion() {
+  saveFiltracionState();
+  renderGanttFiltracion(buildFiltracionPlan(FILTRACION_STATE));
+}
+
+function renderFiltracionFilas() {
+  const wrap = document.getElementById("filtracionFilasWrap");
+  if (!wrap) return;
+  const rows = FILTRACION_STATE.filas
+    .map(
+      (f, i) => `
+      <tr>
+        <td><input type="number" step="1" class="cat-input" style="width:80px;"
+              data-fil-field="orden" data-fil-idx="${i}" value="${f.orden ?? ""}" /></td>
+        <td><input type="text" class="cat-input" style="min-width:160px;"
+              data-fil-field="marca" data-fil-idx="${i}" value="${escapeHtml(f.marca)}"
+              placeholder="p. ej. Light, Pilsen..." /></td>
+        <td><input type="number" step="1" min="0" class="cat-input" style="width:120px;"
+              data-fil-field="hl" data-fil-idx="${i}" value="${f.hl || ""}" /></td>
+        <td class="cat-remove"><button class="btn small" type="button"
+              data-fil-remove="${i}" title="Quitar fila">✕</button></td>
+      </tr>`,
+    )
+    .join("");
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Orden de dilución</th><th>Marca</th><th>hL por diluir</th><th></th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="empty-note">Sin filas. Agrega la primera.</td></tr>'}</tbody>
+    </table>`;
+
+  wrap.querySelectorAll("[data-fil-field]").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      const idx = Number(inp.dataset.filIdx);
+      const field = inp.dataset.filField;
+      if (!FILTRACION_STATE.filas[idx]) return;
+      FILTRACION_STATE.filas[idx][field] =
+        field === "marca" ? inp.value : inp.value === "" ? "" : Number(inp.value);
+      recomputeFiltracion();
+    });
+  });
+  wrap.querySelectorAll("[data-fil-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      FILTRACION_STATE.filas.splice(Number(btn.dataset.filRemove), 1);
+      renderFiltracionFilas();
+      recomputeFiltracion();
+    });
+  });
+}
+
 function initFiltracionPanel() {
   if (document.getElementById("ganttFiltracionPanel")) return;
 
@@ -595,18 +678,39 @@ function initFiltracionPanel() {
   panel.innerHTML = `
     <div class="panel-head">
       <h3>Gantt de Filtración</h3>
-      <span class="sub">Bloques generados a partir del registro horario (Fecha · Flujo de dilución · Total diluido · Marca)</span>
+      <span class="sub">Entrada manual · se calcula la línea de tiempo desde I0 con el flujo, los ciclos, los cambios de ciclo y el CIP de cambio a Light</span>
     </div>
     <div class="panel-body">
-      <div class="upload-zone" id="filtracionDropZone">
-        <h2>📄 Cargar Excel de Filtración</h2>
-        <p>Arrastra el archivo aquí o selecciónalo manualmente.</p>
-        <label class="btn primary" for="filtracionFileInput" style="cursor:pointer;">Elegir archivo</label>
-        <input type="file" id="filtracionFileInput" accept=".xlsx,.xls" />
+      <div class="fil-params">
+        <div class="fil-field">
+          <label class="field">Tiempo cero I0 (inicio de filtración)</label>
+          <input type="datetime-local" id="filI0" />
+        </div>
+        <div class="fil-field">
+          <label class="field">Flujo de filtración (hL/h)</label>
+          <input type="number" min="0" step="1" class="cat-input" id="filFlujo" placeholder="p. ej. 700" />
+        </div>
+        <div class="fil-field">
+          <label class="field">Tamaño de ciclo (hL que dura un ciclo)</label>
+          <input type="number" min="0" step="1" class="cat-input" id="filCiclo" placeholder="p. ej. 3000" />
+        </div>
+        <div class="fil-field">
+          <label class="field">Duración cambio de ciclo (hh:mm:ss)</label>
+          <input type="text" class="cat-input cat-time" id="filCambioCiclo" placeholder="0:30:00" />
+        </div>
+        <div class="fil-field">
+          <label class="field">Duración CIP cambio a Light (hh:mm:ss)</label>
+          <input type="text" class="cat-input cat-time" id="filCipLight" placeholder="8:00:00" />
+        </div>
       </div>
-      <div class="upload-compact hidden" id="filtracionUploadCompact">
-        <div class="uc-file"><b>✓</b><span class="uc-name" id="filtracionUploadName"></span></div>
-        <button class="btn small" id="filtracionChangeFileBtn" type="button">Cambiar archivo</button>
+      <p class="hint" style="margin:10px 0 4px;">
+        Antes de cada fila cuya marca sea <b>Light</b> se inserta automáticamente un
+        <b>CIP cambio a Light</b>. Dentro de cada bloque de marca se inserta un
+        <b>cambio de ciclo</b> cada vez que se completan los hL de un ciclo.
+      </p>
+      <div class="table-scroll" id="filtracionFilasWrap"></div>
+      <div style="margin-top:12px;">
+        <button class="btn small" id="filtracionAddFilaBtn" type="button">+ Agregar fila</button>
       </div>
       <div id="filtracionStatus" style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:10px; min-height:16px;"></div>
       <div id="ganttFiltracionContainer" class="hidden"></div>
@@ -625,73 +729,65 @@ function initFiltracionPanel() {
     (document.querySelector(".container") || document.body).appendChild(panel);
   }
 
-  const filtracionFileInput = document.getElementById("filtracionFileInput");
-  const filtracionDropZone = document.getElementById("filtracionDropZone");
-  const filtracionStatus = document.getElementById("filtracionStatus");
-  const filtracionUploadCompact = document.getElementById("filtracionUploadCompact");
-  const filtracionUploadName = document.getElementById("filtracionUploadName");
-  const filtracionChangeFileBtn = document.getElementById("filtracionChangeFileBtn");
+  const i0Input = document.getElementById("filI0");
+  const flujoInput = document.getElementById("filFlujo");
+  const cicloInput = document.getElementById("filCiclo");
+  const cambioInput = document.getElementById("filCambioCiclo");
+  const cipInput = document.getElementById("filCipLight");
 
-  function handleFiltracionFile(file) {
-    if (!file) return;
-    filtracionStatus.classList.remove("error");
-    filtracionStatus.textContent = "Leyendo " + file.name + "...";
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array", cellDates: true });
-        const rows = parseFiltracionWorkbook(workbook);
-        const segments = buildFiltracionSegments(rows);
-        if (!segments.length) throw new Error("No se encontraron filas válidas (se esperan columnas Fecha, Flujo de dilución, Total diluido y Marca).");
-        renderGanttFiltracion(segments);
-        filtracionStatus.textContent = "Listo — " + file.name + " procesado correctamente.";
-        filtracionDropZone.classList.add("hidden");
-        filtracionUploadName.textContent = file.name;
-        filtracionUploadCompact.classList.remove("hidden");
-      } catch (err) {
-        console.error(err);
-        filtracionStatus.classList.add("error");
-        filtracionStatus.style.color = "var(--danger)";
-        filtracionStatus.textContent = "Error: " + err.message;
-        document.getElementById("ganttFiltracionContainer").classList.add("hidden");
-      }
-    };
-    reader.onerror = () => {
-      filtracionStatus.classList.add("error");
-      filtracionStatus.style.color = "var(--danger)";
-      filtracionStatus.textContent = "No se pudo leer el archivo.";
-    };
-    reader.readAsArrayBuffer(file);
-  }
+  i0Input.value = FILTRACION_STATE.i0 || "";
+  flujoInput.value = FILTRACION_STATE.flujoHLh || "";
+  cicloInput.value = FILTRACION_STATE.cicloHL || "";
+  cambioInput.value = FILTRACION_STATE.cambioCicloH
+    ? formatHMS(FILTRACION_STATE.cambioCicloH)
+    : "";
+  cipInput.value = FILTRACION_STATE.cipLightH
+    ? formatHMS(FILTRACION_STATE.cipLightH)
+    : "";
 
-  filtracionFileInput.addEventListener("change", (e) =>
-    handleFiltracionFile(e.target.files[0]),
-  );
-  ["dragenter", "dragover"].forEach((ev) =>
-    filtracionDropZone.addEventListener(ev, (e) => {
-      e.preventDefault();
-      filtracionDropZone.classList.add("drag");
-    }),
-  );
-  ["dragleave", "drop"].forEach((ev) =>
-    filtracionDropZone.addEventListener(ev, (e) => {
-      e.preventDefault();
-      filtracionDropZone.classList.remove("drag");
-    }),
-  );
-  filtracionDropZone.addEventListener("drop", (e) => {
-    const f = e.dataTransfer.files[0];
-    if (f) handleFiltracionFile(f);
+  i0Input.addEventListener("change", () => {
+    FILTRACION_STATE.i0 = i0Input.value;
+    recomputeFiltracion();
   });
-  filtracionChangeFileBtn.addEventListener("click", () => {
-    filtracionUploadCompact.classList.add("hidden");
-    filtracionDropZone.classList.remove("hidden");
+  flujoInput.addEventListener("input", () => {
+    FILTRACION_STATE.flujoHLh = Number(flujoInput.value) || 0;
+    recomputeFiltracion();
   });
+  cicloInput.addEventListener("input", () => {
+    FILTRACION_STATE.cicloHL = Number(cicloInput.value) || 0;
+    recomputeFiltracion();
+  });
+  cambioInput.addEventListener("change", () => {
+    FILTRACION_STATE.cambioCicloH = parseHMS(cambioInput.value);
+    cambioInput.value = FILTRACION_STATE.cambioCicloH
+      ? formatHMS(FILTRACION_STATE.cambioCicloH)
+      : "";
+    recomputeFiltracion();
+  });
+  cipInput.addEventListener("change", () => {
+    FILTRACION_STATE.cipLightH = parseHMS(cipInput.value);
+    cipInput.value = FILTRACION_STATE.cipLightH
+      ? formatHMS(FILTRACION_STATE.cipLightH)
+      : "";
+    recomputeFiltracion();
+  });
+  document
+    .getElementById("filtracionAddFilaBtn")
+    .addEventListener("click", () => {
+      const maxOrden = FILTRACION_STATE.filas.reduce(
+        (m, f) => Math.max(m, Number(f.orden) || 0),
+        0,
+      );
+      FILTRACION_STATE.filas.push({ orden: maxOrden + 1, marca: "", hl: 0 });
+      renderFiltracionFilas();
+      recomputeFiltracion();
+    });
+
+  renderFiltracionFilas();
+  recomputeFiltracion();
 }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initFiltracionPanel);
 } else {
   initFiltracionPanel();
 }
-

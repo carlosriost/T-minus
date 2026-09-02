@@ -1104,6 +1104,45 @@
         line-height: 1.5;
       }
 
+      /* Parámetros del Gantt de Filtración (entrada manual) */
+      .fil-params {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 12px 16px;
+        margin-bottom: 4px;
+      }
+      .fil-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .fil-field .field {
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted);
+        font-weight: 700;
+        margin: 0;
+      }
+      .fil-field input {
+        width: 100%;
+        background: var(--input-bg);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 7px 9px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      .fil-field input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(248, 200, 76, 0.09);
+      }
+      #filtracionFilasWrap table {
+        min-width: 520px;
+      }
+
       /* Botón hamburguesa (solo móvil) */
       .nav-toggle {
         display: none;
