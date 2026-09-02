@@ -744,10 +744,9 @@ function initFiltracionPanel() {
             <input type="number" min="0" step="1" class="cat-input" id="filCiclo" placeholder="p. ej. 3000" />
           </div>
           <div class="fil-field">
-            <label class="field">Filtro nuevo en I0</label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;min-height:31px;">
+            <label class="field" style="display:flex;align-items:center;gap:8px;min-height:31px;">
               <input type="checkbox" id="filFiltroNuevo" style="width:16px;height:16px;" />
-              <span>Sí, arranca nuevo</span>
+              Filtro nuevo en I0
             </label>
           </div>
           <div class="fil-field" id="filRestanteField">
