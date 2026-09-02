@@ -257,6 +257,29 @@
                   Inventario disponible por mosto (HL). Se descuenta del volumen a
                   cocinar, sin cambiar el volumen a envasar.
                 </p>
+                <div
+                  style="
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    margin-bottom: 12px;
+                  "
+                >
+                  <label class="btn small primary" for="ppFileInput" style="cursor: pointer">
+                    📄 Cargar Excel de producto en proceso
+                  </label>
+                  <input
+                    type="file"
+                    id="ppFileInput"
+                    accept=".xlsm,.xlsx,.xls"
+                    style="display: none"
+                  />
+                  <span
+                    id="ppStatus"
+                    style="font-family: var(--mono); font-size: 11.5px; color: var(--muted)"
+                  ></span>
+                </div>
                 <div class="table-scroll" id="balanceTableWrap"></div>
               </div>
             </div>

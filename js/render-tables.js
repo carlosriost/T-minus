@@ -405,33 +405,70 @@ function renderInventoryBalance(plan) {
   MOSTO_CATALOG.forEach((m) => (catalogById[m.id] = m));
   const tankNames = (TANK_CATALOG || []).map((t) => t.equipo).filter(Boolean);
 
+  const TIPOS = ["FV", "SV", "BBT"];
   const detailRows = (INVENTORY_BALANCE || [])
     .map((entry, idx) => {
       const m = catalogById[entry.mostoId];
-      const diasReq = m
-        ? ((Number(m.tiempoFermentacionHoras) || 0) +
-            (Number(m.tiempoMaduracionHoras) || 0)) /
-          24
-        : null;
+      const tipo = entry.tipo || ""; // "" = fila antigua sin tipo
+      const fermD = m ? (Number(m.tiempoFermentacionHoras) || 0) / 24 : null;
+      const madurD = m ? (Number(m.tiempoMaduracionHoras) || 0) / 24 : null;
+      let diasReq = null;
+      if (m) {
+        if (tipo === "FV") diasReq = fermD;
+        else if (tipo === "SV") diasReq = madurD;
+        else if (tipo === "BBT") diasReq = 0;
+        else diasReq = fermD + madurD; // compatibilidad con filas previas
+      }
       const dias =
         entry.diasEnEquipo === "" || entry.diasEnEquipo == null
           ? null
           : Number(entry.diasEnEquipo);
+
+      // Estado
       let estadoHtml = '<span class="tag warn">Sin datos</span>';
-      if (dias != null && diasReq != null) {
+      if (tipo === "BBT") {
+        estadoHtml = '<span class="tag ok">Listo · producto terminado</span>';
+      } else if (dias != null && diasReq != null) {
         estadoHtml =
           dias >= diasReq
             ? '<span class="tag ok">Listo</span>'
             : `<span class="tag warn">En proceso · faltan ${(diasReq - dias).toFixed(1)} d</span>`;
       }
-      return `<tr data-inv-idx="${idx}">
-        <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22"></td>
-        <td><select class="cat-input" data-inv-field="mostoId">${MOSTO_CATALOG.map(
+
+      // Se libera el equipo: FV al terminar fermentación, SV al terminar
+      // maduración, BBT ya está listo.
+      let liberaHtml = "—";
+      if (tipo === "BBT") {
+        liberaHtml = '<span class="tag ok">Listo para envase</span>';
+      } else if (dias != null && diasReq != null) {
+        const faltanD = Math.max(0, diasReq - dias);
+        if (faltanD <= 0) {
+          liberaHtml = '<span class="tag ok">Libre</span>';
+        } else {
+          const base = getI0Date() || new Date();
+          const fecha = new Date(base.getTime() + faltanD * 86400000);
+          liberaHtml = `${faltanD.toFixed(1)} d · ${fmtDate(fecha)}`;
+        }
+      }
+
+      const mostoOpts =
+        (!entry.mostoId && entry.marcaTexto
+          ? `<option value="" selected>${escapeHtml(entry.marcaTexto)} (sin homologar)</option>`
+          : "") +
+        MOSTO_CATALOG.map(
           (mm) =>
             `<option value="${escapeHtml(mm.id)}" ${mm.id === entry.mostoId ? "selected" : ""}>${escapeHtml(mm.nombre)}</option>`,
+        ).join("");
+
+      return `<tr data-inv-idx="${idx}">
+        <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22"></td>
+        <td><select class="cat-input" data-inv-field="tipo" style="width:70px;">${TIPOS.map(
+          (t) => `<option value="${t}" ${t === tipo ? "selected" : ""}>${t}</option>`,
         ).join("")}</select></td>
-        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : dias}" placeholder="días"></td>
+        <td><select class="cat-input" data-inv-field="mostoId" title="${escapeHtml(entry.marcaTexto || "")}">${mostoOpts}</select></td>
+        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : dias}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
         <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
+        <td style="color:var(--muted);">${liberaHtml}</td>
         <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="hL" value="${Number(entry.hL) || 0}"></td>
         <td>${estadoHtml}</td>
         <td><button class="btn small" data-remove-inv="${idx}" title="Quitar lote">✕</button></td>
@@ -442,8 +479,8 @@ function renderInventoryBalance(plan) {
   const detailHtml = `
     <datalist id="tankEquipoListInv">${tankNames.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
     <table><thead><tr>
-      <th>Equipo / tanque</th><th>Marca (mosto)</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>HL (normalizados)</th><th>Estado</th><th></th>
-    </tr></thead><tbody>${detailRows || `<tr><td colspan="7" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
+      <th>Equipo / tanque</th><th>Tipo</th><th>Marca (mosto)</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
+    </tr></thead><tbody>${detailRows || `<tr><td colspan="9" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
     <div style="margin-top:8px;"><button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button></div>
   `;
 
@@ -465,6 +502,11 @@ function renderInventoryBalance(plan) {
       }
       INVENTORY_BALANCE[idx][field] = val;
       saveInventoryBalance();
+      // El tipo y el mosto cambian las columnas derivadas (días requeridos,
+      // "se libera", estado): hay que volver a pintar la tabla.
+      if (field === "tipo" || field === "mostoId") {
+        renderInventoryBalance(STATE && STATE.plan);
+      }
       recompute();
     });
   });
@@ -482,6 +524,7 @@ function renderInventoryBalance(plan) {
         id: "inv_" + Date.now(),
         equipo: "",
         mostoId: MOSTO_CATALOG[0] ? MOSTO_CATALOG[0].id : "",
+        tipo: "FV",
         diasEnEquipo: "",
         hL: 0,
       });
@@ -492,6 +535,72 @@ function renderInventoryBalance(plan) {
   }
 }
 renderInventoryBalance(STATE && STATE.plan);
+
+// ---- Carga del Excel "Producto en Proceso" (.xlsm) ----------------------
+// Reemplaza TODO el inventario con lo que traiga el archivo (hojas "Reporte"
+// y "BBTs"): equipo, tipo (FV/SV/BBT), marca homologada a mosto, días en el
+// equipo y HL diluidos. Los BBTs entran como producto terminado (sin días).
+(function initProductoEnProcesoUpload() {
+  const input = document.getElementById("ppFileInput");
+  const status = document.getElementById("ppStatus");
+  if (!input) return;
+  input.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (status) {
+      status.style.color = "var(--muted)";
+      status.textContent = "Leyendo " + file.name + "…";
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), {
+          type: "array",
+          cellDates: true,
+        });
+        const filas = parseProductoEnProceso(wb);
+        if (!filas.length)
+          throw new Error(
+            'No se encontraron equipos con producto en las hojas "Reporte" y "BBTs".',
+          );
+        INVENTORY_BALANCE = filas.map((p, i) => ({
+          id: "inv_pp_" + Date.now() + "_" + i,
+          equipo: p.equipo,
+          mostoId: matchMosto(p.marcaTexto, MOSTO_CATALOG) || "",
+          marcaTexto: p.marcaTexto,
+          tipo: p.tipo,
+          diasEnEquipo:
+            p.tipo === "BBT" || p.diasEnEquipo == null
+              ? ""
+              : Math.max(0, Number(p.diasEnEquipo) || 0),
+          hL: Math.max(0, Number(p.hL) || 0),
+        }));
+        saveInventoryBalance();
+        renderInventoryBalance(STATE && STATE.plan);
+        if (typeof recompute === "function") recompute();
+        if (status) {
+          status.style.color = "var(--ok)";
+          const nBBT = filas.filter((x) => x.tipo === "BBT").length;
+          status.textContent = `✓ ${filas.length} equipos cargados (${filas.length - nBBT} FV/SV + ${nBBT} BBT) desde ${file.name}`;
+        }
+      } catch (err) {
+        console.error(err);
+        if (status) {
+          status.style.color = "var(--danger)";
+          status.textContent = "Error: " + err.message;
+        }
+      }
+      input.value = "";
+    };
+    reader.onerror = () => {
+      if (status) {
+        status.style.color = "var(--danger)";
+        status.textContent = "No se pudo leer el archivo.";
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+})();
 
 function renderYeastConfig() {
   const wrap = document.getElementById("yeastConfigWrap");

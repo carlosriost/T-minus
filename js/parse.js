@@ -615,3 +615,102 @@ function mergeEvents(events) {
   return merged;
 }
 
+/* =========================================================================
+   PARSEO DEL EXCEL "PRODUCTO EN PROCESO" (.xlsm) — inventario por equipo
+   Hoja "Reporte": dos bloques fijos por columnas
+     · FV  → equipo=col C, marca=col D, días=col E, HL Diluidos=col H
+     · SV  → equipo=col K, marca=col L, días=col M, HL Diluidos=col P
+            (el mismo bloque SV contiene los SV normales y los SV Pony)
+   Hoja "BBTs": BBT=col A, PRODUCTO=col B, CANTIDAD=col C (producto terminado,
+   sin tiempo). Devuelve [{equipo, marcaTexto, tipo:"FV"|"SV"|"BBT",
+   diasEnEquipo, hL}].
+   ========================================================================= */
+function parseProductoEnProceso(workbook) {
+  const out = [];
+  const norm = (v) => (v == null ? "" : normalizeText(v));
+  const num = (v) => {
+    const n = Number(v);
+    return isFinite(n) ? n : 0;
+  };
+  const sheet = (want) => {
+    const w = norm(want);
+    const name = (workbook.SheetNames || []).find((s) => norm(s) === w);
+    return name ? workbook.Sheets[name] : null;
+  };
+  const IGN = new Set([
+    "",
+    "fv",
+    "sv",
+    "marca",
+    "total",
+    "pony",
+    "capacidad",
+    "vacio",
+    "vacía",
+    "vacia",
+  ]);
+
+  const wsR = sheet("Reporte");
+  if (wsR) {
+    const aoa = XLSX.utils.sheet_to_json(wsR, {
+      header: 1,
+      defval: null,
+      raw: true,
+    });
+    aoa.forEach((row) => {
+      row = row || [];
+      const push = (eqCol, maCol, diaCol, hlCol, tipo) => {
+        const eq = row[eqCol];
+        const ma = row[maCol];
+        if (
+          typeof eq === "string" &&
+          !IGN.has(norm(eq)) &&
+          typeof ma === "string" &&
+          !IGN.has(norm(ma))
+        ) {
+          out.push({
+            equipo: String(eq).trim(),
+            marcaTexto: String(ma).trim(),
+            tipo,
+            diasEnEquipo: row[diaCol] == null ? null : num(row[diaCol]),
+            hL: num(row[hlCol]),
+          });
+        }
+      };
+      push(2, 3, 4, 7, "FV"); // bloque FV: C, D, E, H
+      push(10, 11, 12, 15, "SV"); // bloque SV (normal + Pony): K, L, M, P
+    });
+  }
+
+  const wsB = sheet("BBTs");
+  if (wsB) {
+    const aoa = XLSX.utils.sheet_to_json(wsB, {
+      header: 1,
+      defval: null,
+      raw: true,
+    });
+    aoa.forEach((row) => {
+      row = row || [];
+      const bbt = row[0];
+      const prod = row[1];
+      if (
+        typeof bbt === "string" &&
+        /^\s*bbt/i.test(bbt) &&
+        typeof prod === "string" &&
+        prod.trim() &&
+        norm(prod) !== "producto"
+      ) {
+        out.push({
+          equipo: bbt.trim(),
+          marcaTexto: prod.trim(),
+          tipo: "BBT",
+          diasEnEquipo: null,
+          hL: num(row[2]),
+        });
+      }
+    });
+  }
+
+  return out;
+}
+
