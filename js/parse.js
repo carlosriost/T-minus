@@ -101,8 +101,34 @@ function parseSuite360Workbook(workbook, sheetName) {
       firstDay = suiteCellDateUTC((aoa[HEADER_DAY_ROW] || [])[c]);
   }
   if (!firstDay) throw new Error('No se pudo leer el primer día en la hoja "' + sheetName + '".');
-  const firstTime = cellTimeParts((aoa[HOUR_ROW] || [])[FIRST_TIME_COL]) || { h: 22, m: 0, s: 0 };
-  const timelineStart = combine(firstDay, firstTime);
+
+  // La hora inicial de la cuadrícula. cellDates:true convierte las celdas
+  // "solo hora" aplicando un desfase de zona horaria (22:00 se lee como 02:56),
+  // así que se prefiere el texto ya formateado de la celda (.w = "22:00").
+  function suiteHourParts(r, c) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+    if (cell && cell.w) {
+      const m = String(cell.w).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (m)
+        return {
+          h: Number(m[1]) % 24,
+          m: Number(m[2]),
+          s: Number(m[3] || 0),
+        };
+    }
+    return cellTimeParts((aoa[r] || [])[c]);
+  }
+  const firstTime =
+    suiteHourParts(HOUR_ROW, FIRST_TIME_COL) || { h: 22, m: 0, s: 0 };
+  // El bloque rotulado con una fecha D representa la JORNADA de producción D.
+  // Cuando la cuadrícula arranca por la tarde/noche (>= 12 h) esa jornada
+  // empieza a esa hora del día ANTERIOR (p. ej. la jornada "lunes 31" va de
+  // domingo 30 22:00 a lunes 31 22:00). Si arranca en la mañana, empieza el
+  // mismo día rotulado.
+  const timelineStart = combine(
+    addDays(firstDay, firstTime.h >= 12 ? -1 : 0),
+    firstTime,
+  );
 
   /* Catálogo operativo del mismo libro: velocidad nominal y eficiencia por línea/SKU. */
   const speedCatalog = [];
@@ -201,32 +227,44 @@ function parseSuite360Workbook(workbook, sheetName) {
       } else grouped.push({ ...x, key });
     }
 
-    let cursor = null;
     for (const g of grouped) {
-      const gridStart = new Date(timelineStart.getTime() + (g.c - FIRST_TIME_COL) * 3600000);
-      const start = cursor && Math.abs(cursor - gridStart) <= 12 * 3600000 ? new Date(cursor) : gridStart;
+      // Cada columna de la cuadrícula = 1 hora real. El instructivo YA es la
+      // línea de tiempo: la duración de un bloque son las horas que ocupa en la
+      // cuadrícula (no se recalcula por velocidad nominal).
+      const start = new Date(
+        timelineStart.getTime() + (g.c - FIRST_TIME_COL) * 3600000,
+      );
+      const gridHours = g.endCol - g.c + 1;
+      const end = new Date(start.getTime() + gridHours * 3600000);
       if (g.production) {
         const sku = identifySku(t, g.product, g.activity);
-        const rate = sku ? sku.speed * sku.efficiency : 0;
-        const gridHours = g.endCol - g.c + 1;
-        const durationHours = rate > 0 && g.units > 0 ? g.units / rate : gridHours;
-        const end = new Date(start.getTime() + durationHours * 3600000);
-        const cc = sku ? sku.cc : ((String(g.activity).match(/(\d+(?:[.,]\d+)?)\s*[xX]/) || [])[1] || 0);
-        const hectolitros = Number(cc) > 0 ? g.units * Number(cc) / 100000 : 0;
+        const cc = sku
+          ? sku.cc
+          : (String(g.activity).match(/(\d+(?:[.,]\d+)?)\s*[xX]/) || [])[1] || 0;
+        // La fila "Hl ENVASADOS" ya viene en hectolitros.
+        const hectolitros = Number(g.units) || 0;
+        const unidades =
+          Number(cc) > 0 ? Math.round((hectolitros * 100000) / Number(cc)) : 0;
         rawEvents[t].push({
           codigo: sku ? sku.code : g.product,
           name: sku ? sku.description : suiteDisplayName(g.product, g.activity),
-          start, end, unidades: g.units, hectolitros,
+          start,
+          end,
+          unidades,
+          hectolitros,
         });
-        cursor = end;
       } else {
-        const durationHours = g.endCol - g.c + 1;
-        const end = new Date(start.getTime() + durationHours * 3600000);
         rawEvents[t].push({
-          codigo: null, name: (g.activity.match(/^(DPA|NST)/i) || [""])[0] + " - " + specialLabel(g.activity),
-          start, end, unidades: 0, hectolitros: 0,
+          codigo: null,
+          name:
+            (g.activity.match(/^(DPA|NST)/i) || [""])[0] +
+            " - " +
+            specialLabel(g.activity),
+          start,
+          end,
+          unidades: 0,
+          hectolitros: 0,
         });
-        cursor = end;
       }
     }
   });
