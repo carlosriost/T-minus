@@ -1,0 +1,745 @@
+/* =========================================================================
+   RENDER (tablas) — conflictos, tanques, secuencia, reglas, catalogo, inventario, levadura, aseos
+   ========================================================================= */
+function fmtDurationHoras(h) {
+  const totalMin = Math.round(h * 60);
+  const dias = Math.floor(totalMin / 1440);
+  const restoMin = totalMin - dias * 1440;
+  const horas = Math.floor(restoMin / 60);
+  const min = restoMin % 60;
+  const partes = [];
+  if (dias) partes.push(`${dias} d`);
+  if (horas || dias) partes.push(`${horas} h`);
+  partes.push(`${min} min`);
+  return partes.join(" ");
+}
+function formatCapacityWarning(w) {
+  if (w && w.tipo === "deadline") {
+    return `Conflicto de capacidad: el proceso de ${w.nombre} termina el ${fmtDateTime(w.blockEnd)} — ${fmtDurationHoras(w.retrasoHoras)} (${w.retrasoHoras.toFixed(1)} h) después de su límite (${fmtDateTime(w.deadline)}), por la secuencia y disponibilidad de la cocina compartida.`;
+  }
+  if (w && w.tipo === "solapamiento") {
+    return `Conflicto de capacidad: ${w.detalle || `el cocimiento de ${w.nombre} se solapa con otro cocimiento`}.`;
+  }
+  if (w && w.tipo === "aseo") {
+    return `Conflicto de aseo: ${w.detalle || `el aseo asociado a ${w.nombre} no cabe en el espacio disponible`}.`;
+  }
+  return w && w.detalle
+    ? w.detalle
+    : `Conflicto de capacidad en ${w && w.nombre ? w.nombre : "el programa"}.`;
+}
+
+function renderConflictos(seq) {
+  const wrap = document.getElementById("conflictosWrap");
+  const countEl = document.getElementById("conflictosCount");
+  const warns = seq ? seq.capacityWarnings : [];
+  if (countEl) {
+    if (warns.length) {
+      countEl.textContent = warns.length;
+      countEl.style.display = "inline-block";
+    } else {
+      countEl.style.display = "none";
+    }
+  }
+  if (!warns.length) {
+    wrap.innerHTML =
+      '<p class="empty-note">Sin conflictos de capacidad esta semana — todos los bloques terminan dentro de su fecha límite de envasado.</p>';
+    return;
+  }
+  const rows = warns
+    .map((w) => {
+      const bg = colorForMosto(w.mostoId);
+      const esDeadline = w.tipo === "deadline";
+      const esAseo = w.tipo === "aseo";
+      const titulo = esDeadline
+        ? "Conflicto de fecha límite"
+        : esAseo
+          ? "Conflicto de aseo"
+          : "Conflicto de secuencia";
+      const detalle = formatCapacityWarning(w);
+      return `<tr style="background:${bg}22;">
+      <td style="border-left:4px solid var(--danger); color:var(--text); font-family:var(--sans);"><b>${escapeHtml(w.nombre)}</b><span style="display:block;color:var(--muted);font-size:10px;">${titulo}</span></td>
+      <td>${w.blockStart ? fmtDateTime(w.blockStart) : "—"}</td>
+      <td style="color:${esDeadline ? "var(--danger)" : "var(--text)"}; font-weight:650;">${w.blockEnd ? fmtDateTime(w.blockEnd) : "—"}</td>
+      <td>${w.deadline ? fmtDateTime(w.deadline) : "—"}</td>
+      <td style="color:${esDeadline ? "var(--danger)" : "var(--text)"};"><b>${esDeadline && Number.isFinite(w.retrasoHoras) ? fmtDurationHoras(w.retrasoHoras) : "—"}</b><span style="color:var(--muted); font-size:10.5px; display:block; max-width:520px;">${escapeHtml(detalle)}</span></td>
+    </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = `<table><thead><tr>
+      <th>Mosto / bloque</th><th>Inicio</th><th>Fin / evento</th><th>Fecha límite</th><th>Detalle</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderTankAssignments(assignment) {
+  const wrap = document.getElementById("tanquesTableWrap");
+  const alert = document.getElementById("tanquesAlertWrap");
+  const count = document.getElementById("sinTanqueCount");
+  if (!assignment) {
+    if (wrap)
+      wrap.innerHTML = '<p class="empty-note">Sin datos de asignación.</p>';
+    return;
+  }
+  if (count) {
+    count.textContent = assignment.sinTanque.length;
+    count.style.display = assignment.sinTanque.length ? "inline-block" : "none";
+  }
+  if (alert) {
+    alert.innerHTML = assignment.sinTanque.length
+      ? `<div style="border:1px solid rgba(237,28,43,.35); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--danger);"><b>⚠️ ${assignment.sinTanque.length} cocimiento(s) sin tanque.</b> La asignación se detuvo para esos cocimientos porque no existe capacidad suficiente en equipos disponibles con prioridad A → B → C.</div>`
+      : '<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--ok);"><b>✓ Todos los cocimientos tienen tanque asignado.</b> Los FV son solo de fermentación; los SV son solo de maduración; los SV Pony son exclusivos de Pony; los BBT son solo de producto terminado.</div>';
+  }
+  if (!assignment.rows.length) {
+    wrap.innerHTML = '<p class="empty-note">Sin cocimientos programados.</p>';
+    return;
+  }
+  const rows = assignment.rows
+    .map((r) => {
+      const ok = r.estado === "Asignado";
+      return `<tr style="background:${ok ? "transparent" : "rgba(237,28,43,.08)"};">
+      <td>${r.cocimientoNumero}</td><td style="font-family:var(--sans);">${escapeHtml(r.nombre)}</td><td>${fmtDateTime(r.start)}</td><td>${fmtDateTime(r.end)}</td>
+      <td>${r.volumenHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${r.tanque ? escapeHtml(r.tanque) : "—"}</td><td>${r.tanqueTipo ? escapeHtml(r.tanqueTipo) : "—"}</td>
+      <td>${r.prioridad ? `<span class="tank-priority ${r.prioridad}">${r.prioridad}</span>` : "—"}</td>
+      <td>${r.capacidadHL ? `${r.capacidadHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL` : "—"}</td>
+      <td>${r.acumuladoHL != null ? `${r.acumuladoHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL` : "—"}</td>
+      <td>${r.restanteHL != null ? `${r.restanteHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL` : "—"}</td>
+      <td><span class="tank-status ${ok ? "ok" : "danger"}">${ok ? "Asignado" : "SIN TANQUE"}</span></td>
+    </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Mosto</th><th>Inicio</th><th>Fin</th><th>Volumen</th><th>Equipo</th><th>Tipo</th><th>Prioridad</th><th>Capacidad</th><th>Acumulado</th><th>Restante</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderSequence(seq) {
+  const alertWrap = document.getElementById("capacidadAlertWrap");
+  const wrap = document.getElementById("secuenciaTableWrap");
+  if (!seq || !seq.rows.length) {
+    if (alertWrap) alertWrap.innerHTML = "";
+    wrap.innerHTML =
+      '<p class="empty-note">Sin cocimientos programados esta semana.</p>';
+    return;
+  }
+  if (seq.capacityWarnings.length) {
+    alertWrap.innerHTML = `<div style="border:1px solid rgba(237,28,43,.35); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; color:var(--danger);">
+      ${seq.capacityWarnings.map((w) => `<div>⚠️ ${escapeHtml(formatCapacityWarning(w))}</div>`).join("")}
+    </div>`;
+  } else {
+    alertWrap.innerHTML = "";
+  }
+  let rows = seq.rows
+    .map((r) => {
+      const dur = fmtDuration(r.end - r.start);
+      if (r.tipo === "aseo") {
+        const faltaDato =
+          r.definido === false
+            ? " · ⚠️ sin dato definido (usa el valor por defecto)"
+            : "";
+        return `<tr style="background:repeating-linear-gradient(45deg, var(--aseo-row-c1), var(--aseo-row-c1) 6px, var(--aseo-row-c2) 6px, var(--aseo-row-c2) 12px);">
+        <td>${r.n}</td>
+        <td style="border-left:4px solid var(--accent); color:var(--accent); font-family:var(--sans);"><b>🧽 ${escapeHtml(r.nombre)}</b><span style="color:var(--muted); font-size:10.5px;">${faltaDato}</span></td>
+        <td>${fmtDateTime(r.start)}</td>
+        <td>${dur}</td>
+        <td>${fmtDateTime(r.end)}</td>
+      </tr>`;
+      }
+      const bg = colorForMosto(r.mostoId);
+      const tags =
+        (r.blockStart ? " · inicio de bloque" : "") +
+        (r.blockEnd ? " · fin de bloque" : "") +
+        (r.shiftHours > 0.05
+          ? ` · desplazado +${r.shiftHours.toFixed(1)} h`
+          : "") +
+        (r.violaDeadline ? " · ⚠️ excede fecha límite" : "");
+      return `<tr style="background:${bg}22; ${r.violaDeadline ? "box-shadow:inset 0 0 0 1px var(--danger);" : ""}">
+      <td>${r.n}</td>
+      <td style="border-left:4px solid ${r.violaDeadline ? "var(--danger)" : bg}; color:var(--text); font-family:var(--sans);"><b>${escapeHtml(r.nombre)}</b><span style="color:${r.violaDeadline ? "var(--danger)" : "var(--muted)"}; font-size:10.5px;">${tags}</span></td>
+      <td>${fmtDateTime(r.start)}</td>
+      <td>${dur}</td>
+      <td>${fmtDateTime(r.end)}</td>
+    </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Mosto / evento</th><th>Inicio</th><th>Duración</th><th>Fin</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderRecomendaciones(seq) {
+  const wrap = document.getElementById("recomendacionesWrap");
+  const rec = seq ? seq.recomendaciones : null;
+  const rows = RECOMENDACIONES.map((r) => {
+    let estado, cls, detalle;
+    if (!rec) {
+      estado = "Sin datos";
+      cls = "warn";
+      detalle = "Carga un archivo para evaluar esta recomendación.";
+    } else if (r.id === "r1") {
+      if (rec.iniciaConPony) {
+        estado = "Aplicada";
+        cls = "ok";
+        detalle = "La secuencia calculada inicia con el bloque de Pony.";
+      } else {
+        estado = "No aplicada";
+        cls = "warn";
+        detalle =
+          "No fue posible ubicar a Pony al inicio de la semana sin incumplir alguna fecha límite de envasado (o no hay producción de Pony esta semana).";
+      }
+    } else {
+      if (rec.ponyJuntoAseo === null) {
+        estado = "No aplica";
+        cls = "warn";
+        detalle = "No hay producción de Pony esta semana.";
+      } else if (rec.ponyJuntoAseo) {
+        estado = "Aplicada";
+        cls = "ok";
+        detalle =
+          "El bloque de Pony queda junto a un aseo (CIP), ya que el motor programa un aseo en cada cambio de marca.";
+      } else {
+        estado = "No aplicada";
+        cls = "warn";
+        detalle = "El bloque de Pony no quedó junto a un aseo detectado.";
+      }
+    }
+    return `<tr>
+      <td style="font-family:var(--sans); color:var(--text);">${escapeHtml(r.texto)}</td>
+      <td>${r.impacto}</td>
+      <td><span class="tag ${cls}">${estado}</span></td>
+      <td style="font-family:var(--sans); color:var(--muted); font-size:11.5px;">${escapeHtml(detalle)}</td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML = `<table><thead><tr><th>Recomendación</th><th>Impacto</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderReglas(seq) {
+  const wrap = document.getElementById("reglasWrap");
+  const warns = seq ? seq.reglaWarnings : [];
+  let rows = REGLAS_OPERATIVAS.map((r) => {
+    const rel = warns.filter((w) => w.ids.includes(r.id));
+    let estado, cls, detalle;
+    if (!REGLAS_VERIFICABLES.has(r.id)) {
+      estado = "No verificable";
+      cls = "warn";
+      detalle =
+        "Requiere datos de líneas de envasado, filtración, mantenimiento o SUITE360 no incluidos en este archivo.";
+    } else if (rel.length) {
+      estado = "Advertencia";
+      cls = "danger";
+      detalle = rel.map((w) => w.text).join(" ");
+    } else {
+      estado = "Aplicada";
+      cls = "ok";
+      detalle = "Sin conflictos detectados con los datos de esta semana.";
+    }
+    return `<tr>
+      <td>${r.id}</td>
+      <td style="font-family:var(--sans); color:var(--text);">${escapeHtml(r.texto)}</td>
+      <td>${r.impacto}</td>
+      <td><span class="tag ${cls}">${estado}</span></td>
+      <td style="font-family:var(--sans); color:var(--muted); font-size:11.5px;">${escapeHtml(detalle)}</td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Regla</th><th>Impacto</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderCocinaPlan(plan) {
+  const wrap = document.getElementById("cocinaTableWrap");
+  if (!plan.results.length) {
+    wrap.innerHTML =
+      '<p class="empty-note">Sin volumen a envasar homologado a ningún mosto esta semana.</p>';
+    return;
+  }
+  let rows = plan.results
+    .map((r) => {
+      const startsHtml = r.starts.length
+        ? `<div class="starts-list">${r.starts.map((s, i) => `<span>#${i + 1}: ${fmtDateTime(s)} <small style="color:var(--muted);">(${fmtI0Offset(s)})</small></span>`).join("")}</div>`
+        : r.cubiertoTotalPorInventario
+          ? '<span class="empty-note">Cubierto totalmente por inventario · no requiere cocinar</span>'
+          : '<span class="empty-note">Sin fecha de envasado para calcular inicio</span>';
+      const marcasHtml = r.marcas
+        .map((b) => `<span class="brand-chip">${escapeHtml(b.name)}</span>`)
+        .join("");
+      const invHtml =
+        r.inventarioUsadoHL > 0
+          ? `${r.inventarioUsadoHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL`
+          : '<span style="color:var(--muted);">—</span>';
+      return `<tr>
+      <td>${escapeHtml(r.nombre)}${r.blockLabel ? `<br><span style="color:var(--muted);font-size:10.5px;">${escapeHtml(r.blockLabel)}</span>` : ""}<br>${marcasHtml}</td>
+      <td>${r.volumenEnvasar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${invHtml}</td>
+      <td>${r.volumenCocinar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${r.numCocimientos}</td>
+      <td>${startsHtml}</td>
+    </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = `<table><thead><tr><th>Mosto</th><th>Volumen a envasar</th><th>Cubierto por inventario</th><th>Volumen a cocinar</th><th>N° Cocimientos</th><th>Inicio de cada cocimiento</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderSinHomologar(list) {
+  const wrap = document.getElementById("sinHomologarWrap");
+  const countEl = document.getElementById("sinHomologarCount");
+  if (!list.length) {
+    wrap.innerHTML =
+      '<p class="empty-note">Todas las marcas con volumen homologaron a algún mosto del catálogo.</p>';
+    if (countEl) {
+      countEl.style.display = "none";
+      countEl.textContent = "";
+    }
+    return;
+  }
+  if (countEl) {
+    countEl.style.display = "inline-block";
+    countEl.textContent = list.length;
+  }
+  let rows = list
+    .map(
+      (b) =>
+        `<tr><td>${escapeHtml(b.codigo)}</td><td>${escapeHtml(b.name)}</td><td>${b.volumen.toLocaleString("es-CO")} HL</td></tr>`,
+    )
+    .join("");
+  wrap.innerHTML = `<table><thead><tr><th>Código</th><th>Marca</th><th>Volumen (HL)</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderCatalog() {
+  const wrap = document.getElementById("catalogTableWrap");
+  let rows = MOSTO_CATALOG.map(
+    (m, idx) => `
+    <tr data-idx="${idx}">
+      <td><input type="text" class="cat-input" data-field="nombre" value="${escapeHtml(m.nombre)}"></td>
+      <td><input type="text" class="cat-input" data-field="palabras" value="${escapeHtml(m.palabras)}" placeholder="ej: costeñita, aguila, poker"></td>
+      <td><input type="number" step="0.01" min="0.01" class="cat-input" data-field="factorDilucion" value="${m.factorDilucion}"></td>
+      <td><input type="number" step="1" min="1" class="cat-input" data-field="volumenPorCocimiento" value="${m.volumenPorCocimiento}"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoEntreCarguesHoras" value="${formatHMS(m.tiempoEntreCarguesHoras)}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoCocinaHoras" value="${formatHMS(m.tiempoCocinaHoras)}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoFermentacionHoras" value="${formatHMS(m.tiempoFermentacionHoras)}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoMaduracionHoras" value="${formatHMS(m.tiempoMaduracionHoras)}" placeholder="hh:mm:ss"></td>
+      <td class="cat-remove"><button class="btn small" data-remove="${idx}" title="Quitar mosto">✕</button></td>
+    </tr>`,
+  ).join("");
+  wrap.innerHTML = `<table><thead><tr>
+      <th>Marca</th><th>Marcas (palabras clave)</th><th>Factor dilución</th><th>Vol. x cocimiento (HL)</th>
+      <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+
+  wrap.querySelectorAll(".cat-input").forEach((inp) => {
+    inp.addEventListener("change", (e) => {
+      const tr = e.target.closest("tr");
+      const idx = +tr.dataset.idx;
+      const field = e.target.dataset.field;
+      let val = e.target.value;
+      if (e.target.type === "number") {
+        val = parseFloat(val) || 0;
+      } else if (e.target.classList.contains("cat-time")) {
+        val = parseHMS(val);
+        e.target.value = formatHMS(val); // normaliza lo que escribió el usuario
+      }
+      MOSTO_CATALOG[idx][field] = val;
+      recompute();
+    });
+  });
+  wrap.querySelectorAll("[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const idx = +e.currentTarget.dataset.remove;
+      MOSTO_CATALOG.splice(idx, 1);
+      renderCatalog();
+      renderInventoryBalance(STATE && STATE.plan);
+      recompute();
+    });
+  });
+}
+
+document.getElementById("addMostoBtn").addEventListener("click", () => {
+  MOSTO_CATALOG.push({
+    id: "mosto_" + Date.now(),
+    nombre: "Nuevo mosto",
+    palabras: "",
+    factorDilucion: 1,
+    volumenPorCocimiento: 500,
+    tiempoCocinaHoras: parseHMS("8:00:00"),
+    tiempoFermentacionHoras: parseHMS("168:00:00"),
+    tiempoMaduracionHoras: parseHMS("48:00:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+  });
+  renderCatalog();
+  renderInventoryBalance(STATE && STATE.plan);
+  recompute();
+});
+
+renderCatalog();
+
+function renderInventoryBalance(plan) {
+  const wrap = document.getElementById("balanceTableWrap");
+  if (!wrap) return;
+
+  const totalsByMosto = {};
+  if (plan && Array.isArray(plan.results)) {
+    plan.results.forEach((r) => {
+      const t =
+        totalsByMosto[r.mostoId] ||
+        (totalsByMosto[r.mostoId] = { envasar: 0, cubierto: 0, cocinar: 0 });
+      t.envasar += r.volumenEnvasar;
+      t.cubierto += r.inventarioUsadoHL || 0;
+      t.cocinar += r.volumenCocinar;
+    });
+  }
+
+  // ---- Resumen por mosto (se calcula sumando el detalle por lote de abajo) ----
+  const disponibleByMosto = inventoryTotalsByMosto(MOSTO_CATALOG);
+  const resumenRows = MOSTO_CATALOG.map((m) => {
+    const disponible = disponibleByMosto[m.id] || 0;
+    const t = totalsByMosto[m.id] || { envasar: 0, cubierto: 0, cocinar: 0 };
+    const sobrante = Math.max(0, disponible - t.cubierto);
+    return `<tr>
+      <td>${escapeHtml(m.nombre)}</td>
+      <td>${disponible.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${t.envasar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${t.cubierto.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${t.cocinar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${sobrante.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+    </tr>`;
+  }).join("");
+  const resumenHtml = resumenRows
+    ? `<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar esta semana</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
+    : '<p class="empty-note">Agrega al menos un mosto en el Catálogo de mostos para poder registrar inventario.</p>';
+
+  // ---- Detalle por lote: equipo, marca, días en el equipo y HL normalizados ----
+  const catalogById = {};
+  MOSTO_CATALOG.forEach((m) => (catalogById[m.id] = m));
+  const tankNames = (TANK_CATALOG || []).map((t) => t.equipo).filter(Boolean);
+
+  const detailRows = (INVENTORY_BALANCE || [])
+    .map((entry, idx) => {
+      const m = catalogById[entry.mostoId];
+      const diasReq = m
+        ? ((Number(m.tiempoFermentacionHoras) || 0) +
+            (Number(m.tiempoMaduracionHoras) || 0)) /
+          24
+        : null;
+      const dias =
+        entry.diasEnEquipo === "" || entry.diasEnEquipo == null
+          ? null
+          : Number(entry.diasEnEquipo);
+      let estadoHtml = '<span class="tag warn">Sin datos</span>';
+      if (dias != null && diasReq != null) {
+        estadoHtml =
+          dias >= diasReq
+            ? '<span class="tag ok">Listo</span>'
+            : `<span class="tag warn">En proceso · faltan ${(diasReq - dias).toFixed(1)} d</span>`;
+      }
+      return `<tr data-inv-idx="${idx}">
+        <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22"></td>
+        <td><select class="cat-input" data-inv-field="mostoId">${MOSTO_CATALOG.map(
+          (mm) =>
+            `<option value="${escapeHtml(mm.id)}" ${mm.id === entry.mostoId ? "selected" : ""}>${escapeHtml(mm.nombre)}</option>`,
+        ).join("")}</select></td>
+        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : dias}" placeholder="días"></td>
+        <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
+        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="hL" value="${Number(entry.hL) || 0}"></td>
+        <td>${estadoHtml}</td>
+        <td><button class="btn small" data-remove-inv="${idx}" title="Quitar lote">✕</button></td>
+      </tr>`;
+    })
+    .join("");
+
+  const detailHtml = `
+    <datalist id="tankEquipoListInv">${tankNames.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
+    <table><thead><tr>
+      <th>Equipo / tanque</th><th>Marca (mosto)</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>HL (normalizados)</th><th>Estado</th><th></th>
+    </tr></thead><tbody>${detailRows || `<tr><td colspan="7" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
+    <div style="margin-top:8px;"><button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button></div>
+  `;
+
+  wrap.innerHTML = `
+    <div style="margin-bottom:16px;">${resumenHtml}</div>
+    <div style="color:var(--muted); font-size:11.5px; margin-bottom:6px;">Detalle por lote — HL ya normalizados (con el factor de dilución aplicado). Los "días en el equipo" son los días transcurridos de fermentación/maduración de ese lote; se comparan contra el total configurado en el catálogo de ese mosto.</div>
+    ${detailHtml}
+  `;
+
+  wrap.querySelectorAll("[data-inv-field]").forEach((inp) => {
+    inp.addEventListener("change", (e) => {
+      const idx = +e.target.closest("tr").dataset.invIdx;
+      const field = e.target.dataset.invField;
+      let val = e.target.value;
+      if (field === "diasEnEquipo") {
+        val = val === "" ? "" : Math.max(0, parseFloat(val) || 0);
+      } else if (field === "hL") {
+        val = Math.max(0, parseFloat(val) || 0);
+      }
+      INVENTORY_BALANCE[idx][field] = val;
+      saveInventoryBalance();
+      recompute();
+    });
+  });
+  wrap.querySelectorAll("[data-remove-inv]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      INVENTORY_BALANCE.splice(+e.currentTarget.dataset.removeInv, 1);
+      saveInventoryBalance();
+      recompute();
+    });
+  });
+  const addBtn = document.getElementById("addInventoryEntryBtn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      INVENTORY_BALANCE.push({
+        id: "inv_" + Date.now(),
+        equipo: "",
+        mostoId: MOSTO_CATALOG[0] ? MOSTO_CATALOG[0].id : "",
+        diasEnEquipo: "",
+        hL: 0,
+      });
+      saveInventoryBalance();
+      renderInventoryBalance(STATE && STATE.plan);
+      recompute();
+    });
+  }
+}
+renderInventoryBalance(STATE && STATE.plan);
+
+function renderYeastConfig() {
+  const wrap = document.getElementById("yeastConfigWrap");
+  const summary = document.getElementById("yeastSummaryWrap");
+  if (!wrap) return;
+  const rows = (YEAST_AVAILABILITY || [])
+    .map((y, idx) => {
+      const d = y.disponibleDesde ? new Date(y.disponibleDesde) : null;
+      return `<tr data-yeast-idx="${idx}">
+            <td><select class="cat-input" data-yeast-field="mostoId">${MOSTO_CATALOG.map((m) => `<option value="${escapeHtml(m.id)}" ${m.id === y.mostoId ? "selected" : ""}>${escapeHtml(m.nombre)}</option>`).join("")}</select></td>
+            <td><input type="text" class="cat-input" data-yeast-field="origen" value="${escapeHtml(y.origen || "")}" placeholder="Tanque / fuente"></td>
+            <td><input type="datetime-local" class="cat-input" data-yeast-field="disponibleDesde" value="${d && !isNaN(d) ? toInputDateTimeUTC(d) : ""}"></td>
+            <td style="text-align:center"><input type="checkbox" data-yeast-field="disponible" ${y.disponible !== false ? "checked" : ""} style="width:17px;height:17px"></td>
+            <td><span class="tag ${y.mostoId === "light" ? "ok" : "warn"}">${y.mostoId === "light" ? "Solo Light + marcas generales" : "Marcas no Light"}</span></td>
+            <td><button class="btn small" data-remove-yeast="${idx}">✕</button></td>
+          </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = rows
+    ? `<table><thead><tr><th>Marca cosechada</th><th>Tanque / fuente</th><th>Disponible desde</th><th>Disponible</th><th>Compatibilidad</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : '<p class="empty-note">No hay cosechas registradas. Sin una disponibilidad Light, los bloques Light quedarán bloqueados.</p>';
+  const lightRows = (YEAST_AVAILABILITY || [])
+    .filter(
+      (y) =>
+        y.mostoId === "light" &&
+        y.disponible !== false &&
+        yeastAvailableDate(y),
+    )
+    .sort((a, b) => yeastAvailableDate(a) - yeastAvailableDate(b));
+  if (summary)
+    summary.innerHTML = lightRows.length
+      ? `<div style="border:1px solid rgba(76,175,130,.35);background:rgba(76,175,130,.08);padding:10px 14px;border-radius:4px;color:var(--ok)"><b>✓ Levadura Light registrada.</b> Próxima disponibilidad: ${fmtDateTime(yeastAvailableDate(lightRows[0]))}.</div>`
+      : '<div style="border:1px solid rgba(237,28,43,.35);background:rgba(237,28,43,.08);padding:10px 14px;border-radius:4px;color:var(--danger)"><b>⚠ No hay levadura Light disponible.</b> Los bloques Light no podrán programarse.</div>';
+  wrap.querySelectorAll("[data-yeast-field]").forEach((inp) =>
+    inp.addEventListener("change", (e) => {
+      const idx = +e.target.closest("tr").dataset.yeastIdx;
+      const field = e.target.dataset.yeastField;
+      YEAST_AVAILABILITY[idx][field] =
+        field === "disponible" ? !!e.target.checked : e.target.value;
+      saveYeastAvailability();
+      renderYeastConfig();
+      recompute();
+    }),
+  );
+  wrap.querySelectorAll("[data-remove-yeast]").forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      YEAST_AVAILABILITY.splice(+e.currentTarget.dataset.removeYeast, 1);
+      saveYeastAvailability();
+      renderYeastConfig();
+      recompute();
+    }),
+  );
+}
+function renderYeastStatus(seq) {
+  const wrap = document.getElementById("yeastStatusWrap");
+  const alert = document.getElementById("yeastAlertWrap");
+  const count = document.getElementById("yeastBlockedCount");
+  if (!wrap) return;
+  const events = seq && seq.yeastEvents ? seq.yeastEvents : [];
+  const blocked = events.filter((e) => e.estado === "BLOQUEADO");
+  if (count) {
+    count.textContent = blocked.length;
+    count.style.display = blocked.length ? "inline-block" : "none";
+  }
+  if (alert)
+    alert.innerHTML = blocked.length
+      ? `<div style="border:1px solid rgba(237,28,43,.35);background:rgba(237,28,43,.08);padding:10px 14px;margin-bottom:14px;border-radius:4px;color:var(--danger)"><b>⚠ ${blocked.length} bloque(s) Light bloqueado(s).</b> Registra una cosecha Light disponible o una fecha futura para habilitar su programación.</div>`
+      : '<div style="border:1px solid rgba(76,175,130,.35);background:rgba(76,175,130,.08);padding:10px 14px;margin-bottom:14px;border-radius:4px;color:var(--ok)"><b>✓ Validación de levadura superada.</b> No hay bloques Light bloqueados.</div>';
+  if (!events.length) {
+    wrap.innerHTML = '<p class="empty-note">Sin bloques para evaluar.</p>';
+    return;
+  }
+  wrap.innerHTML = `<table><thead><tr><th>Bloque</th><th>Requerida</th><th>Fuente</th><th>Disponible desde</th><th>Inicio permitido</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${events.map((e) => `<tr style="background:${e.estado === "BLOQUEADO" ? "rgba(237,28,43,.08)" : "transparent"}"><td>${escapeHtml(e.blockLabel || "")}</td><td>${escapeHtml(e.requerida)}</td><td>${escapeHtml(e.fuente)}</td><td>${e.disponibleDesde ? fmtDateTime(e.disponibleDesde) : "—"}</td><td>${e.inicio ? fmtDateTime(e.inicio) : "—"}</td><td><span class="tag ${e.estado === "BLOQUEADO" ? "danger" : "ok"}">${e.estado}</span></td><td style="font-family:var(--sans);color:var(--muted)">${escapeHtml(e.detalle || "")}</td></tr>`).join("")}</tbody></table>`;
+}
+document.getElementById("addYeastBtn").addEventListener("click", () => {
+  YEAST_AVAILABILITY.push({
+    id: "levadura_" + Date.now(),
+    mostoId: "light",
+    origen: "",
+    disponibleDesde: toInputDateTimeUTC(getI0Date() || new Date()),
+    disponible: true,
+  });
+  saveYeastAvailability();
+  renderYeastConfig();
+  recompute();
+});
+renderYeastConfig();
+function renderTankCatalog() {
+  const wrap = document.getElementById("tankTableWrap");
+  if (!wrap) return;
+  const rows = TANK_CATALOG.map(
+    (t, idx) => `<tr data-idx="${idx}">
+    <td><input type="text" class="cat-input" data-tank-field="equipo" value="${escapeHtml(t.equipo)}" placeholder="FV-01"></td>
+    <td><select class="cat-input" data-tank-field="tipo"><option ${t.tipo === "FV" ? "selected" : ""}>FV</option><option ${t.tipo === "SV" ? "selected" : ""}>SV</option><option ${t.tipo === "SV Pony" ? "selected" : ""}>SV Pony</option><option ${t.tipo === "BBT" ? "selected" : ""}>BBT</option><option ${t.tipo === "Equipo" ? "selected" : ""}>Equipo</option></select></td>
+    <td><input type="number" min="0" step="0.01" class="cat-input" data-tank-field="aguaPromedio" value="${Number(t.aguaPromedio) || 0}"></td>
+    <td><input type="number" min="0" step="0.001" class="cat-input" data-tank-field="capacidadHL" value="${Number(t.capacidadHL) || 0}"></td>
+    <td><input type="number" min="0" step="0.001" class="cat-input" data-tank-field="indiceAguaCapacidad" value="${Number(t.indiceAguaCapacidad) || 0}"></td>
+    <td><select class="cat-input" data-tank-field="prioridad"><option ${t.prioridad === "A" ? "selected" : ""}>A</option><option ${t.prioridad === "B" ? "selected" : ""}>B</option><option ${t.prioridad === "C" ? "selected" : ""}>C</option></select></td>
+    <td><input type="text" class="cat-input cat-time" data-tank-field="aseoHoras" value="${formatHMS(Number(t.aseoHoras) || 0)}" placeholder="hh:mm:ss"></td>
+    <td style="text-align:center;"><input type="checkbox" data-tank-field="disponible" ${t.disponible !== false ? "checked" : ""} style="width:17px;height:17px;"></td>
+    <td><button class="btn small" data-remove-tank="${idx}" title="Quitar equipo">✕</button></td>
+  </tr>`,
+  ).join("");
+  wrap.innerHTML = `<table><thead><tr><th>Equipo</th><th>Tipo</th><th>Agua promedio</th><th>Capacidad (HL)</th><th>Índice agua/cap.</th><th>Prioridad</th><th>Aseo después de liberar</th><th>Disponible</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.querySelectorAll("[data-tank-field]").forEach((inp) =>
+    inp.addEventListener("change", (e) => {
+      const tr = e.target.closest("tr"),
+        idx = +tr.dataset.idx,
+        field = e.target.dataset.tankField;
+      TANK_CATALOG[idx][field] =
+        field === "capacidadHL"
+          ? parseFloat(e.target.value) || 0
+          : field === "aseoHoras"
+            ? parseHMS(e.target.value)
+            : field === "disponible"
+              ? !!e.target.checked
+              : e.target.value;
+      if (field === "aseoHoras")
+        e.target.value = formatHMS(TANK_CATALOG[idx].aseoHoras);
+      recompute();
+    }),
+  );
+  wrap.querySelectorAll("[data-remove-tank]").forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      TANK_CATALOG.splice(+e.currentTarget.dataset.removeTank, 1);
+      renderTankCatalog();
+      recompute();
+    }),
+  );
+}
+
+document.getElementById("addTankBtn").addEventListener("click", () => {
+  TANK_CATALOG.push({
+    id: "equipo_" + Date.now(),
+    equipo: "",
+    tipo: "Equipo",
+    aguaPromedio: 0,
+    capacidadHL: 0,
+    indiceAguaCapacidad: 0,
+    prioridad: "C",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  });
+  renderTankCatalog();
+  recompute();
+});
+renderTankCatalog();
+
+function renderAseoCatalog() {
+  const wrap = document.getElementById("aseoTableWrap");
+  let rows = ASEO_MATRIX.map(
+    (a, idx) => `
+    <tr data-idx="${idx}">
+      <td><input type="text" class="cat-input" data-field="origen" value="${escapeHtml(a.origen)}" placeholder="ej: Pilsen"></td>
+      <td><input type="text" class="cat-input" data-field="destino" value="${escapeHtml(a.destino)}" placeholder="ej: Pony"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="duracionHoras" value="${formatHMS(a.duracionHoras)}" placeholder="hh:mm:ss"></td>
+      <td class="cat-remove"><button class="btn small" data-remove-aseo="${idx}" title="Quitar aseo">✕</button></td>
+    </tr>`,
+  ).join("");
+  wrap.innerHTML = rows
+    ? `<table><thead><tr><th>Marca origen</th><th>Marca destino</th><th>Duración CIP (hh:mm:ss)</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : '<p class="empty-note">Sin combinaciones definidas — se usará el aseo por defecto en todos los cambios de marca.</p>';
+
+  wrap.querySelectorAll(".cat-input").forEach((inp) => {
+    inp.addEventListener("change", (e) => {
+      const tr = e.target.closest("tr");
+      const idx = +tr.dataset.idx;
+      const field = e.target.dataset.field;
+      let val = e.target.value;
+      if (e.target.classList.contains("cat-time")) {
+        val = parseHMS(val);
+        e.target.value = formatHMS(val);
+      }
+      ASEO_MATRIX[idx][field] = val;
+      recompute();
+    });
+  });
+  wrap.querySelectorAll("[data-remove-aseo]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const idx = +e.currentTarget.dataset.removeAseo;
+      ASEO_MATRIX.splice(idx, 1);
+      renderAseoCatalog();
+      recompute();
+    });
+  });
+}
+
+document.getElementById("addAseoBtn").addEventListener("click", () => {
+  ASEO_MATRIX.push({
+    origen: "",
+    destino: "",
+    duracionHoras: ASEO_DEFAULT_HORAS,
+  });
+  renderAseoCatalog();
+  recompute();
+});
+
+const aseoDefaultInput = document.getElementById("aseoDefaultInput");
+aseoDefaultInput.value = formatHMS(ASEO_DEFAULT_HORAS);
+aseoDefaultInput.addEventListener("change", () => {
+  ASEO_DEFAULT_HORAS = parseHMS(aseoDefaultInput.value);
+  aseoDefaultInput.value = formatHMS(ASEO_DEFAULT_HORAS);
+  recompute();
+});
+
+renderAseoCatalog();
+
+// ---- Aseo periódico (general): tiempo y N° de cocimientos, editables ----
+const aseoPeriodicoTiempoInput = document.getElementById(
+  "aseoPeriodicoTiempoInput",
+);
+const aseoPeriodicoCocimientosInput = document.getElementById(
+  "aseoPeriodicoCocimientosInput",
+);
+const aseoPeriodicoActivoInput = document.getElementById(
+  "aseoPeriodicoActivoInput",
+);
+
+aseoPeriodicoTiempoInput.value = formatHMS(ASEO_PERIODICO.duracionHoras);
+aseoPeriodicoCocimientosInput.value = ASEO_PERIODICO.cocimientosEntreAseos;
+aseoPeriodicoActivoInput.checked = ASEO_PERIODICO.activo;
+
+aseoPeriodicoTiempoInput.addEventListener("change", () => {
+  ASEO_PERIODICO.duracionHoras = parseHMS(aseoPeriodicoTiempoInput.value);
+  aseoPeriodicoTiempoInput.value = formatHMS(ASEO_PERIODICO.duracionHoras);
+  recompute();
+});
+aseoPeriodicoCocimientosInput.addEventListener("change", () => {
+  ASEO_PERIODICO.cocimientosEntreAseos = Math.max(
+    1,
+    parseInt(aseoPeriodicoCocimientosInput.value) || 1,
+  );
+  aseoPeriodicoCocimientosInput.value = ASEO_PERIODICO.cocimientosEntreAseos;
+  recompute();
+});
+aseoPeriodicoActivoInput.addEventListener("change", () => {
+  ASEO_PERIODICO.activo = aseoPeriodicoActivoInput.checked;
+  recompute();
+});
+
+// ---- Botón "Refrescar análisis": vuelve a calcular todo con los valores editados actuales ----
+document.getElementById("refreshAnalysisBtn").addEventListener("click", () => {
+  const btn = document.getElementById("refreshAnalysisBtn");
+  const original = btn.textContent;
+  recompute();
+  btn.textContent = "✓ Análisis actualizado";
+  setTimeout(() => {
+    btn.textContent = original;
+  }, 1500);
+});
+
