@@ -153,6 +153,60 @@ function inventoryTotalsByMosto(catalog) {
   return totals;
 }
 
+// Ocupación actual de cada equipo (FV/SV) según el inventario "producto en
+// proceso". Devuelve un mapa nombreEquipoNormalizado -> {mostoId, tipo,
+// faltanDias, fecha, hL, vacio}. Un FV se libera al terminar la fermentación
+// del mosto; un SV al terminar la maduración; los BBT no cuentan (producto
+// terminado). Los equipos vacíos quedan como disponibles (faltanDias 0).
+function inventoryOccupancyByEquipo() {
+  const out = {};
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const catById = {};
+  (MOSTO_CATALOG || []).forEach((m) => (catById[m.id] = m));
+  (INVENTORY_BALANCE || []).forEach((e) => {
+    if (!e || !e.equipo || e.tipo === "BBT") return;
+    const key = normalizeText(e.equipo);
+    const hL = Math.round(Number(e.hL) || 0);
+    const dias =
+      e.diasEnEquipo === "" || e.diasEnEquipo == null
+        ? 0
+        : Number(e.diasEnEquipo) || 0;
+    const vacio = e.vacio || (hL <= 0 && dias <= 0);
+    if (vacio) {
+      if (!out[key])
+        out[key] = {
+          mostoId: e.mostoId || null,
+          tipo: e.tipo,
+          faltanDias: 0,
+          fecha: i0,
+          hL: 0,
+          vacio: true,
+        };
+      return;
+    }
+    const m = catById[e.mostoId];
+    let diasReq = 0;
+    if (m) {
+      if (e.tipo === "FV")
+        diasReq = (Number(m.tiempoFermentacionHoras) || 0) / 24;
+      else diasReq = (Number(m.tiempoMaduracionHoras) || 0) / 24; // SV / SV Pony
+    }
+    const faltanDias = Math.max(0, diasReq - dias);
+    const fecha = new Date(i0.getTime() + faltanDias * 86400000);
+    if (!out[key] || out[key].vacio || faltanDias > out[key].faltanDias) {
+      out[key] = {
+        mostoId: e.mostoId || null,
+        tipo: e.tipo,
+        faltanDias,
+        fecha,
+        hL,
+        vacio: false,
+      };
+    }
+  });
+  return out;
+}
+
 // Disponibilidad de levadura. Cada fila representa una cosecha utilizable para
 // sembrar un bloque. La única compatibilidad exclusiva es Light -> Light para
 // producir Light. Para los demás mostos se admite levadura general o Light.

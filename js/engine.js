@@ -480,6 +480,27 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
           { A: 0, B: 1, C: 2 }[b.prioridad] || a.idx - b.idx,
     );
 
+  // Ocupación inicial desde el inventario "producto en proceso": un FV/SV que ya
+  // tiene producto NO está libre hasta que termine su etapa (fermentación /
+  // maduración) y pase por el aseo de reutilización. Se respeta la prioridad
+  // A → B → C: solo se marcan como ocupados; el resto del algoritmo no cambia.
+  if (typeof inventoryOccupancyByEquipo === "function") {
+    const occ = inventoryOccupancyByEquipo();
+    const esFVoSV = (t) =>
+      t.tipo === "FV" || t.tipo === "SV" || t.tipo === "SV Pony";
+    tanks.forEach((t) => {
+      if (!t.disponible || !esFVoSV(t)) return;
+      const o = occ[normalizeText(t.equipo || "")];
+      if (!o || o.vacio || o.faltanDias <= 0) return;
+      t.releaseTime = o.fecha; // fecha en que termina la etapa
+      t.mostoId = o.mostoId || null; // para el aseo previo a reutilizar
+      t.volumenAsignado = t.capacidadHL;
+      t.cocimientosAsignados = Number(t.maxCocimientos) || 0;
+      t.loteCerrado = true;
+      t.preocupado = { mostoId: o.mostoId, hasta: o.fecha };
+    });
+  }
+
   const cookRows = ((seq && seq.rows) || []).filter(
     (r) => r.tipo === "cocimiento",
   );

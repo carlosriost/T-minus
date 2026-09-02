@@ -87,6 +87,12 @@ function renderTankAssignments(assignment) {
     alert.innerHTML = assignment.sinTanque.length
       ? `<div style="border:1px solid rgba(237,28,43,.35); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--danger);"><b>⚠️ ${assignment.sinTanque.length} cocimiento(s) sin tanque.</b> La asignación se detuvo para esos cocimientos porque no existe capacidad suficiente en equipos disponibles con prioridad A → B → C.</div>`
       : '<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--ok);"><b>✓ Todos los cocimientos tienen tanque asignado.</b> Los FV son solo de fermentación; los SV son solo de maduración; los SV Pony son exclusivos de Pony; los BBT son solo de producto terminado.</div>';
+    const preoc = (assignment.tanks || []).filter((t) => t.preocupado);
+    if (preoc.length) {
+      alert.innerHTML += `<div style="border:1px solid rgba(243,154,45,.35); background:rgba(243,154,45,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--warn); font-size:12.5px;"><b>ℹ️ ${preoc.length} equipo(s) ocupado(s) por producto en proceso</b> — no disponibles hasta: ${preoc
+        .map((t) => `${escapeHtml(t.equipo || "?")} (${fmtDate(t.preocupado.hasta)})`)
+        .join(" · ")}. La asignación usa los equipos libres respetando la prioridad A → B → C.</div>`;
+    }
   }
   if (!assignment.rows.length) {
     wrap.innerHTML = '<p class="empty-note">Sin cocimientos programados.</p>';
@@ -522,9 +528,10 @@ function renderInventoryBalance(plan) {
       }
       saveInventoryBalance();
       // El tipo, el mosto y los hL/días cambian las columnas derivadas
-      // (días requeridos, "se libera", estado): hay que repintar la tabla.
+      // (días requeridos, "se libera", estado) y la ocupación de equipos.
       if (field !== "equipo") {
         renderInventoryBalance(STATE && STATE.plan);
+        if (typeof renderTankCatalog === "function") renderTankCatalog();
       }
       recompute();
     });
@@ -598,6 +605,7 @@ renderInventoryBalance(STATE && STATE.plan);
         }));
         saveInventoryBalance();
         renderInventoryBalance(STATE && STATE.plan);
+        if (typeof renderTankCatalog === "function") renderTankCatalog();
         if (typeof recompute === "function") recompute();
         if (status) {
           status.style.color = "var(--ok)";
@@ -713,6 +721,19 @@ renderYeastConfig();
 function renderTankCatalog() {
   const wrap = document.getElementById("tankTableWrap");
   if (!wrap) return;
+  const occ =
+    typeof inventoryOccupancyByEquipo === "function"
+      ? inventoryOccupancyByEquipo()
+      : {};
+  const mostoNombre = (id) =>
+    (MOSTO_CATALOG.find((mm) => mm.id === id) || {}).nombre || id || "?";
+  const ocupacionCell = (t) => {
+    const o = occ[normalizeText(t.equipo || "")];
+    if (!o) return '<span style="color:var(--muted);">—</span>';
+    if (o.vacio || o.faltanDias <= 0)
+      return '<span class="tag ok">Disponible</span>';
+    return `<span class="tag warn">Ocupado · ${escapeHtml(mostoNombre(o.mostoId))} · libre ${fmtDate(o.fecha)}</span>`;
+  };
   const rows = TANK_CATALOG.map(
     (t, idx) => `<tr data-idx="${idx}">
     <td><input type="text" class="cat-input" data-tank-field="equipo" value="${escapeHtml(t.equipo)}" placeholder="FV-01"></td>
@@ -723,10 +744,11 @@ function renderTankCatalog() {
     <td><select class="cat-input" data-tank-field="prioridad"><option ${t.prioridad === "A" ? "selected" : ""}>A</option><option ${t.prioridad === "B" ? "selected" : ""}>B</option><option ${t.prioridad === "C" ? "selected" : ""}>C</option></select></td>
     <td><input type="text" class="cat-input cat-time" data-tank-field="aseoHoras" value="${formatHMS(Number(t.aseoHoras) || 0)}" placeholder="hh:mm:ss"></td>
     <td style="text-align:center;"><input type="checkbox" data-tank-field="disponible" ${t.disponible !== false ? "checked" : ""} style="width:17px;height:17px;"></td>
+    <td style="font-family:var(--sans);">${ocupacionCell(t)}</td>
     <td><button class="btn small" data-remove-tank="${idx}" title="Quitar equipo">✕</button></td>
   </tr>`,
   ).join("");
-  wrap.innerHTML = `<table><thead><tr><th>Equipo</th><th>Tipo</th><th>Agua promedio</th><th>Capacidad (HL)</th><th>Índice agua/cap.</th><th>Prioridad</th><th>Aseo después de liberar</th><th>Disponible</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.innerHTML = `<table><thead><tr><th>Equipo</th><th>Tipo</th><th>Agua promedio</th><th>Capacidad (HL)</th><th>Índice agua/cap.</th><th>Prioridad</th><th>Aseo después de liberar</th><th>Disponible</th><th>Ocupación (inventario)</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
   wrap.querySelectorAll("[data-tank-field]").forEach((inp) =>
     inp.addEventListener("change", (e) => {
       const tr = e.target.closest("tr"),
