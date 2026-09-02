@@ -348,6 +348,12 @@ const FILTRACION_STATE = {
   cicloHL: 0,
   cambioCicloH: 0,
   cipLightH: 0,
+  // true  = el filtro arranca nuevo en I0 → el primer ciclo tiene capacidad
+  //         completa (cicloHL) antes del primer cambio de ciclo.
+  // false = el filtro ya venía usado → "restanteCicloHL" dice cuántos hL le
+  //         quedan al ciclo actual, así el primer cambio de ciclo se adelanta.
+  filtroNuevo: true,
+  restanteCicloHL: 0,
   filas: [{ orden: 1, marca: "", hl: 0 }],
   // true = se oculta la configuración (parámetros + tabla) para dejar el Gantt
   // de filtración pegado debajo del de envasado y poder compararlos.
@@ -362,6 +368,8 @@ const FILTRACION_STATE = {
       FILTRACION_STATE.cicloHL = Number(raw.cicloHL) || 0;
       FILTRACION_STATE.cambioCicloH = Number(raw.cambioCicloH) || 0;
       FILTRACION_STATE.cipLightH = Number(raw.cipLightH) || 0;
+      FILTRACION_STATE.filtroNuevo = raw.filtroNuevo !== false;
+      FILTRACION_STATE.restanteCicloHL = Number(raw.restanteCicloHL) || 0;
       FILTRACION_STATE.cfgOculta = !!raw.cfgOculta;
       if (Array.isArray(raw.filas) && raw.filas.length) {
         FILTRACION_STATE.filas = raw.filas.map((f, i) => ({
@@ -381,14 +389,18 @@ function saveFiltracionState() {
 
 /* ---- Cálculo de la línea de tiempo ----------------------------------- */
 // Parte un total de hL en tramos de "ciclo" hL (el último tramo puede ser menor).
-function chunkHLFiltracion(total, ciclo) {
+// "primerTramo" (opcional) limita solo el primer tramo: sirve para cuando el
+// filtro no está nuevo y al ciclo actual le quedan menos hL disponibles.
+function chunkHLFiltracion(total, ciclo, primerTramo) {
   if (!(ciclo > 0)) return [total];
   const out = [];
   let left = total;
+  let cap = primerTramo > 0 ? Math.min(primerTramo, ciclo) : ciclo;
   while (left > 1e-6) {
-    const c = Math.min(ciclo, left);
+    const c = Math.min(cap, left);
     out.push(c);
     left -= c;
+    cap = ciclo;
   }
   return out.length ? out : [total];
 }
@@ -399,6 +411,14 @@ function buildFiltracionPlan(st) {
   const ciclo = Number(st.cicloHL) || 0;
   const cambioH = Number(st.cambioCicloH) || 0;
   const cipH = Number(st.cipLightH) || 0;
+  const filtroNuevo = st.filtroNuevo !== false;
+  // Capacidad del primer ciclo: completa si el filtro está nuevo; si no, los hL
+  // que el usuario indica que le faltan al ciclo actual (acotado a [1, cicloHL]).
+  let primerCicloHL = ciclo;
+  if (!filtroNuevo && ciclo > 0) {
+    const r = Number(st.restanteCicloHL);
+    primerCicloHL = r > 0 ? Math.min(r, ciclo) : ciclo;
+  }
 
   const filas = (st.filas || [])
     .map((f, i) => ({
@@ -439,6 +459,7 @@ function buildFiltracionPlan(st) {
   // supera un ciclo (varios tramos) o porque cambia de marca. NO se inserta
   // antes de la primera corrida ni cuando justo antes hubo un CIP a Light.
   let prevFueFiltracion = false;
+  let primeraCorrida = true;
 
   filas.forEach((f) => {
     const isLight = /\blight\b/.test(normalizeText(f.marca));
@@ -453,7 +474,12 @@ function buildFiltracionPlan(st) {
       nCip += 1;
       prevFueFiltracion = false;
     }
-    const chunks = chunkHLFiltracion(f.hl, ciclo);
+    const chunks = chunkHLFiltracion(
+      f.hl,
+      ciclo,
+      primeraCorrida ? primerCicloHL : ciclo,
+    );
+    primeraCorrida = false;
     chunks.forEach((c, idx) => {
       if (prevFueFiltracion && cambioH > 0) {
         segments.push({
@@ -490,6 +516,8 @@ function buildFiltracionPlan(st) {
     nCambios,
     totalHL: filas.reduce((s, f) => s + f.hl, 0),
     filas: filas.length,
+    filtroNuevo,
+    primerCicloHL: ciclo > 0 ? primerCicloHL : 0,
   };
 }
 
@@ -619,7 +647,10 @@ function renderGanttFiltracion(plan) {
       `  ·  Bloques de marca: ${plan.filas}` +
       `  ·  Total a diluir: ${Math.round(plan.totalHL).toLocaleString("es-CO")} HL` +
       `  ·  Cambios de ciclo: ${plan.nCambios}` +
-      `  ·  CIP cambio a Light: ${plan.nCip}`;
+      `  ·  CIP cambio a Light: ${plan.nCip}` +
+      (plan.filtroNuevo
+        ? `  ·  Filtro nuevo en I0`
+        : `  ·  Ciclo inicial: ${Math.round(plan.primerCicloHL).toLocaleString("es-CO")} hL restantes`);
   }
 }
 
@@ -713,6 +744,17 @@ function initFiltracionPanel() {
             <input type="number" min="0" step="1" class="cat-input" id="filCiclo" placeholder="p. ej. 3000" />
           </div>
           <div class="fil-field">
+            <label class="field">Filtro nuevo en I0</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;min-height:31px;">
+              <input type="checkbox" id="filFiltroNuevo" style="width:16px;height:16px;" />
+              <span>Sí, arranca nuevo</span>
+            </label>
+          </div>
+          <div class="fil-field" id="filRestanteField">
+            <label class="field">hL que faltan del ciclo actual</label>
+            <input type="number" min="0" step="1" class="cat-input" id="filRestanteCiclo" placeholder="p. ej. 1200" />
+          </div>
+          <div class="fil-field">
             <label class="field">Duración cambio de ciclo (hh:mm:ss)</label>
             <input type="text" class="cat-input cat-time" id="filCambioCiclo" placeholder="0:30:00" />
           </div>
@@ -748,10 +790,19 @@ function initFiltracionPanel() {
   const cicloInput = document.getElementById("filCiclo");
   const cambioInput = document.getElementById("filCambioCiclo");
   const cipInput = document.getElementById("filCipLight");
+  const filtroNuevoInput = document.getElementById("filFiltroNuevo");
+  const restanteInput = document.getElementById("filRestanteCiclo");
+  const restanteField = document.getElementById("filRestanteField");
 
   i0Input.value = FILTRACION_STATE.i0 || "";
   flujoInput.value = FILTRACION_STATE.flujoHLh || "";
   cicloInput.value = FILTRACION_STATE.cicloHL || "";
+  filtroNuevoInput.checked = FILTRACION_STATE.filtroNuevo !== false;
+  restanteInput.value = FILTRACION_STATE.restanteCicloHL || "";
+  function applyFiltroNuevo() {
+    restanteField.classList.toggle("hidden", filtroNuevoInput.checked);
+  }
+  applyFiltroNuevo();
   cambioInput.value = FILTRACION_STATE.cambioCicloH
     ? formatHMS(FILTRACION_STATE.cambioCicloH)
     : "";
@@ -769,6 +820,15 @@ function initFiltracionPanel() {
   });
   cicloInput.addEventListener("input", () => {
     FILTRACION_STATE.cicloHL = Number(cicloInput.value) || 0;
+    recomputeFiltracion();
+  });
+  filtroNuevoInput.addEventListener("change", () => {
+    FILTRACION_STATE.filtroNuevo = filtroNuevoInput.checked;
+    applyFiltroNuevo();
+    recomputeFiltracion();
+  });
+  restanteInput.addEventListener("input", () => {
+    FILTRACION_STATE.restanteCicloHL = Number(restanteInput.value) || 0;
     recomputeFiltracion();
   });
   cambioInput.addEventListener("change", () => {
