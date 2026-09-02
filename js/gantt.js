@@ -340,6 +340,8 @@ function colorForFiltracion(marca, cache) {
 
 /* ---- Estado editable (se guarda en este navegador) --------------------- */
 const FILTRACION_LS_KEY = "planFiltracion";
+// Marcas seleccionables en la tabla de filtración (lista fija).
+const FILTRACION_MARCAS = ["Estandar", "Light", "Pilsen", "Pony"];
 const FILTRACION_STATE = {
   i0: "",
   flujoHLh: 0,
@@ -627,20 +629,30 @@ function renderFiltracionFilas() {
   const wrap = document.getElementById("filtracionFilasWrap");
   if (!wrap) return;
   const rows = FILTRACION_STATE.filas
-    .map(
-      (f, i) => `
+    .map((f, i) => {
+      const marca = String(f.marca || "");
+      const opciones = FILTRACION_MARCAS.slice();
+      if (marca && !opciones.includes(marca)) opciones.push(marca);
+      const optionsHtml =
+        `<option value="">— Marca —</option>` +
+        opciones
+          .map(
+            (m) =>
+              `<option value="${escapeHtml(m)}"${m === marca ? " selected" : ""}>${escapeHtml(m)}</option>`,
+          )
+          .join("");
+      return `
       <tr>
         <td><input type="number" step="1" class="cat-input" style="width:80px;"
               data-fil-field="orden" data-fil-idx="${i}" value="${f.orden ?? ""}" /></td>
-        <td><input type="text" class="cat-input" style="min-width:160px;"
-              data-fil-field="marca" data-fil-idx="${i}" value="${escapeHtml(f.marca)}"
-              placeholder="p. ej. Light, Pilsen..." /></td>
+        <td><select class="cat-input" style="min-width:150px;"
+              data-fil-field="marca" data-fil-idx="${i}">${optionsHtml}</select></td>
         <td><input type="number" step="1" min="0" class="cat-input" style="width:120px;"
               data-fil-field="hl" data-fil-idx="${i}" value="${f.hl || ""}" /></td>
         <td class="cat-remove"><button class="btn small" type="button"
               data-fil-remove="${i}" title="Quitar fila">✕</button></td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join("");
   wrap.innerHTML = `
     <table>
@@ -651,7 +663,8 @@ function renderFiltracionFilas() {
     </table>`;
 
   wrap.querySelectorAll("[data-fil-field]").forEach((inp) => {
-    inp.addEventListener("input", () => {
+    const evt = inp.tagName === "SELECT" ? "change" : "input";
+    inp.addEventListener(evt, () => {
       const idx = Number(inp.dataset.filIdx);
       const field = inp.dataset.filField;
       if (!FILTRACION_STATE.filas[idx]) return;
