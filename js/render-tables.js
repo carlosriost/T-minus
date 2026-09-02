@@ -389,11 +389,11 @@ function renderInventoryBalance(plan) {
     const sobrante = Math.max(0, disponible - t.cubierto);
     return `<tr>
       <td>${escapeHtml(m.nombre)}</td>
-      <td>${disponible.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
-      <td>${t.envasar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
-      <td>${t.cubierto.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
-      <td>${t.cocinar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
-      <td>${sobrante.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
+      <td>${Math.round(disponible).toLocaleString("es-CO")} HL</td>
+      <td>${Math.round(t.envasar).toLocaleString("es-CO")} HL</td>
+      <td>${Math.round(t.cubierto).toLocaleString("es-CO")} HL</td>
+      <td>${Math.round(t.cocinar).toLocaleString("es-CO")} HL</td>
+      <td>${Math.round(sobrante).toLocaleString("es-CO")} HL</td>
     </tr>`;
   }).join("");
   const resumenHtml = resumenRows
@@ -423,10 +423,19 @@ function renderInventoryBalance(plan) {
         entry.diasEnEquipo === "" || entry.diasEnEquipo == null
           ? null
           : Number(entry.diasEnEquipo);
+      const hLnum = Math.round(Number(entry.hL) || 0);
+
+      // Un equipo con 0 hL y 0 (o ningún) día está vacío → cuenta como
+      // disponible ahora mismo para llenarlo con otra cosa.
+      const disponibleAhora =
+        tipo !== "BBT" &&
+        (entry.vacio || (hLnum <= 0 && (dias == null || dias <= 0)));
 
       // Estado
       let estadoHtml = '<span class="tag warn">Sin datos</span>';
-      if (tipo === "BBT") {
+      if (disponibleAhora) {
+        estadoHtml = '<span class="tag ok">Disponible</span>';
+      } else if (tipo === "BBT") {
         estadoHtml = '<span class="tag ok">Listo · producto terminado</span>';
       } else if (dias != null && diasReq != null) {
         estadoHtml =
@@ -436,9 +445,11 @@ function renderInventoryBalance(plan) {
       }
 
       // Se libera el equipo: FV al terminar fermentación, SV al terminar
-      // maduración, BBT ya está listo.
+      // maduración, BBT ya está listo, vacío ya está libre.
       let liberaHtml = "—";
-      if (tipo === "BBT") {
+      if (disponibleAhora) {
+        liberaHtml = '<span class="tag ok">Libre ahora</span>';
+      } else if (tipo === "BBT") {
         liberaHtml = '<span class="tag ok">Listo para envase</span>';
       } else if (dias != null && diasReq != null) {
         const faltanD = Math.max(0, diasReq - dias);
@@ -452,8 +463,12 @@ function renderInventoryBalance(plan) {
       }
 
       const mostoOpts =
-        (!entry.mostoId && entry.marcaTexto
-          ? `<option value="" selected>${escapeHtml(entry.marcaTexto)} (sin homologar)</option>`
+        (!entry.mostoId
+          ? `<option value="" selected>${
+              entry.marcaTexto
+                ? escapeHtml(entry.marcaTexto) + " (sin homologar)"
+                : "—"
+            }</option>`
           : "") +
         MOSTO_CATALOG.map(
           (mm) =>
@@ -469,7 +484,7 @@ function renderInventoryBalance(plan) {
         <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : dias}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
         <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
         <td style="color:var(--muted);">${liberaHtml}</td>
-        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="hL" value="${Number(entry.hL) || 0}"></td>
+        <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="hL" value="${hLnum}"></td>
         <td>${estadoHtml}</td>
         <td><button class="btn small" data-remove-inv="${idx}" title="Quitar lote">✕</button></td>
       </tr>`;
@@ -498,13 +513,17 @@ function renderInventoryBalance(plan) {
       if (field === "diasEnEquipo") {
         val = val === "" ? "" : Math.max(0, parseFloat(val) || 0);
       } else if (field === "hL") {
-        val = Math.max(0, parseFloat(val) || 0);
+        val = Math.max(0, Math.round(parseFloat(val) || 0));
       }
       INVENTORY_BALANCE[idx][field] = val;
+      if (field === "hL" || field === "diasEnEquipo") {
+        // dejó de estar vacío si le ponen producto/días manualmente
+        INVENTORY_BALANCE[idx].vacio = false;
+      }
       saveInventoryBalance();
-      // El tipo y el mosto cambian las columnas derivadas (días requeridos,
-      // "se libera", estado): hay que volver a pintar la tabla.
-      if (field === "tipo" || field === "mostoId") {
+      // El tipo, el mosto y los hL/días cambian las columnas derivadas
+      // (días requeridos, "se libera", estado): hay que repintar la tabla.
+      if (field !== "equipo") {
         renderInventoryBalance(STATE && STATE.plan);
       }
       recompute();
@@ -527,6 +546,7 @@ function renderInventoryBalance(plan) {
         tipo: "FV",
         diasEnEquipo: "",
         hL: 0,
+        vacio: false,
       });
       saveInventoryBalance();
       renderInventoryBalance(STATE && STATE.plan);
@@ -566,14 +586,15 @@ renderInventoryBalance(STATE && STATE.plan);
         INVENTORY_BALANCE = filas.map((p, i) => ({
           id: "inv_pp_" + Date.now() + "_" + i,
           equipo: p.equipo,
-          mostoId: matchMosto(p.marcaTexto, MOSTO_CATALOG) || "",
+          mostoId: p.vacio ? "" : matchMosto(p.marcaTexto, MOSTO_CATALOG) || "",
           marcaTexto: p.marcaTexto,
+          vacio: !!p.vacio,
           tipo: p.tipo,
           diasEnEquipo:
             p.tipo === "BBT" || p.diasEnEquipo == null
               ? ""
               : Math.max(0, Number(p.diasEnEquipo) || 0),
-          hL: Math.max(0, Number(p.hL) || 0),
+          hL: Math.max(0, Math.round(Number(p.hL) || 0)),
         }));
         saveInventoryBalance();
         renderInventoryBalance(STATE && STATE.plan);
@@ -581,7 +602,8 @@ renderInventoryBalance(STATE && STATE.plan);
         if (status) {
           status.style.color = "var(--ok)";
           const nBBT = filas.filter((x) => x.tipo === "BBT").length;
-          status.textContent = `✓ ${filas.length} equipos cargados (${filas.length - nBBT} FV/SV + ${nBBT} BBT) desde ${file.name}`;
+          const nVac = filas.filter((x) => x.vacio).length;
+          status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}`;
         }
       } catch (err) {
         console.error(err);

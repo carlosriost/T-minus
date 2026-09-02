@@ -637,18 +637,21 @@ function parseProductoEnProceso(workbook) {
     const name = (workbook.SheetNames || []).find((s) => norm(s) === w);
     return name ? workbook.Sheets[name] : null;
   };
-  const IGN = new Set([
+  // Palabras que NO son un equipo/marca real, sino encabezados o rótulos de los
+  // bloques de la hoja "Reporte".
+  const HEADER = new Set([
     "",
     "fv",
     "sv",
     "marca",
     "total",
-    "pony",
     "capacidad",
-    "vacio",
-    "vacía",
-    "vacia",
+    "hl",
+    "hl diluidos",
+    "hl ",
+    "ocupacion",
   ]);
+  const esHeader = (s) => HEADER.has(s) || /^d[ií]as/.test(s);
 
   const wsR = sheet("Reporte");
   if (wsR) {
@@ -662,20 +665,19 @@ function parseProductoEnProceso(workbook) {
       const push = (eqCol, maCol, diaCol, hlCol, tipo) => {
         const eq = row[eqCol];
         const ma = row[maCol];
-        if (
-          typeof eq === "string" &&
-          !IGN.has(norm(eq)) &&
-          typeof ma === "string" &&
-          !IGN.has(norm(ma))
-        ) {
-          out.push({
-            equipo: String(eq).trim(),
-            marcaTexto: String(ma).trim(),
-            tipo,
-            diasEnEquipo: row[diaCol] == null ? null : num(row[diaCol]),
-            hL: num(row[hlCol]),
-          });
-        }
+        if (typeof eq !== "string" || typeof ma !== "string") return;
+        if (esHeader(norm(eq)) || esHeader(norm(ma))) return;
+        // VACIO / PONY / PONY GO / etc. SÍ se incluyen: un equipo vacío cuenta
+        // como disponible (0 hL, 0 días) para poder llenarlo con otra cosa.
+        const vacio = /^vac[ií]/.test(norm(ma));
+        out.push({
+          equipo: String(eq).trim(),
+          marcaTexto: vacio ? "" : String(ma).trim(),
+          vacio,
+          tipo,
+          diasEnEquipo: row[diaCol] == null ? null : num(row[diaCol]),
+          hL: Math.round(num(row[hlCol])),
+        });
       };
       push(2, 3, 4, 7, "FV"); // bloque FV: C, D, E, H
       push(10, 11, 12, 15, "SV"); // bloque SV (normal + Pony): K, L, M, P
@@ -703,9 +705,10 @@ function parseProductoEnProceso(workbook) {
         out.push({
           equipo: bbt.trim(),
           marcaTexto: prod.trim(),
+          vacio: false,
           tipo: "BBT",
           diasEnEquipo: null,
-          hL: num(row[2]),
+          hL: Math.round(num(row[2])),
         });
       }
     });
