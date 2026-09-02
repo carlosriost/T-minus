@@ -694,10 +694,7 @@ function initFiltracionPanel() {
   panel.className = "panel";
   panel.innerHTML = `
     <div class="panel-head">
-      <div>
-        <h3>Gantt de Filtración</h3>
-        <span class="sub">Entrada manual · se calcula la línea de tiempo desde I0 con el flujo, los ciclos, los cambios de ciclo y el CIP de cambio a Light</span>
-      </div>
+      <h3>Gantt de Filtración</h3>
       <button class="btn small" id="filtracionToggleCfgBtn" type="button">▾ Ocultar configuración</button>
     </div>
     <div class="panel-body">
@@ -724,11 +721,6 @@ function initFiltracionPanel() {
             <input type="text" class="cat-input cat-time" id="filCipLight" placeholder="8:00:00" />
           </div>
         </div>
-        <p class="hint" style="margin:10px 0 4px;">
-          Antes de cada fila cuya marca sea <b>Light</b> se inserta automáticamente un
-          <b>CIP cambio a Light</b>. Dentro de cada bloque de marca se inserta un
-          <b>cambio de ciclo</b> cada vez que se completan los hL de un ciclo.
-        </p>
         <div class="table-scroll" id="filtracionFilasWrap"></div>
         <div style="margin-top:12px;">
           <button class="btn small" id="filtracionAddFilaBtn" type="button">+ Agregar fila</button>

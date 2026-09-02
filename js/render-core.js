@@ -90,11 +90,6 @@ function recompute() {
   renderSinHomologar(plan.sinHomologar);
   renderInventoryBalance(plan);
   renderYeastStatus(seq);
-  document.getElementById("promptBox").value = buildPrompt(
-    STATE.parsed,
-    plan,
-    STATE.mergedByTrain,
-  );
 }
 
 function renderKPIs(plan, seq) {

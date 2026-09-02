@@ -149,10 +149,6 @@
             </div>
           </div>
 
-          <button class="sb-item" data-view="view-agente">
-            <span class="sb-ico">🤖</span
-            ><span class="sb-txt">Agente Copilot</span>
-          </button>
         </nav>
       </aside>
 
@@ -182,12 +178,8 @@
               <div>
                 <div class="i0-title">Fecha y hora I0 (momento de programación)</div>
                 <div class="i0-sub">
-                  Ingresa manualmente el día y la hora en que haces el programa. Ese
-                  momento se toma como <b>I0</b> para calcular la posición relativa de
-                  las fechas, sin cambiar las fechas reales de envasado del Excel.
-                  También se usa como el punto más temprano posible para arrancar el
-                  primer cocimiento del plan, así se pueden programar cocimientos
-                  enseguida el mismo día I0.
+                  Punto de referencia y arranque más temprano posible del primer
+                  cocimiento.
                 </div>
               </div>
               <input
@@ -203,10 +195,6 @@
             <div class="panel hidden" id="ganttTopPanel">
               <div class="panel-head">
                 <h3>Gantt — Líneas de envasado</h3>
-                <span class="sub"
-                  >TREN-5, TREN-7, TREN-8, TREN-9 · tal como vienen en el Excel
-                  semanal · desplázate horizontalmente para ver toda la semana</span
-                >
               </div>
               <div class="panel-body">
                 <div id="ganttContainer"></div>
@@ -254,11 +242,6 @@
 
             <div class="tab-panel" id="tab-catalogo">
               <div class="tab-panel-body">
-                <p class="tab-panel-sub">
-                  Factor de dilución, volumen por cocimiento y tiempos de proceso ·
-                  homologación de marcas a mosto por palabra clave, ignorando el
-                  tamaño del envase
-                </p>
                 <div class="table-scroll" id="catalogTableWrap"></div>
                 <div style="margin-top: 12px">
                   <button class="btn small" id="addMostoBtn">
@@ -271,29 +254,17 @@
             <div class="tab-panel hidden" id="tab-balance">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Inventario de cerveza ya disponible para esta semana, por mosto
-                  (en HL, mismas unidades del volumen a envasar). Ese inventario se
-                  descuenta del volumen que hay que cocinar: si una marca tiene
-                  inventario suficiente, se reduce o elimina el número de
-                  cocimientos necesarios. El volumen a envasar del plan no cambia —
-                  solo cambia cuánto de eso sale de cocina nueva vs. de lo que ya
-                  está en inventario.
+                  Inventario disponible por mosto (HL). Se descuenta del volumen a
+                  cocinar, sin cambiar el volumen a envasar.
                 </p>
                 <div class="table-scroll" id="balanceTableWrap"></div>
-                <div class="hint" style="margin-top: 10px">
-                  El inventario se consume en el orden del plan de envasado: primero
-                  cubre el bloque más próximo de esa marca, y lo que sobra queda
-                  disponible para el siguiente bloque de la misma marca esa semana.
-                </div>
               </div>
             </div>
 
             <div class="tab-panel hidden" id="tab-aseos-cambio">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Duración del aseo según la marca de origen y la marca de destino ·
-                  se programa automáticamente en cada cambio de marca de la
-                  secuencia de cocinas
+                  Duración del aseo según marca de origen y destino.
                 </p>
                 <div class="table-scroll" id="aseoTableWrap"></div>
                 <div
@@ -325,9 +296,7 @@
             <div class="tab-panel hidden" id="tab-aseo-periodico">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Aseo (CIP) adicional que el motor inserta automáticamente cada
-                  cierto número de cocimientos, sin importar el mosto ni el cambio
-                  de marca · totalmente editable
+                  Aseo (CIP) adicional cada cierto número de cocimientos.
                 </p>
                 <div
                   style="
@@ -383,61 +352,32 @@
                     >
                   </div>
                 </div>
-                <div class="hint" style="margin-top: 10px">
-                  Cada vez que se acumulan el número de cocimientos indicado
-                  (contando todos los mostos en secuencia), se programa este aseo
-                  antes de continuar con el siguiente cocimiento. Se aplica junto
-                  con — no en reemplazo de — los aseos por cambio de marca definidos
-                  arriba.
-                </div>
               </div>
             </div>
 
             <div class="tab-panel hidden" id="tab-equipos">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Inventario editable de equipos. El motor asigna cada cocimiento a
-                  un tanque específico priorizando A → B → C. Varios cocimientos de
-                  la misma marca pueden llenar el mismo tanque hasta su capacidad;
-                  un cocimiento no se divide entre tanques.
-                  <b>Aseo después de liberar</b> es el tiempo que tú defines para
-                  dejar nuevamente disponible cada equipo. Desmarca
-                  <b>Disponible</b> para impedir su uso.
+                  Asignación por prioridad A → B → C. «Aseo después de liberar» =
+                  tiempo para volver a disponer el equipo.
                 </p>
                 <div class="table-scroll" id="tankTableWrap"></div>
-                <div
-                  style="
-                    margin-top: 12px;
-                    display: flex;
-                    gap: 10px;
-                    align-items: center;
-                    flex-wrap: wrap;
-                  "
-                >
+                <div style="margin-top: 12px">
                   <button class="btn small" id="addTankBtn">
                     + Agregar equipo
                   </button>
-                  <span class="hint"
-                    >Si la capacidad disponible no alcanza, los cocimientos
-                    restantes quedan marcados como <b>sin tanque</b>.</span
-                  >
                 </div>
               </div>
             </div>
             <div class="tab-panel hidden" id="tab-levadura">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Registra las cosechas o disponibilidades iniciales de levadura por marca.
-                  <b>Light solo puede sembrarse con levadura cosechada de Light.</b>
-                  Las levaduras de las demás marcas pueden mezclarse entre sí, y la levadura
-                  Light también puede utilizarse en las demás marcas. La restricción bloqueante
-                  se aplica a los bloques Light.
+                  Cosechas de levadura por marca. Light solo admite levadura Light.
                 </p>
                 <div id="yeastSummaryWrap" style="margin-bottom:12px;"></div>
                 <div class="table-scroll" id="yeastConfigWrap"></div>
-                <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <div style="margin-top:12px;">
                   <button class="btn small" id="addYeastBtn">+ Agregar disponibilidad</button>
-                  <span class="hint">Cada registro representa una cosecha disponible para sembrar un bloque. La información queda guardada en este navegador.</span>
                 </div>
               </div>
             </div>
@@ -496,22 +436,12 @@
 
               <div class="tab-panel" id="tab-programacion">
                 <div class="tab-panel-body">
-                  <p class="tab-panel-sub">
-                    Bloque · mosto · volumen a envasar · volumen a cocinar · N° de
-                    cocimientos · fecha/hora de necesidad e inicio calculado de cada
-                    cocimiento
-                  </p>
                   <div class="table-scroll" id="cocinaTableWrap"></div>
                 </div>
               </div>
 
               <div class="tab-panel hidden" id="tab-secuencia">
                 <div class="tab-panel-body">
-                  <p class="tab-panel-sub">
-                    Orden real de cocimientos en la cocina, con los aseos (CIP)
-                    programados en cada cambio de marca, aplicando las reglas
-                    operativas vigentes
-                  </p>
                   <div id="capacidadAlertWrap"></div>
                   <div class="table-scroll" id="secuenciaTableWrap"></div>
                 </div>
@@ -520,9 +450,8 @@
               <div class="tab-panel hidden" id="tab-gantt-cocina">
                 <div class="tab-panel-body">
                   <p class="tab-panel-sub">
-                    Cada cocimiento y aseo (CIP) en la línea de tiempo de la cocina
-                    compartida · los bloques con borde rojo exceden su fecha límite
-                    de envasado · las líneas punteadas marcan cada fecha límite
+                    Borde rojo = excede la fecha límite. Líneas punteadas = fechas
+                    límite.
                   </p>
                   <div id="ganttCocinaContainer"></div>
                 </div>
@@ -531,11 +460,7 @@
               <div class="tab-panel hidden" id="tab-tanques">
                 <div class="tab-panel-body">
                   <p class="tab-panel-sub">
-                    Asignación de líquido según etapa y prioridad A → B → C. Los FV
-                    son SOLO de fermentación y reciben el mosto desde cocina. Los SV
-                    son SOLO de maduración y reciben producto transferido desde FV.
-                    Los SV Pony son exclusivos de Pony. Los BBT/Equipo son SOLO para
-                    producto terminado.
+                    Asignación de líquido por etapa y prioridad A → B → C.
                   </p>
                   <div id="tanquesAlertWrap"></div>
                   <div class="table-scroll" id="tanquesTableWrap"></div>
@@ -544,21 +469,12 @@
 
               <div class="tab-panel hidden" id="tab-levadura-resultado">
                 <div class="tab-panel-body">
-                  <p class="tab-panel-sub">
-                    Validación de siembra por bloque. Light exige una cosecha Light disponible;
-                    las demás marcas aceptan levadura general mezclada y también levadura Light.
-                  </p>
                   <div id="yeastAlertWrap"></div>
                   <div class="table-scroll" id="yeastStatusWrap"></div>
                 </div>
               </div>
               <div class="tab-panel hidden" id="tab-conflictos">
                 <div class="tab-panel-body">
-                  <p class="tab-panel-sub">
-                    Bloques cuya terminación real de proceso (cocina + fermentación
-                    + maduración) supera la fecha límite de envasado, con la
-                    fecha/hora exacta de fin y del límite
-                  </p>
                   <div class="table-scroll" id="conflictosWrap"></div>
                 </div>
               </div>
@@ -566,9 +482,7 @@
               <div class="tab-panel hidden" id="tab-reglas">
                 <div class="tab-panel-body">
                   <p class="tab-panel-sub">
-                    Estado de cada regla frente a la secuencia calculada. "No
-                    verificable" = requiere datos de líneas de envasado, filtración,
-                    mantenimiento o SUITE360 que no están en este archivo.
+                    «No verificable» = requiere datos que no están en el archivo.
                   </p>
                   <div class="table-scroll" id="reglasWrap"></div>
                   <h3
@@ -581,10 +495,6 @@
                   >
                     Recomendaciones
                   </h3>
-                  <p class="tab-panel-sub">
-                    No son de cumplimiento obligatorio; el motor intenta aplicarlas
-                    cuando no entran en conflicto con las fechas de envasado
-                  </p>
                   <div class="table-scroll" id="recomendacionesWrap"></div>
                 </div>
               </div>
@@ -592,8 +502,7 @@
               <div class="tab-panel hidden" id="tab-sin-homologar">
                 <div class="tab-panel-body">
                   <p class="tab-panel-sub">
-                    No coinciden con ninguna palabra clave del catálogo de mostos —
-                    no se incluyen en la programación de cocinas
+                    No coinciden con ninguna palabra clave del catálogo.
                   </p>
                   <div class="table-scroll" id="sinHomologarWrap"></div>
                 </div>
@@ -601,43 +510,6 @@
             </div>
           </section>
 
-          <section class="view" id="view-agente" data-view-el>
-            <div class="panel" id="agentPanel">
-              <div class="panel-head">
-                <h3>Prompt para el agente de Copilot</h3>
-                <span class="sub"
-                  >Incluye el análisis completo (mosto, volumen a envasar/cocinar,
-                  N° de cocimientos y fechas/horas) y la secuencia de envasado de la
-                  semana cargada, ya calculada: línea, marca/formato, hL y
-                  fecha/hora de inicio y fin</span
-                >
-              </div>
-              <div class="panel-body">
-                <div class="agent-config">
-                  <label class="field">Agente de Copilot</label>
-                  <div class="hint">
-                    Pega aquí el enlace de TU agente ya configurado (Copilot Studio
-                    / GPT). Solo se hace una vez; queda guardado.
-                  </div>
-                  <input
-                    type="text"
-                    id="agentUrlInput"
-                    placeholder="https://copilot.microsoft.com/... (tu agente)"
-                  />
-                </div>
-                <textarea id="promptBox" readonly></textarea>
-                <div class="prompt-actions">
-                  <button class="btn primary" id="analyzeBtn">
-                    🤖 Copiar datos y abrir agente
-                  </button>
-                  <button class="btn" id="copyBtn">Copiar prompt</button>
-                  <button class="btn" id="openAgentBtn">Abrir agente</button>
-                  <button class="btn" id="downloadBtn">Descargar .txt</button>
-                  <span id="copyFeedback"></span>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
 
         <footer>
@@ -657,7 +529,6 @@
     <script src="js/render-core.js"></script>
     <script src="js/gantt.js"></script>
     <script src="js/render-tables.js"></script>
-    <script src="js/prompt.js"></script>
     <script src="js/ui.js"></script>
     <script>
       /* =====================================================================
@@ -672,7 +543,6 @@
           "view-datos",
           "view-gantt-envasado",
           "view-gantt-filtracion",
-          "view-agente",
           "configTabs",
           "results",
         ];
@@ -724,7 +594,6 @@
             panel: "tab-sin-homologar",
             gate: "tab-sin-homologar",
           },
-          "view-agente": { show: ["view-agente"] },
           "view-balance": { show: ["configTabs"], panel: "tab-balance" },
           "view-equipos": { show: ["configTabs"], panel: "tab-equipos" },
           "view-levadura": { show: ["configTabs"], panel: "tab-levadura" },
