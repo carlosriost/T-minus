@@ -713,7 +713,7 @@ function parseProductoEnProceso(workbook) {
           marcaTexto: vacio ? "" : String(ma).trim(),
           vacio,
           tipo,
-          diasEnEquipo: row[diaCol] == null ? null : num(row[diaCol]),
+          diasEnEquipo: row[diaCol] == null ? null : Math.round(num(row[diaCol])),
           hL: Math.round(num(row[hlCol])),
         });
       };

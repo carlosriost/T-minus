@@ -428,7 +428,7 @@ function renderInventoryBalance(plan) {
       const dias =
         entry.diasEnEquipo === "" || entry.diasEnEquipo == null
           ? null
-          : Number(entry.diasEnEquipo);
+          : Math.round(Number(entry.diasEnEquipo) || 0);
       const hLnum = Math.round(Number(entry.hL) || 0);
 
       // Un equipo con 0 hL y 0 (o ningún) día está vacío → cuenta como
@@ -487,7 +487,7 @@ function renderInventoryBalance(plan) {
           (t) => `<option value="${t}" ${t === tipo ? "selected" : ""}>${t}</option>`,
         ).join("")}</select></td>
         <td><select class="cat-input" data-inv-field="mostoId" title="${escapeHtml(entry.marcaTexto || "")}">${mostoOpts}</select></td>
-        <td><input type="number" min="0" step="0.1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : dias}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
+        <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias)}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
         <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
         <td style="color:var(--muted);">${liberaHtml}</td>
         <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="hL" value="${hLnum}"></td>
@@ -517,7 +517,7 @@ function renderInventoryBalance(plan) {
       const field = e.target.dataset.invField;
       let val = e.target.value;
       if (field === "diasEnEquipo") {
-        val = val === "" ? "" : Math.max(0, parseFloat(val) || 0);
+        val = val === "" ? "" : Math.max(0, Math.round(parseFloat(val) || 0));
       } else if (field === "hL") {
         val = Math.max(0, Math.round(parseFloat(val) || 0));
       }
@@ -600,7 +600,7 @@ renderInventoryBalance(STATE && STATE.plan);
           diasEnEquipo:
             p.tipo === "BBT" || p.diasEnEquipo == null
               ? ""
-              : Math.max(0, Number(p.diasEnEquipo) || 0),
+              : Math.max(0, Math.round(Number(p.diasEnEquipo) || 0)),
           hL: Math.max(0, Math.round(Number(p.hL) || 0)),
         }));
         saveInventoryBalance();

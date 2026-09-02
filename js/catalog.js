@@ -170,7 +170,7 @@ function inventoryOccupancyByEquipo() {
     const dias =
       e.diasEnEquipo === "" || e.diasEnEquipo == null
         ? 0
-        : Number(e.diasEnEquipo) || 0;
+        : Math.round(Number(e.diasEnEquipo) || 0);
     const vacio = e.vacio || (hL <= 0 && dias <= 0);
     if (vacio) {
       if (!out[key])
