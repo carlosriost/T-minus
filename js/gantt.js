@@ -349,6 +349,9 @@ const FILTRACION_STATE = {
   cambioCicloH: 0,
   cipLightH: 0,
   filas: [{ orden: 1, marca: "", hl: 0 }],
+  // true = se oculta la configuración (parámetros + tabla) para dejar el Gantt
+  // de filtración pegado debajo del de envasado y poder compararlos.
+  cfgOculta: false,
 };
 (function loadFiltracionState() {
   try {
@@ -359,6 +362,7 @@ const FILTRACION_STATE = {
       FILTRACION_STATE.cicloHL = Number(raw.cicloHL) || 0;
       FILTRACION_STATE.cambioCicloH = Number(raw.cambioCicloH) || 0;
       FILTRACION_STATE.cipLightH = Number(raw.cipLightH) || 0;
+      FILTRACION_STATE.cfgOculta = !!raw.cfgOculta;
       if (Array.isArray(raw.filas) && raw.filas.length) {
         FILTRACION_STATE.filas = raw.filas.map((f, i) => ({
           orden: f.orden === "" || f.orden == null ? i + 1 : Number(f.orden),
@@ -690,42 +694,47 @@ function initFiltracionPanel() {
   panel.className = "panel";
   panel.innerHTML = `
     <div class="panel-head">
-      <h3>Gantt de Filtración</h3>
-      <span class="sub">Entrada manual · se calcula la línea de tiempo desde I0 con el flujo, los ciclos, los cambios de ciclo y el CIP de cambio a Light</span>
+      <div>
+        <h3>Gantt de Filtración</h3>
+        <span class="sub">Entrada manual · se calcula la línea de tiempo desde I0 con el flujo, los ciclos, los cambios de ciclo y el CIP de cambio a Light</span>
+      </div>
+      <button class="btn small" id="filtracionToggleCfgBtn" type="button">▾ Ocultar configuración</button>
     </div>
     <div class="panel-body">
-      <div class="fil-params">
-        <div class="fil-field">
-          <label class="field">Tiempo cero I0 (inicio de filtración)</label>
-          <input type="datetime-local" id="filI0" />
+      <div id="filtracionConfigWrap">
+        <div class="fil-params">
+          <div class="fil-field">
+            <label class="field">Tiempo cero I0 (inicio de filtración)</label>
+            <input type="datetime-local" id="filI0" />
+          </div>
+          <div class="fil-field">
+            <label class="field">Flujo de filtración (hL/h)</label>
+            <input type="number" min="0" step="1" class="cat-input" id="filFlujo" placeholder="p. ej. 700" />
+          </div>
+          <div class="fil-field">
+            <label class="field">Tamaño de ciclo (hL que dura un ciclo)</label>
+            <input type="number" min="0" step="1" class="cat-input" id="filCiclo" placeholder="p. ej. 3000" />
+          </div>
+          <div class="fil-field">
+            <label class="field">Duración cambio de ciclo (hh:mm:ss)</label>
+            <input type="text" class="cat-input cat-time" id="filCambioCiclo" placeholder="0:30:00" />
+          </div>
+          <div class="fil-field">
+            <label class="field">Duración CIP cambio a Light (hh:mm:ss)</label>
+            <input type="text" class="cat-input cat-time" id="filCipLight" placeholder="8:00:00" />
+          </div>
         </div>
-        <div class="fil-field">
-          <label class="field">Flujo de filtración (hL/h)</label>
-          <input type="number" min="0" step="1" class="cat-input" id="filFlujo" placeholder="p. ej. 700" />
+        <p class="hint" style="margin:10px 0 4px;">
+          Antes de cada fila cuya marca sea <b>Light</b> se inserta automáticamente un
+          <b>CIP cambio a Light</b>. Dentro de cada bloque de marca se inserta un
+          <b>cambio de ciclo</b> cada vez que se completan los hL de un ciclo.
+        </p>
+        <div class="table-scroll" id="filtracionFilasWrap"></div>
+        <div style="margin-top:12px;">
+          <button class="btn small" id="filtracionAddFilaBtn" type="button">+ Agregar fila</button>
         </div>
-        <div class="fil-field">
-          <label class="field">Tamaño de ciclo (hL que dura un ciclo)</label>
-          <input type="number" min="0" step="1" class="cat-input" id="filCiclo" placeholder="p. ej. 3000" />
-        </div>
-        <div class="fil-field">
-          <label class="field">Duración cambio de ciclo (hh:mm:ss)</label>
-          <input type="text" class="cat-input cat-time" id="filCambioCiclo" placeholder="0:30:00" />
-        </div>
-        <div class="fil-field">
-          <label class="field">Duración CIP cambio a Light (hh:mm:ss)</label>
-          <input type="text" class="cat-input cat-time" id="filCipLight" placeholder="8:00:00" />
-        </div>
+        <div id="filtracionStatus" style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:10px; min-height:16px;"></div>
       </div>
-      <p class="hint" style="margin:10px 0 4px;">
-        Antes de cada fila cuya marca sea <b>Light</b> se inserta automáticamente un
-        <b>CIP cambio a Light</b>. Dentro de cada bloque de marca se inserta un
-        <b>cambio de ciclo</b> cada vez que se completan los hL de un ciclo.
-      </p>
-      <div class="table-scroll" id="filtracionFilasWrap"></div>
-      <div style="margin-top:12px;">
-        <button class="btn small" id="filtracionAddFilaBtn" type="button">+ Agregar fila</button>
-      </div>
-      <div id="filtracionStatus" style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:10px; min-height:16px;"></div>
       <div id="ganttFiltracionContainer" class="hidden"></div>
       <div class="legend" id="ganttFiltracionLegend"></div>
       <div id="ganttFiltracionTotals" style="font-family:var(--mono); font-size:12px; color:var(--muted); padding:0 20px 14px;"></div>
@@ -795,6 +804,22 @@ function initFiltracionPanel() {
       renderFiltracionFilas();
       recomputeFiltracion();
     });
+
+  // Ocultar/mostrar la configuración para comparar los dos Gantt uno sobre otro.
+  const cfgWrap = document.getElementById("filtracionConfigWrap");
+  const toggleCfgBtn = document.getElementById("filtracionToggleCfgBtn");
+  function applyCfgOculta() {
+    cfgWrap.classList.toggle("hidden", FILTRACION_STATE.cfgOculta);
+    toggleCfgBtn.textContent = FILTRACION_STATE.cfgOculta
+      ? "▸ Mostrar configuración"
+      : "▾ Ocultar configuración";
+  }
+  toggleCfgBtn.addEventListener("click", () => {
+    FILTRACION_STATE.cfgOculta = !FILTRACION_STATE.cfgOculta;
+    applyCfgOculta();
+    saveFiltracionState();
+  });
+  applyCfgOculta();
 
   renderFiltracionFilas();
   recomputeFiltracion();
