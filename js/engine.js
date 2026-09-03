@@ -929,7 +929,9 @@ function sequenceWeek(
   // Cosechas previstas: FVs ya en fermentación (inventario) + bloques
   // programados, disponibles a los YEAST_HARVEST_DAYS días de fermentación.
   if (typeof computedYeastHarvests === "function") {
-    computedYeastHarvests(plan && plan.results).forEach((h, i) => {
+    // Sin la asignación de tanques (se calcula después): solo cosechas del
+    // inventario EXT. Las de bloques programados se ven en la pestaña.
+    computedYeastHarvests(null).forEach((h, i) => {
       yeastPool.push({
         id: `auto_yeast_${i}_${h.mostoId}`,
         sourceMostoId: h.mostoId,

@@ -255,17 +255,25 @@ function yeastAvailableDate(row) {
 // Días de fermentación tras los cuales ya se puede cosechar la levadura de un FV.
 const YEAST_HARVEST_DAYS = 6;
 
-// Cosechas de levadura previstas, calculadas a partir de:
-//  · el inventario "producto en proceso" (FVs ya en fermentación): disponible a
-//    los YEAST_HARVEST_DAYS días → I0 + max(0, 6 − días en el equipo).
-//  · los bloques programados del plan de cocinas: I0 (o el primer cocimiento del
-//    bloque) + YEAST_HARVEST_DAYS días.
+// La levadura SOLO se cosecha de los fermentadores EXT (EXT 1, EXT 2, ...).
+function esFermentadorEXT(nombre) {
+  return /^\s*ext\b/i.test(String(nombre || ""));
+}
+
+// Cosechas de levadura previstas, disponibles a los YEAST_HARVEST_DAYS días de
+// fermentación y SOLO desde fermentadores EXT:
+//  · inventario "producto en proceso" (FVs EXT ya en fermentación) →
+//    I0 + max(0, 6 − días en el equipo).
+//  · asignación de tanques del plan (lotes FV en un EXT) → primer cocimiento
+//    del lote + 6 días.
 // Devuelve [{ mostoId, tipo:"light"|"general", fuente, fechaDisponible }].
-function computedYeastHarvests(planResults) {
+function computedYeastHarvests(tankAssignment) {
   const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
   const out = [];
+
   (INVENTORY_BALANCE || []).forEach((e) => {
-    if (!e || e.tipo !== "FV" || !e.mostoId) return;
+    if (!e || e.tipo !== "FV" || !e.mostoId || !esFermentadorEXT(e.equipo))
+      return;
     const dias =
       e.diasEnEquipo === "" || e.diasEnEquipo == null
         ? 0
@@ -274,23 +282,38 @@ function computedYeastHarvests(planResults) {
     out.push({
       mostoId: e.mostoId,
       tipo: yeastTypeForMosto(e.mostoId),
-      fuente: "Inventario · " + (e.equipo || "FV"),
+      fuente: "Inventario · " + e.equipo,
       fechaDisponible: new Date(i0.getTime() + falta * 86400000),
     });
   });
-  (planResults || []).forEach((r) => {
-    if (!r || !r.mostoId || !Array.isArray(r.starts) || !r.starts.length) return;
-    const first = r.starts[0];
-    const firstMs = first && first.getTime ? first.getTime() : i0.getTime();
+
+  // Lotes FV programados en un EXT: un lote = todo lo asignado a un mismo EXT.
+  // La fermentación del lote empieza con su primer cocimiento.
+  const lotes = {};
+  ((tankAssignment && tankAssignment.rows) || []).forEach((row) => {
+    if (
+      !row ||
+      row.tanqueTipo !== "FV" ||
+      !esFermentadorEXT(row.tanque) ||
+      !(row.start instanceof Date)
+    )
+      return;
+    const k = (row.tanqueId || row.tanque) + "|" + row.mostoId;
+    if (!lotes[k] || row.start < lotes[k].start)
+      lotes[k] = { mostoId: row.mostoId, tanque: row.tanque, start: row.start };
+  });
+  Object.values(lotes).forEach((l) => {
     out.push({
-      mostoId: r.mostoId,
-      tipo: yeastTypeForMosto(r.mostoId),
-      fuente: "Programado · " + (r.blockLabel || r.nombre || r.mostoId),
+      mostoId: l.mostoId,
+      tipo: yeastTypeForMosto(l.mostoId),
+      fuente: "Programado · " + l.tanque,
       fechaDisponible: new Date(
-        Math.max(firstMs, i0.getTime()) + YEAST_HARVEST_DAYS * 86400000,
+        Math.max(l.start.getTime(), i0.getTime()) +
+          YEAST_HARVEST_DAYS * 86400000,
       ),
     });
   });
+
   return out.sort((a, b) => a.fechaDisponible - b.fechaDisponible);
 }
 
