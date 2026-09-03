@@ -41,6 +41,49 @@ function colorForPackagingEvent(ev) {
   const mostoId = matchMosto(ev && ev.name, MOSTO_CATALOG);
   return { bg: mostoId ? colorForMosto(mostoId) : "#C9C9C9", fg: "#000000" };
 }
+// Cursor de tiempo compartido entre el Gantt de envasado y el de filtración,
+// para analizar ambos en el mismo instante. Cada Gantt guarda su rangeStart
+// (ms) en el dataset de su contenedor; ganttLinkCursor(ms) coloca la línea
+// vertical en los dos a la vez (ms = null la oculta).
+let FIL_CURSOR_READOUT = null; // (ms) => string · lo fija renderGanttFiltracion
+function ganttLinkCursor(ms) {
+  const envC = document.getElementById("ganttContainer");
+  const envWrap = document.getElementById("ganttWrap");
+  const envLine = envWrap && envWrap.querySelector(".gantt-xcursor");
+  if (envWrap && envLine) {
+    const rs = envC && Number(envC.dataset.rangeStart);
+    if (ms == null || !rs) {
+      envLine.hidden = true;
+    } else {
+      const x = 96 + ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR;
+      if (x >= 96 && x <= envWrap.offsetWidth) {
+        envLine.hidden = false;
+        envLine.style.left = x + "px";
+      } else {
+        envLine.hidden = true;
+      }
+    }
+  }
+  const filC = document.getElementById("ganttFiltracionContainer");
+  const filLine = filC && filC.querySelector(".fil-cursor");
+  const filTrack = filC && filC.querySelector(".lane-track");
+  if (filLine && filTrack) {
+    const rs = Number(filC.dataset.rangeStart);
+    const w = parseFloat(filTrack.style.width) || 0;
+    if (ms == null || !rs) {
+      filLine.hidden = true;
+    } else {
+      const x = ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR;
+      if (x >= 0 && x <= w) {
+        filLine.hidden = false;
+        filLine.style.left = x + "px";
+      } else {
+        filLine.hidden = true;
+      }
+    }
+  }
+}
+
 function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
   const container = document.getElementById("ganttContainer");
   if (!container) return;
@@ -157,10 +200,36 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
       <div id="ganttWrap" style="width:${labelWidth + totalWidth}px;">
         <div class="day-header">${dayHeaderHtml}</div>
         ${laneRowsHtml}
+        <div class="gantt-xcursor" hidden></div>
       </div>
     </div>
     <div class="legend">${legendItems}</div>
   `;
+
+  // Cursor de tiempo enlazado con el Gantt de filtración.
+  container.dataset.rangeStart = rangeStart.getTime();
+  const envWrap = document.getElementById("ganttWrap");
+  if (envWrap) {
+    envWrap.addEventListener("mousemove", (e) => {
+      const r = envWrap.getBoundingClientRect();
+      const xTrack = e.clientX - r.left - labelWidth;
+      if (xTrack < 0) {
+        ganttLinkCursor(null);
+        return;
+      }
+      const ms =
+        rangeStart.getTime() + (xTrack / GANTT_PX_PER_HOUR) * 3600000;
+      ganttLinkCursor(ms);
+      const infoEl = document.getElementById("ganttFiltracionCursorInfo");
+      if (infoEl && typeof FIL_CURSOR_READOUT === "function")
+        infoEl.textContent = FIL_CURSOR_READOUT(ms);
+    });
+    envWrap.addEventListener("mouseleave", () => {
+      ganttLinkCursor(null);
+      const infoEl = document.getElementById("ganttFiltracionCursorInfo");
+      if (infoEl) infoEl.textContent = "";
+    });
+  }
 }
 
 /* =========================================================================
@@ -565,6 +634,8 @@ function renderGanttFiltracion(plan) {
     if (info) info.textContent = "";
     const al = document.getElementById("ganttFiltracionAlert");
     if (al) al.innerHTML = "";
+    FIL_CURSOR_READOUT = null;
+    ganttLinkCursor(null);
     return;
   }
 
@@ -762,28 +833,26 @@ function renderGanttFiltracion(plan) {
     }
   }
 
-  // ---- Línea vertical + lectura al pasar el cursor -----------------------
-  const track = container.querySelector(".lane-track");
-  const cursorLine = container.querySelector(".fil-cursor");
+  // ---- Línea vertical + lectura al pasar el cursor (enlazada con envasado) --
+  container.dataset.rangeStart = rangeStart.getTime();
   const infoEl = document.getElementById("ganttFiltracionCursorInfo");
-  if (track && cursorLine) {
+  FIL_CURSOR_READOUT = (ms) =>
+    `${fmtDateTime(new Date(ms))}` +
+    `  ·  faltan ${Math.round(faltaPorDiluir(ms)).toLocaleString("es-CO")} HL por diluir` +
+    (bbtCapTotal > 0
+      ? `  ·  espacio en BBTs: ${Math.round(espacioBBT(ms)).toLocaleString("es-CO")} HL`
+      : "");
+  const track = container.querySelector(".lane-track");
+  if (track) {
     track.addEventListener("mousemove", (e) => {
       const rect = track.getBoundingClientRect();
       const x = Math.max(0, Math.min(totalWidth, e.clientX - rect.left));
-      cursorLine.hidden = false;
-      cursorLine.style.left = x + "px";
       const ms = rangeStart.getTime() + (x / GANTT_PX_PER_HOUR) * 3600000;
-      const falta = Math.round(faltaPorDiluir(ms));
-      if (infoEl)
-        infoEl.textContent =
-          `${fmtDateTime(new Date(ms))}` +
-          `  ·  faltan ${falta.toLocaleString("es-CO")} HL por diluir` +
-          (bbtCapTotal > 0
-            ? `  ·  espacio en BBTs: ${Math.round(espacioBBT(ms)).toLocaleString("es-CO")} HL`
-            : "");
+      ganttLinkCursor(ms);
+      if (infoEl) infoEl.textContent = FIL_CURSOR_READOUT(ms);
     });
     track.addEventListener("mouseleave", () => {
-      cursorLine.hidden = true;
+      ganttLinkCursor(null);
       if (infoEl) infoEl.textContent = "";
     });
   }

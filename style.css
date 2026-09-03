@@ -673,8 +673,10 @@
         z-index: 20;
       }
 
-      /* Línea vertical que sigue el cursor en el Gantt de filtración */
-      .fil-cursor {
+      /* Línea vertical del cursor, compartida entre los Gantt de filtración y
+         de envasado para analizar ambos en el mismo instante */
+      .fil-cursor,
+      .gantt-xcursor {
         position: absolute;
         top: 0;
         bottom: 0;
