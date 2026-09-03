@@ -477,7 +477,8 @@ function renderInventoryBalance(plan) {
       }
 
       // Se libera el equipo: FV al terminar fermentación, SV al terminar
-      // maduración, BBT ya está listo, vacío ya está libre.
+      // maduración. Que la etapa haya terminado NO significa que el tanque
+      // esté vacío: sigue con producto hasta que se libere.
       let liberaHtml = "—";
       if (disponibleAhora) {
         liberaHtml = '<span class="tag ok">Libre ahora</span>';
@@ -486,7 +487,7 @@ function renderInventoryBalance(plan) {
       } else if (dias != null && diasReq != null) {
         const faltanD = Math.max(0, diasReq - dias);
         if (faltanD <= 0) {
-          liberaHtml = '<span class="tag ok">Libre</span>';
+          liberaHtml = '<span class="tag ok">Listo para liberar</span>';
         } else {
           const base = getI0Date() || new Date();
           const fecha = new Date(base.getTime() + faltanD * 86400000);
