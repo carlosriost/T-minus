@@ -556,7 +556,7 @@ function buildFiltracionPlan(st) {
     nCiclo += 1;
   }
 
-  filas.forEach((f) => {
+  filas.forEach((f, idx) => {
     const isLight = /\blight\b/.test(normalizeText(f.marca));
 
     // Regla Light: un ciclo no puede pasar de [otra marca] -> [Light].
@@ -569,8 +569,9 @@ function buildFiltracionPlan(st) {
       cerrarCiclo();
     }
 
-    // CIP antes de cada corrida Light.
-    if (isLight && cipH > 0) {
+    // CIP antes de cada corrida Light. Excepción: si la filtración arranca
+    // directamente con Light, se asume que ese aseo ya se hizo antes de I0.
+    if (isLight && cipH > 0 && idx > 0) {
       segments.push({
         tipo: "cip",
         marca: "CIP cambio a Light",
