@@ -947,10 +947,432 @@ function renderGanttFiltracion(plan) {
   }
 }
 
+/* ====================================================================== *
+ *  BBTs EN EL TIEMPO — ciclo de vida de cada BBT (tanque por tanque)
+ *  Solo para visualización: no toca la alerta ni el cálculo por marca.
+ *    · un BBT se llena hasta SU capacidad (no un pool);
+ *    · solo admite producto de SU MISMA marca (marca real del inventario,
+ *      no el mosto: Costeñita ≠ Poker aunque compartan mosto);
+ *    · llenar y enviar a envase no ocurren a la vez en un mismo BBT.
+ * ====================================================================== */
+function simulateBBTLifecycle(plan) {
+  if (!plan || !plan.ok) {
+    return {
+      ok: false,
+      error:
+        (plan && plan.error) ||
+        "Completa los parámetros de filtración para simular los BBTs.",
+    };
+  }
+  const nText = (x) => normalizeText(String(x || ""));
+  const segments = plan.segments || [];
+  const cambioEnvaseMs = (Number(FILTRACION_STATE.cambioEnvaseH) || 0) * 3600000;
+  const desalojoManual = Number(FILTRACION_STATE.desalojoHLh) || 0;
+  const trainsBlocks =
+    (typeof STATE !== "undefined" && STATE && STATE.mergedByTrain) || {};
+  const i0ms = plan.i0.getTime();
+  const endMs = plan.end.getTime();
+  const totalHLplan = Math.round(plan.totalHL || 0);
+
+  const capByKey = {};
+  const nameByKey = {};
+  if (typeof TANK_CATALOG !== "undefined") {
+    (TANK_CATALOG || [])
+      .filter((t) => t.tipo === "BBT" && t.disponible !== false)
+      .forEach((t) => {
+        const k = nText(t.equipo);
+        capByKey[k] = Number(t.capacidadHL) || 0;
+        nameByKey[k] = t.equipo;
+      });
+  }
+  const capVals = Object.values(capByKey).filter((v) => v > 0);
+  const capDefault = capVals.length ? Math.max(...capVals) : 1300;
+
+  const slots = [];
+  const invKeys = new Set();
+  if (typeof INVENTORY_BALANCE !== "undefined") {
+    (INVENTORY_BALANCE || [])
+      .filter((e) => e.tipo === "BBT")
+      .forEach((e, idx) => {
+        const k = nText(e.equipo);
+        invKeys.add(k);
+        const cap = capByKey[k] || Math.max(Number(e.hL) || 0, capDefault);
+        slots.push({
+          equipo: e.equipo || nameByKey[k] || "BBT " + (idx + 1),
+          cap,
+          hL: Math.max(0, Math.round(Number(e.hL) || 0)),
+          brandKey: nText(e.marcaTexto) || null,
+          marca: (e.marcaTexto || "").trim() || null,
+          mostoId: matchMosto(e.marcaTexto, MOSTO_CATALOG),
+          estado: "envase",
+          libreEn: i0ms,
+        });
+      });
+  }
+  Object.keys(capByKey).forEach((k) => {
+    if (invKeys.has(k)) return;
+    slots.push({
+      equipo: nameByKey[k] || k.toUpperCase(),
+      cap: capByKey[k],
+      hL: 0,
+      brandKey: null,
+      marca: null,
+      mostoId: null,
+      estado: "vacio",
+      libreEn: i0ms,
+    });
+  });
+  if (!slots.length) {
+    return {
+      ok: false,
+      error:
+        "No hay BBTs disponibles en «Equipos / Tanques» ni en el inventario de producto en proceso.",
+    };
+  }
+
+  function filAt(ms) {
+    for (const s of segments) {
+      if (s.tipo !== "fil") continue;
+      const a = s.start.getTime();
+      const b = a + s.durH * 3600000;
+      if (ms >= a && ms < b)
+        return {
+          flujo: Number(s.flujo) || 0,
+          marca: (s.marca || "").trim() || null,
+          mostoId: matchMosto(s.marca, MOSTO_CATALOG),
+        };
+    }
+    return { flujo: 0, marca: null, mostoId: null };
+  }
+  function packAt(ms) {
+    const out = [];
+    Object.keys(trainsBlocks).forEach((k) => {
+      (trainsBlocks[k] || []).forEach((bl) => {
+        if (bl.type !== "production") return;
+        if (!(bl.start.getTime() <= ms && ms < bl.end.getTime())) return;
+        const rate = (Number(bl.velocidad) || 0) * (Number(bl.eficiencia) || 0);
+        if (rate > 0)
+          out.push({
+            nkey: nText(bl.name || bl.codigo),
+            mostoId: matchMosto(bl.name || bl.codigo, MOSTO_CATALOG),
+            rate,
+          });
+      });
+    });
+    return out;
+  }
+  const packMatches = (slot, p) =>
+    slot.brandKey
+      ? p.nkey.includes(slot.brandKey) || slot.brandKey.includes(p.nkey)
+      : !!slot.mostoId && p.mostoId === slot.mostoId;
+
+  const estadoVis = (s, drained) => {
+    if (s.estado === "vacio") return "vacío";
+    if (s.estado === "llenando") return "llenando";
+    if (s.estado === "postllenado") return "lleno";
+    if (s.estado === "aseo") return "aseo";
+    return drained ? "enviando" : "lleno";
+  };
+
+  const dtMs = 5 * 60000;
+  const tanks = slots.map((s) => ({ equipo: s.equipo, cap: s.cap, hist: [], niveles: [] }));
+  const prev = slots.map(() => null);
+  let llenando = null;
+  let fillMs = null;
+  let hlFiltrados = 0;
+
+  for (let ms = i0ms; ms <= endMs + dtMs; ms += dtMs) {
+    slots.forEach((s) => {
+      if (s.estado === "postllenado" && s.libreEn <= ms) s.estado = "envase";
+      if (s.estado === "aseo" && s.libreEn <= ms) {
+        s.estado = "vacio";
+        s.brandKey = null;
+        s.marca = null;
+        s.mostoId = null;
+        s.hL = 0;
+      }
+    });
+
+    const drained = slots.map(() => false);
+    const lineas =
+      desalojoManual > 0 ? [{ global: true, rate: desalojoManual }] : packAt(ms);
+    lineas.forEach((p) => {
+      let out = (p.rate * dtMs) / 3600000;
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (out <= 1e-6) break;
+        if (s.estado !== "envase" || s.hL <= 1e-6) continue;
+        if (!p.global && !packMatches(s, p)) continue;
+        const take = Math.min(out, s.hL);
+        s.hL -= take;
+        out -= take;
+        drained[i] = true;
+        if (s.hL <= 1e-6) {
+          s.estado = "aseo";
+          s.libreEn = ms + cambioEnvaseMs;
+        }
+      }
+    });
+
+    const f = filAt(ms);
+    if (f.flujo > 0) {
+      let need = (f.flujo * dtMs) / 3600000;
+      let guard = 0;
+      while (need > 1e-6 && guard++ < 128) {
+        if (!llenando || llenando.estado !== "llenando") {
+          llenando =
+            slots.find((s) => s.estado === "llenando") ||
+            slots.find((s) => s.estado === "vacio" && s.libreEn <= ms) ||
+            null;
+          if (llenando) {
+            llenando.estado = "llenando";
+            llenando.mostoId = f.mostoId;
+            llenando.marca = f.marca;
+            llenando.brandKey = f.marca ? nText(f.marca) : null;
+          }
+        }
+        if (!llenando) {
+          if (fillMs == null) fillMs = ms;
+          break;
+        }
+        const room = llenando.cap - llenando.hL;
+        const take = Math.min(need, room);
+        llenando.hL += take;
+        hlFiltrados += take;
+        need -= take;
+        if (llenando.hL >= llenando.cap - 1e-6) {
+          llenando.estado = "postllenado";
+          llenando.libreEn = ms + cambioEnvaseMs;
+          llenando = null;
+        }
+      }
+    }
+
+    slots.forEach((s, i) => {
+      const ev = estadoVis(s, drained[i]);
+      const mk = s.marca || null;
+      tanks[i].niveles.push({ ms, hL: Math.round(s.hL), estadoVis: ev, marca: mk });
+      const p = prev[i];
+      if (!p || p.ev !== ev || p.mk !== mk) {
+        if (p) p.seg.endMs = ms;
+        const seg = { estadoVis: ev, marca: mk, startMs: ms, endMs: ms + dtMs };
+        tanks[i].hist.push(seg);
+        prev[i] = { ev, mk, seg };
+      } else {
+        p.seg.endMs = ms + dtMs;
+      }
+    });
+  }
+  tanks.forEach((t) =>
+    t.hist.forEach((h) => (h.endMs = Math.min(h.endMs, endMs))),
+  );
+
+  return {
+    ok: true,
+    i0ms,
+    endMs,
+    dtMs,
+    tanks,
+    fillMs,
+    hlSinDiluir: Math.max(0, totalHLplan - Math.round(hlFiltrados)),
+  };
+}
+
+let BBT_TL = null; // {sim, rs, totalWidth, colCache} para el scrubber
+
+function renderBBTTimeline(plan) {
+  const cont = document.getElementById("bbtTimelineContainer");
+  if (!cont) return;
+  const gaugesEl = document.getElementById("bbtGauges");
+  const legendEl = document.getElementById("bbtTimelineLegend");
+  const alertEl = document.getElementById("bbtTimelineAlert");
+  const info = document.getElementById("bbtTimeInfo");
+  const slider = document.getElementById("bbtTimeSlider");
+
+  const sim = simulateBBTLifecycle(plan);
+  if (!sim.ok) {
+    cont.innerHTML = `<p class="empty-note">${escapeHtml(sim.error || "Sin datos.")}</p>`;
+    if (gaugesEl) gaugesEl.innerHTML = "";
+    if (legendEl) legendEl.innerHTML = "";
+    if (alertEl) alertEl.innerHTML = "";
+    if (info) info.textContent = "";
+    BBT_TL = null;
+    return;
+  }
+
+  const first = new Date(sim.i0ms);
+  const rangeStart = new Date(
+    Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate()),
+  );
+  const rs = rangeStart.getTime();
+  const totalHours = Math.max(24, Math.ceil((sim.endMs - rs) / 3600000));
+  const totalDays = Math.ceil(totalHours / 24);
+  const dayWidth = 24 * GANTT_PX_PER_HOUR;
+  const totalWidth = totalDays * dayWidth;
+
+  const colCache = {};
+  const stateStyle = (ev, marca) => {
+    if (ev === "vacío")
+      return { bg: "var(--bg2)", fg: "var(--muted)", dashed: true };
+    if (ev === "aseo")
+      return {
+        bg: "repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px)",
+        fg: "#000",
+      };
+    const c = colorForFiltracion(marca || "—", colCache);
+    if (ev === "llenando") return { bg: c.bg, fg: c.fg, op: 0.5 };
+    if (ev === "enviando") return { bg: c.bg, fg: c.fg, op: 0.82 };
+    return { bg: c.bg, fg: c.fg };
+  };
+
+  let dayHeader =
+    '<div class="lane-label" style="background:var(--bg2); border-right:1px solid var(--line);"></div>';
+  for (let d = 0; d < totalDays; d++)
+    dayHeader += `<div class="day-cell" style="width:${dayWidth}px;"><b>${fmtDate(addDays(rangeStart, d))}</b></div>`;
+  let dayLines = "";
+  for (let d = 1; d < totalDays; d++)
+    dayLines += `<div class="day-line" style="left:${d * dayWidth}px;"></div>`;
+
+  const rowsHtml = sim.tanks
+    .map((t) => {
+      let blocks = "";
+      t.hist.forEach((h) => {
+        if (h.estadoVis === "vacío") return;
+        const a = Math.max(h.startMs, rs);
+        const z = Math.max(a, Math.min(h.endMs, sim.endMs));
+        if (z <= a) return;
+        const left = ((a - rs) / 3600000) * GANTT_PX_PER_HOUR;
+        const w = Math.max(2, ((z - a) / 3600000) * GANTT_PX_PER_HOUR);
+        const st = stateStyle(h.estadoVis, h.marca);
+        const label = `${h.marca ? h.marca + " · " : ""}${h.estadoVis}`;
+        const title = escapeHtml(
+          `${t.equipo} · ${label} · ${fmtDateTime(new Date(h.startMs))} → ${fmtDateTime(new Date(h.endMs))}`,
+        );
+        blocks += `<div class="block" style="left:${left}px; width:${w}px; background:${st.bg}; color:${st.fg};${st.op ? "opacity:" + st.op + ";" : ""}${st.dashed ? "border:1px dashed var(--line);" : ""}" title="${title}">${
+          w >= 30 ? `<b style="color:${st.fg};">${escapeHtml(label)}</b>` : ""
+        }</div>`;
+      });
+      return `<div class="gantt-row">
+        <div class="lane-label">${escapeHtml(t.equipo)}<span style="display:block;font-size:9px;color:var(--muted);">${Math.round(t.cap).toLocaleString("es-CO")} HL</span></div>
+        <div class="lane-track" style="width:${totalWidth}px;">
+          <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLines}</div>
+          ${blocks}
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  cont.innerHTML = `
+    <div style="overflow-x:auto; padding:0 0 12px;">
+      <div style="position:relative; width:${96 + totalWidth}px;">
+        <div class="day-header">${dayHeader}</div>
+        <div style="position:relative;">
+          ${rowsHtml}
+          <div class="bbt-xcursor" id="bbtXCursor" hidden></div>
+        </div>
+      </div>
+    </div>`;
+
+  if (legendEl) {
+    const items = [
+      ["llenando", "background:#8a8a8a;opacity:.5;"],
+      ["lleno", "background:#8a8a8a;"],
+      ["enviando a envase", "background:#8a8a8a;opacity:.82;"],
+      [
+        "aseo / cambio",
+        "background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);",
+      ],
+    ];
+    legendEl.innerHTML =
+      items
+        .map(
+          ([l, s]) => `<div class="item"><span class="sw" style="${s}"></span>${l}</div>`,
+        )
+        .join("") +
+      `<div class="item" style="color:var(--muted);">·  el color de fondo es la marca</div>`;
+  }
+
+  if (alertEl) {
+    alertEl.innerHTML = sim.fillMs
+      ? `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin:6px 0 10px; color:var(--danger); font-size:12px;">Sin BBT libre para recibir a partir de <b>${fmtDateTime(new Date(sim.fillMs))}</b> — quedarían <b>${Math.round(sim.hlSinDiluir).toLocaleString("es-CO")} HL</b> sin diluir.</div>`
+      : `<div style="color:var(--muted); font-size:11.5px; padding:2px 0 8px;">${sim.tanks.length} BBT simulados · arrastra la línea de tiempo (o pulsa ▶) para ver el nivel y la marca de cada tanque en cada momento.</div>`;
+  }
+
+  BBT_TL = { sim, rs, totalWidth, colCache };
+  if (slider) {
+    const keep = Number(slider.dataset.frac || 0);
+    slider.value = Math.round(Math.max(0, Math.min(1, keep)) * 1000);
+  }
+  bbtScrubTo(slider ? Number(slider.value) : 0);
+}
+
+function bbtNivelAt(niveles, ms) {
+  if (!niveles || !niveles.length) return null;
+  if (ms <= niveles[0].ms) return niveles[0];
+  const last = niveles[niveles.length - 1];
+  if (ms >= last.ms) return last;
+  let lo = 0;
+  let hi = niveles.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (niveles[mid].ms <= ms) lo = mid;
+    else hi = mid;
+  }
+  return niveles[lo];
+}
+
+function bbtScrubTo(sliderVal) {
+  if (!BBT_TL) return;
+  const { sim, rs, colCache } = BBT_TL;
+  const frac = Math.max(0, Math.min(1, (Number(sliderVal) || 0) / 1000));
+  const ms = sim.i0ms + frac * (sim.endMs - sim.i0ms);
+  const slider = document.getElementById("bbtTimeSlider");
+  if (slider) slider.dataset.frac = frac;
+  const info = document.getElementById("bbtTimeInfo");
+  const gaugesEl = document.getElementById("bbtGauges");
+  const cursor = document.getElementById("bbtXCursor");
+
+  if (cursor) {
+    cursor.hidden = false;
+    cursor.style.left = 96 + ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR + "px";
+  }
+  if (typeof ganttLinkCursor === "function") ganttLinkCursor(ms);
+
+  let conProd = 0;
+  let libres = 0;
+  const cards = sim.tanks
+    .map((t) => {
+      const n =
+        bbtNivelAt(t.niveles, ms) || { hL: 0, estadoVis: "vacío", marca: null };
+      const pct = t.cap > 0 ? Math.max(0, Math.min(100, (n.hL / t.cap) * 100)) : 0;
+      if (n.hL > 0) conProd++;
+      else libres++;
+      const fillBg =
+        n.estadoVis === "aseo"
+          ? "repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px)"
+          : n.marca
+            ? colorForFiltracion(n.marca, colCache).bg
+            : "var(--line)";
+      return `<div class="bbt-gauge">
+        <div class="name" title="${escapeHtml(t.equipo)}">${escapeHtml(t.equipo)}</div>
+        <div class="tank"><div class="fill" style="height:${pct.toFixed(1)}%; background:${fillBg};"></div></div>
+        <div class="val">${Math.round(n.hL).toLocaleString("es-CO")}/${Math.round(t.cap).toLocaleString("es-CO")}</div>
+        <div class="cap-label" title="${escapeHtml(n.marca || "")}">${n.marca ? escapeHtml(n.marca) : "—"}</div>
+        <div class="cap-label" style="color:var(--accent2);">${n.estadoVis}</div>
+      </div>`;
+    })
+    .join("");
+  if (gaugesEl) gaugesEl.innerHTML = cards;
+  if (info)
+    info.textContent = `${fmtDateTime(new Date(ms))}  ·  ${conProd} con producto · ${libres} libres`;
+}
+
 /* ---- Panel de UI: parámetros + tabla editable ------------------------- */
 function recomputeFiltracion() {
   saveFiltracionState();
-  renderGanttFiltracion(buildFiltracionPlan(FILTRACION_STATE));
+  const plan = buildFiltracionPlan(FILTRACION_STATE);
+  renderGanttFiltracion(plan);
+  if (typeof renderBBTTimeline === "function") renderBBTTimeline(plan);
 }
 
 function renderFiltracionFilas() {
@@ -1081,6 +1503,59 @@ function initFiltracionPanel() {
     anchor.parentNode.insertBefore(panel, anchor.nextSibling);
   } else {
     (document.querySelector(".container") || document.body).appendChild(panel);
+  }
+
+  // Sub-panel: BBTs en el tiempo (visualización dinámica, tanque por tanque).
+  const bbtPanel = document.createElement("section");
+  bbtPanel.id = "bbtTimelinePanel";
+  bbtPanel.className = "panel";
+  bbtPanel.style.marginTop = "14px";
+  bbtPanel.innerHTML = `
+    <div class="panel-head"><h3>BBTs en el tiempo</h3></div>
+    <div class="panel-body">
+      <div id="bbtTimelineAlert" style="padding:0 20px;"></div>
+      <div id="bbtTimelineContainer"></div>
+      <div style="display:flex; align-items:center; gap:12px; padding:8px 20px;">
+        <button class="btn small" id="bbtPlayBtn" type="button">▶ Reproducir</button>
+        <input type="range" id="bbtTimeSlider" min="0" max="1000" value="0" step="1" style="flex:1;" />
+        <span id="bbtTimeInfo" style="font-family:var(--mono); font-size:12px; color:var(--accent2); min-width:250px; text-align:right;"></span>
+      </div>
+      <div id="bbtGauges" style="display:flex; flex-wrap:wrap; gap:14px; padding:6px 20px 16px;"></div>
+      <div class="legend" id="bbtTimelineLegend" style="padding:0 20px 14px;"></div>
+    </div>`;
+  (filtracionHost || document.querySelector(".container") || document.body).appendChild(
+    bbtPanel,
+  );
+
+  const bbtSlider = document.getElementById("bbtTimeSlider");
+  const bbtPlayBtn = document.getElementById("bbtPlayBtn");
+  let bbtPlayTimer = null;
+  if (bbtSlider) {
+    bbtSlider.addEventListener("input", () => bbtScrubTo(Number(bbtSlider.value)));
+  }
+  if (bbtPlayBtn && bbtSlider) {
+    bbtPlayBtn.addEventListener("click", () => {
+      if (bbtPlayTimer) {
+        clearInterval(bbtPlayTimer);
+        bbtPlayTimer = null;
+        bbtPlayBtn.textContent = "▶ Reproducir";
+        return;
+      }
+      const max = Number(bbtSlider.max) || 1000;
+      if (Number(bbtSlider.value) >= max) bbtSlider.value = 0;
+      bbtPlayBtn.textContent = "❚❚ Pausar";
+      bbtPlayTimer = setInterval(() => {
+        let v = Number(bbtSlider.value) + 4;
+        if (v >= max) {
+          v = max;
+          clearInterval(bbtPlayTimer);
+          bbtPlayTimer = null;
+          bbtPlayBtn.textContent = "▶ Reproducir";
+        }
+        bbtSlider.value = v;
+        bbtScrubTo(v);
+      }, 90);
+    });
   }
 
   const i0Input = document.getElementById("filI0");

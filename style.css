@@ -686,6 +686,58 @@
         pointer-events: none;
         z-index: 25;
       }
+      /* BBTs en el tiempo: cursor del deslizador + medidores de nivel */
+      .bbt-xcursor {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 0;
+        border-left: 1px solid var(--accent2);
+        pointer-events: none;
+        z-index: 30;
+      }
+      .bbt-gauge {
+        width: 66px;
+        flex: 0 0 66px;
+      }
+      .bbt-gauge .name {
+        font-size: 10px;
+        text-align: center;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bbt-gauge .tank {
+        position: relative;
+        height: 88px;
+        margin: 3px 0;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        overflow: hidden;
+        background: var(--bg2);
+      }
+      .bbt-gauge .fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        transition: height 0.12s linear;
+      }
+      .bbt-gauge .val {
+        font-size: 10px;
+        text-align: center;
+        font-family: var(--mono);
+        color: var(--muted);
+      }
+      .bbt-gauge .cap-label {
+        font-size: 10px;
+        text-align: center;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       /* Marca del instante en que los BBTs se llenan + zona sin espacio */
       .fil-fill-mark {
         position: absolute;
