@@ -539,6 +539,7 @@ function buildFiltracionPlan(st) {
     : Math.min(primerCicloHL > 0 ? primerCicloHL : cicloCap, cicloCap);
   let cicloTieneNoLight = !filtroNuevo && capRestante < cicloCap - 1e-6;
   let nCiclo = 1;
+  let prevWasLight = false;
 
   function cerrarCiclo() {
     if (cambioH > 0) {
@@ -569,9 +570,10 @@ function buildFiltracionPlan(st) {
       cerrarCiclo();
     }
 
-    // CIP antes de cada corrida Light. Excepción: si la filtración arranca
-    // directamente con Light, se asume que ese aseo ya se hizo antes de I0.
-    if (isLight && cipH > 0 && idx > 0) {
+    // CIP solo al cambiar de [otra marca] -> [Light]. No hay CIP entre Light y
+    // Light, ni cuando la filtración arranca directamente con Light (idx 0): se
+    // asume que ese aseo ya se hizo antes de I0.
+    if (isLight && !prevWasLight && cipH > 0 && idx > 0) {
       segments.push({
         tipo: "cip",
         marca: "CIP cambio a Light",
@@ -600,6 +602,7 @@ function buildFiltracionPlan(st) {
       capRestante -= take;
       if (!isLight) cicloTieneNoLight = true;
     }
+    prevWasLight = isLight;
   });
 
   return {
