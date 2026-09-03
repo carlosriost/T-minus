@@ -99,6 +99,7 @@ function recompute() {
 
 function renderKPIs(plan, seq) {
   const el = document.getElementById("kpiRow");
+  if (!el) return; // los KPIs se quitaron de la sección de programación de cocinas
   const totalEnvasar = plan.results.reduce((a, r) => a + r.volumenEnvasar, 0);
   const totalCubiertoInv = plan.results.reduce(
     (a, r) => a + (r.inventarioUsadoHL || 0),
