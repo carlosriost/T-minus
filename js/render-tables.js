@@ -89,9 +89,28 @@ function renderTankAssignments(assignment) {
       : '<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--ok);"><b>✓ Todos los cocimientos tienen tanque asignado.</b> Los FV son solo de fermentación; los SV son solo de maduración; los SV Pony son exclusivos de Pony; los BBT son solo de producto terminado.</div>';
     const preoc = (assignment.tanks || []).filter((t) => t.preocupado);
     if (preoc.length) {
-      alert.innerHTML += `<div style="border:1px solid rgba(243,154,45,.35); background:rgba(243,154,45,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--warn); font-size:12.5px;"><b>ℹ️ ${preoc.length} equipo(s) ocupado(s) por producto en proceso</b> — no disponibles hasta: ${preoc
-        .map((t) => `${escapeHtml(t.equipo || "?")} (${fmtDate(t.preocupado.hasta)})`)
-        .join(" · ")}. La asignación usa los equipos libres respetando la prioridad A → B → C.</div>`;
+      const ahora = (
+        (typeof getI0Date === "function" && getI0Date()) ||
+        new Date()
+      ).getTime();
+      const enProceso = preoc.filter(
+        (t) => t.preocupado.hasta.getTime() > ahora + 60000,
+      );
+      const porLiberar = preoc.length - enProceso.length;
+      const partes = [];
+      if (enProceso.length)
+        partes.push(
+          `${enProceso.length} aún en fermentación/maduración (${enProceso
+            .map(
+              (t) =>
+                `${escapeHtml(t.equipo || "?")} → ${fmtDate(t.preocupado.hasta)}`,
+            )
+            .join(" · ")})`,
+        );
+      if (porLiberar) partes.push(`${porLiberar} listo(s) para liberar`);
+      alert.innerHTML += `<div style="border:1px solid rgba(243,154,45,.35); background:rgba(243,154,45,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--warn); font-size:12.5px;"><b>ℹ️ ${preoc.length} equipo(s) con producto en proceso</b> — ${partes.join(
+        "; ",
+      )}. Solo se usan los equipos vacíos, respetando la prioridad A → B → C.</div>`;
     }
   }
   if (!assignment.rows.length) {
@@ -771,8 +790,13 @@ function renderTankCatalog() {
 
     // FV / SV / SV Pony
     const o = occ[key];
-    if (!o || o.vacio || o.faltanDias <= 0) return disponible;
-    return `<span class="tag warn">Ocupado${o.mostoId ? " · " + escapeHtml(mostoNombre(o.mostoId)) : ""} · libre ${fmtDate(o.fecha)}</span>`;
+    if (!o || o.vacio) return disponible; // vacío o sin dato = disponible
+    const mn = o.mostoId ? " · " + escapeHtml(mostoNombre(o.mostoId)) : "";
+    // Terminó la etapa pero el producto sigue en el tanque: se puede liberar,
+    // no está disponible todavía.
+    if (o.faltanDias <= 0)
+      return `<span class="tag ok">Listo para liberar${mn}</span>`;
+    return `<span class="tag warn">Ocupado${mn} · libre ${fmtDate(o.fecha)}</span>`;
   };
   const rows = TANK_CATALOG.map(
     (t, idx) => `<tr data-idx="${idx}">

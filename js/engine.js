@@ -491,8 +491,12 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
     tanks.forEach((t) => {
       if (!t.disponible || !esFVoSV(t)) return;
       const o = occ[normalizeText(t.equipo || "")];
-      if (!o || o.vacio || o.faltanDias <= 0) return;
-      t.releaseTime = o.fecha; // fecha en que termina la etapa
+      // Solo los equipos vacíos (o sin dato) están libres. Un equipo que ya
+      // terminó su etapa sigue ocupado hasta que se libere + aseo: se le pone
+      // releaseTime = o.fecha (que para "listo para liberar" es ~I0), así queda
+      // disponible solo después del aseo de reutilización.
+      if (!o || o.vacio) return;
+      t.releaseTime = o.fecha;
       t.mostoId = o.mostoId || null; // para el aseo previo a reutilizar
       t.volumenAsignado = t.capacidadHL;
       t.cocimientosAsignados = Number(t.maxCocimientos) || 0;
