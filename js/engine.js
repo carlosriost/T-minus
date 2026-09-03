@@ -925,8 +925,22 @@ function sequenceWeek(
       origen: y.origen || "Disponibilidad registrada",
       consumida: false,
       automatica: false,
-    }))
-    .sort((a, b) => a.fechaDisponible - b.fechaDisponible);
+    }));
+  // Cosechas previstas: FVs ya en fermentación (inventario) + bloques
+  // programados, disponibles a los YEAST_HARVEST_DAYS días de fermentación.
+  if (typeof computedYeastHarvests === "function") {
+    computedYeastHarvests(plan && plan.results).forEach((h, i) => {
+      yeastPool.push({
+        id: `auto_yeast_${i}_${h.mostoId}`,
+        sourceMostoId: h.mostoId,
+        fechaDisponible: h.fechaDisponible,
+        origen: h.fuente,
+        consumida: false,
+        automatica: true,
+      });
+    });
+  }
+  yeastPool.sort((a, b) => a.fechaDisponible - b.fechaDisponible);
   const resolvedAseo = resolveAseoMatrix(aseoMatrix || [], catalog);
 
   let blocks = (plan && plan.results ? plan.results : [])
@@ -1157,21 +1171,9 @@ function sequenceWeek(
             ? "Programado desde la primera disponibilidad compatible."
             : "Levadura Light disponible al inicio.",
       });
-      const lastStartForHarvest =
-        block.actualStarts[block.actualStarts.length - 1];
-      const harvestDate = new Date(
-        lastStartForHarvest.getTime() +
-          (block.cocinaHoras + block.fermentacionHoras) * 3600000,
-      );
-      yeastPool.push({
-        id: `auto_${block.blockId}`,
-        sourceMostoId: "light",
-        fechaDisponible: harvestDate,
-        origen: `Cosecha automática de ${block.blockLabel}`,
-        consumida: false,
-        automatica: true,
-      });
-      yeastPool.sort((a, b) => a.fechaDisponible - b.fechaDisponible);
+      // La cosecha de este bloque Light ya está contemplada en yeastPool a
+      // través de computedYeastHarvests (a los YEAST_HARVEST_DAYS días del
+      // primer cocimiento del bloque).
     } else {
       yeastEvents.push({
         blockLabel: block.blockLabel,

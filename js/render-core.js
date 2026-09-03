@@ -90,6 +90,8 @@ function recompute() {
   renderSinHomologar(plan.sinHomologar);
   renderInventoryBalance(plan);
   renderYeastStatus(seq);
+  // Las cosechas previstas de levadura dependen del plan y del inventario.
+  if (typeof renderYeastConfig === "function") renderYeastConfig();
   // El Gantt de filtración usa la velocidad de las líneas del instructivo para
   // el desalojo de BBTs: recalcularlo cuando cambie el análisis de envasado.
   if (typeof recomputeFiltracion === "function") recomputeFiltracion();

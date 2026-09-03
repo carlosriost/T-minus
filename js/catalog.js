@@ -252,6 +252,48 @@ function yeastAvailableDate(row) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Días de fermentación tras los cuales ya se puede cosechar la levadura de un FV.
+const YEAST_HARVEST_DAYS = 6;
+
+// Cosechas de levadura previstas, calculadas a partir de:
+//  · el inventario "producto en proceso" (FVs ya en fermentación): disponible a
+//    los YEAST_HARVEST_DAYS días → I0 + max(0, 6 − días en el equipo).
+//  · los bloques programados del plan de cocinas: I0 (o el primer cocimiento del
+//    bloque) + YEAST_HARVEST_DAYS días.
+// Devuelve [{ mostoId, tipo:"light"|"general", fuente, fechaDisponible }].
+function computedYeastHarvests(planResults) {
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const out = [];
+  (INVENTORY_BALANCE || []).forEach((e) => {
+    if (!e || e.tipo !== "FV" || !e.mostoId) return;
+    const dias =
+      e.diasEnEquipo === "" || e.diasEnEquipo == null
+        ? 0
+        : Number(e.diasEnEquipo) || 0;
+    const falta = Math.max(0, YEAST_HARVEST_DAYS - dias);
+    out.push({
+      mostoId: e.mostoId,
+      tipo: yeastTypeForMosto(e.mostoId),
+      fuente: "Inventario · " + (e.equipo || "FV"),
+      fechaDisponible: new Date(i0.getTime() + falta * 86400000),
+    });
+  });
+  (planResults || []).forEach((r) => {
+    if (!r || !r.mostoId || !Array.isArray(r.starts) || !r.starts.length) return;
+    const first = r.starts[0];
+    const firstMs = first && first.getTime ? first.getTime() : i0.getTime();
+    out.push({
+      mostoId: r.mostoId,
+      tipo: yeastTypeForMosto(r.mostoId),
+      fuente: "Programado · " + (r.blockLabel || r.nombre || r.mostoId),
+      fechaDisponible: new Date(
+        Math.max(firstMs, i0.getTime()) + YEAST_HARVEST_DAYS * 86400000,
+      ),
+    });
+  });
+  return out.sort((a, b) => a.fechaDisponible - b.fechaDisponible);
+}
+
 // Inventario real de equipos/tanques cargado desde la matriz proporcionada.
 // AguaPromedio e indiceAguaCapacidad son informativos; la asignación utiliza capacidad,
 // prioridad, tipo y disponibilidad. Todos quedan disponibles inicialmente y pueden

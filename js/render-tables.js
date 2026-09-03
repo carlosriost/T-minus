@@ -559,6 +559,7 @@ function renderInventoryBalance(plan) {
       if (field !== "equipo") {
         renderInventoryBalance(STATE && STATE.plan);
         if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof renderYeastConfig === "function") renderYeastConfig();
       }
       if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
@@ -570,6 +571,7 @@ function renderInventoryBalance(plan) {
       saveInventoryBalance();
       renderInventoryBalance(STATE && STATE.plan);
       if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof renderYeastConfig === "function") renderYeastConfig();
       if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     });
@@ -589,6 +591,7 @@ function renderInventoryBalance(plan) {
       saveInventoryBalance();
       renderInventoryBalance(STATE && STATE.plan);
       if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof renderYeastConfig === "function") renderYeastConfig();
       if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     });
@@ -639,6 +642,7 @@ renderInventoryBalance(STATE && STATE.plan);
         saveInventoryBalance();
         renderInventoryBalance(STATE && STATE.plan);
         if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof renderYeastConfig === "function") renderYeastConfig();
         if (typeof recomputeFiltracion === "function") recomputeFiltracion();
         if (typeof recompute === "function") recompute();
         if (status) {
@@ -686,18 +690,49 @@ function renderYeastConfig() {
   wrap.innerHTML = rows
     ? `<table><thead><tr><th>Marca cosechada</th><th>Tanque / fuente</th><th>Disponible desde</th><th>Disponible</th><th>Compatibilidad</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
     : '<p class="empty-note">No hay cosechas registradas. Sin una disponibilidad Light, los bloques Light quedarán bloqueados.</p>';
-  const lightRows = (YEAST_AVAILABILITY || [])
+  // ---- Cosechas previstas (calculadas): inventario + bloques programados ----
+  const cosechas =
+    typeof computedYeastHarvests === "function"
+      ? computedYeastHarvests(STATE && STATE.plan && STATE.plan.results)
+      : [];
+  const cosWrap = document.getElementById("yeastCosechasWrap");
+  if (cosWrap) {
+    if (!cosechas.length) {
+      cosWrap.innerHTML =
+        '<p class="empty-note">Sin cosechas calculables. Carga el inventario de producto en proceso y/o el plan para ver cuándo estará lista cada levadura.</p>';
+    } else {
+      const cosRows = cosechas
+        .map(
+          (c) => `<tr>
+            <td>${escapeHtml((MOSTO_CATALOG.find((m) => m.id === c.mostoId) || {}).nombre || c.mostoId)}</td>
+            <td><span class="tag ${c.tipo === "light" ? "ok" : "warn"}">${c.tipo === "light" ? "Light" : "General"}</span></td>
+            <td>${escapeHtml(c.fuente)}</td>
+            <td>${fmtDateTime(c.fechaDisponible)}</td>
+          </tr>`,
+        )
+        .join("");
+      cosWrap.innerHTML = `<table><thead><tr><th>Levadura (mosto)</th><th>Tipo</th><th>Fuente</th><th>Disponible desde</th></tr></thead><tbody>${cosRows}</tbody></table>
+        <div class="hint" style="margin-top:6px;">Calculado a ${YEAST_HARVEST_DAYS} días de fermentación. Estas cosechas ya se tienen en cuenta en la validación de bloques Light.</div>`;
+    }
+  }
+
+  // Próxima disponibilidad Light = mín. entre lo registrado a mano y lo calculado.
+  const lightManual = (YEAST_AVAILABILITY || [])
     .filter(
       (y) =>
         y.mostoId === "light" &&
         y.disponible !== false &&
         yeastAvailableDate(y),
     )
-    .sort((a, b) => yeastAvailableDate(a) - yeastAvailableDate(b));
+    .map((y) => yeastAvailableDate(y));
+  const lightCalc = cosechas
+    .filter((c) => c.tipo === "light")
+    .map((c) => c.fechaDisponible);
+  const proxLight = [...lightManual, ...lightCalc].sort((a, b) => a - b)[0];
   if (summary)
-    summary.innerHTML = lightRows.length
-      ? `<div style="border:1px solid rgba(76,175,130,.35);background:rgba(76,175,130,.08);padding:10px 14px;border-radius:4px;color:var(--ok)"><b>✓ Levadura Light registrada.</b> Próxima disponibilidad: ${fmtDateTime(yeastAvailableDate(lightRows[0]))}.</div>`
-      : '<div style="border:1px solid rgba(237,28,43,.35);background:rgba(237,28,43,.08);padding:10px 14px;border-radius:4px;color:var(--danger)"><b>⚠ No hay levadura Light disponible.</b> Los bloques Light no podrán programarse.</div>';
+    summary.innerHTML = proxLight
+      ? `<div style="border:1px solid rgba(76,175,130,.35);background:rgba(76,175,130,.08);padding:10px 14px;border-radius:4px;color:var(--ok)"><b>✓ Habrá levadura Light.</b> Próxima disponibilidad: ${fmtDateTime(proxLight)}${lightManual.length ? "" : " (cosecha calculada)"}.</div>`
+      : '<div style="border:1px solid rgba(237,28,43,.35);background:rgba(237,28,43,.08);padding:10px 14px;border-radius:4px;color:var(--danger)"><b>⚠ No hay levadura Light disponible ni cosechas Light previstas.</b> Los bloques Light no podrán programarse.</div>';
   wrap.querySelectorAll("[data-yeast-field]").forEach((inp) =>
     inp.addEventListener("change", (e) => {
       const idx = +e.target.closest("tr").dataset.yeastIdx;
