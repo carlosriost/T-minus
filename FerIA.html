@@ -23,10 +23,7 @@
         />
         <div class="divider"></div>
         <div>
-          <h1>
-            Interfaz de <span class="accent">Planeación</span> y
-            <span class="accent">Cocinas</span>
-          </h1>
+          <h1>Interfaz de <span class="accent">Planeación</span></h1>
           <p>
             Sube el Excel semanal del plan de envasado y obtén el mosto, volumen
             y fechas de inicio de cada cocimiento requerido.
@@ -151,12 +148,14 @@
       <main class="main-area">
         <div class="container">
           <section class="view" id="view-datos" data-view-el>
+            <p class="tab-panel-sub" style="margin: 0 0 14px">
+              Sube aquí todos los Excel del programa. Se procesan 100% en tu
+              navegador — no se envían a ningún servidor.
+            </p>
+
             <div class="upload-zone" id="dropZone">
-              <h2>Arrastra el Excel del plan de envasado aquí</h2>
-              <p>
-                O selecciónalo manualmente. Se procesa 100% en tu navegador — el
-                archivo no se envía a ningún servidor.
-              </p>
+              <h2>1 · Plan de envasado (instructivo Suite 360)</h2>
+              <p>Arrástralo aquí o selecciónalo manualmente.</p>
               <label class="btn primary" for="fileInput">Elegir archivo .xlsx</label>
               <input type="file" id="fileInput" accept=".xlsx,.xls" />
               <div id="status"></div>
@@ -164,10 +163,25 @@
 
             <div class="upload-compact hidden" id="uploadCompact">
               <div class="uc-file">
-                <b>✓ Archivo cargado</b
+                <b>✓ Plan de envasado cargado</b
                 ><span class="uc-name" id="uploadCompactName"></span>
               </div>
               <button class="btn small" id="changeFileBtn">Cambiar archivo</button>
+            </div>
+
+            <div class="upload-zone" id="ppDropZone" style="margin-top: 16px">
+              <h2>2 · Producto en proceso (FV / SV / BBT)</h2>
+              <p>
+                Inventario por equipo: lo que hay en cada tanque, sus días y los
+                HL diluidos. Hojas «Reporte» y «BBTs».
+              </p>
+              <label class="btn primary" for="ppFileInput">Elegir archivo</label>
+              <input
+                type="file"
+                id="ppFileInput"
+                accept=".xlsm,.xlsx,.xls"
+              />
+              <div id="ppStatus"></div>
             </div>
 
             <div class="i0-panel" id="i0Panel">
@@ -251,31 +265,9 @@
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
                   Inventario disponible por mosto (HL). Se descuenta del volumen a
-                  cocinar, sin cambiar el volumen a envasar.
+                  cocinar, sin cambiar el volumen a envasar. El Excel de producto
+                  en proceso se carga en «Datos de entrada».
                 </p>
-                <div
-                  style="
-                    display: flex;
-                    gap: 10px;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    margin-bottom: 12px;
-                  "
-                >
-                  <label class="btn small primary" for="ppFileInput" style="cursor: pointer">
-                    📄 Cargar Excel de producto en proceso
-                  </label>
-                  <input
-                    type="file"
-                    id="ppFileInput"
-                    accept=".xlsm,.xlsx,.xls"
-                    style="display: none"
-                  />
-                  <span
-                    id="ppStatus"
-                    style="font-family: var(--mono); font-size: 11.5px; color: var(--muted)"
-                  ></span>
-                </div>
                 <div class="table-scroll" id="balanceTableWrap"></div>
               </div>
             </div>

@@ -606,9 +606,9 @@ renderInventoryBalance(STATE && STATE.plan);
 (function initProductoEnProcesoUpload() {
   const input = document.getElementById("ppFileInput");
   const status = document.getElementById("ppStatus");
+  const dropZone = document.getElementById("ppDropZone");
   if (!input) return;
-  input.addEventListener("change", (e) => {
-    const file = e.target.files[0];
+  function procesarPP(file) {
     if (!file) return;
     if (status) {
       status.style.color = "var(--muted)";
@@ -667,7 +667,29 @@ renderInventoryBalance(STATE && STATE.plan);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+  input.addEventListener("change", (e) => {
+    procesarPP(e.target.files[0]);
+    e.target.value = "";
   });
+  if (dropZone) {
+    ["dragenter", "dragover"].forEach((ev) =>
+      dropZone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag");
+      }),
+    );
+    ["dragleave", "drop"].forEach((ev) =>
+      dropZone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag");
+      }),
+    );
+    dropZone.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files[0];
+      if (f) procesarPP(f);
+    });
+  }
 })();
 
 function renderYeastConfig() {

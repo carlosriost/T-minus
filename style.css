@@ -82,8 +82,8 @@
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
       header {
-        padding: 0 32px;
-        height: 72px;
+        padding: 12px 32px;
+        min-height: 96px;
         border-bottom: 1px solid var(--line);
         background: var(--header-bg);
         display: flex;
@@ -108,9 +108,9 @@
         gap: 20px;
       }
       header .brand img.logo {
-        height: 44px;
+        height: 66px;
         width: auto;
-        max-width: 220px;
+        max-width: 300px;
         object-fit: contain;
       }
       header .brand img.logo-light {
@@ -123,7 +123,7 @@
         display: inline-block;
       }
       header .brand .divider {
-        height: 40px;
+        height: 56px;
         width: 1px;
         background: var(--line);
       }
@@ -131,9 +131,9 @@
         display: none;
       }
       h1 {
-        font-size: 18px;
+        font-size: 26px;
         margin: 0;
-        font-weight: 700;
+        font-weight: 750;
         letter-spacing: 0.2px;
       }
       h1 span.accent {
@@ -218,7 +218,8 @@
         display: none;
       }
 
-      #status {
+      #status,
+      #ppStatus {
         font-family: var(--mono);
         font-size: 12px;
         color: var(--muted);
@@ -893,7 +894,7 @@
       .app-shell {
         display: flex;
         align-items: flex-start;
-        min-height: calc(100vh - 72px);
+        min-height: calc(100vh - 96px);
       }
 
       .sidebar {
