@@ -736,27 +736,73 @@ function renderGanttFiltracion(plan) {
           .filter((t) => t.tipo === "BBT" && t.disponible !== false)
           .reduce((s, t) => s + (Number(t.capacidadHL) || 0), 0)
       : 0;
-  const bbtFill0 =
-    typeof INVENTORY_BALANCE !== "undefined"
-      ? (INVENTORY_BALANCE || [])
-          .filter((e) => e.tipo === "BBT")
-          .reduce((s, e) => s + Math.max(0, Math.round(Number(e.hL) || 0)), 0)
-      : 0;
+  // El BBT solo admite producto de SU misma marca: filtrar Light no libera un
+  // BBT ocupado con Pilsen, y una línea envasando Pilsen no hace espacio para
+  // Light. Por eso el nivel se lleva por marca (mostoId homologado) y se suma.
+  const brandOf = (txt) =>
+    (typeof matchMosto === "function" && matchMosto(txt, MOSTO_CATALOG)) ||
+    "_sin";
+
+  const bbtFill0ByBrand = {};
+  if (typeof INVENTORY_BALANCE !== "undefined") {
+    (INVENTORY_BALANCE || [])
+      .filter((e) => e.tipo === "BBT")
+      .forEach((e) => {
+        const b = brandOf(e.marcaTexto);
+        bbtFill0ByBrand[b] =
+          (bbtFill0ByBrand[b] || 0) + Math.max(0, Math.round(Number(e.hL) || 0));
+      });
+  }
+  const bbtFill0 = Object.values(bbtFill0ByBrand).reduce((s, v) => s + v, 0);
+
+  // Marcas en juego = las que ya ocupan BBTs + las que se van a diluir.
+  const bbtBrands = Array.from(
+    new Set([
+      ...Object.keys(bbtFill0ByBrand),
+      ...segments
+        .filter((s) => s.tipo === "fil")
+        .map((s) => brandOf(s.marca)),
+    ]),
+  );
+
+  // hL diluidos de UNA marca hasta el instante ms (reparto lineal por bloque).
+  function diluidoBrandHasta(brand, ms) {
+    let d = 0;
+    for (const s of segments) {
+      if (s.tipo !== "fil" || brandOf(s.marca) !== brand) continue;
+      const a = s.start.getTime();
+      const b = a + s.durH * 3600000;
+      if (ms >= b) d += s.hl;
+      else if (ms > a) d += (s.hl * (ms - a)) / (b - a);
+    }
+    return d;
+  }
+  const diluidoBrandTotal = {};
+  bbtBrands.forEach(
+    (b) => (diluidoBrandTotal[b] = diluidoBrandHasta(b, plan.end.getTime())),
+  );
 
   // Desalojo (hL/h a los que las líneas vacían los BBTs): manual si el usuario
   // puso un valor; si no, la velocidad efectiva real (velocidad × eficiencia)
   // de las líneas de envasado activas en cada instante, según el instructivo.
+  // El desalojo también se imputa a la marca que envasa cada línea; el valor
+  // manual (override global) se reparte a prorrata de lo que dosifica cada marca.
   const desalojoManual = Number(FILTRACION_STATE.desalojoHLh) || 0;
   const trainsBlocks =
     (typeof STATE !== "undefined" && STATE && STATE.mergedByTrain) || {};
-  function desalojoHasta(ms) {
+  function desalojoBrandHasta(brand, ms) {
     const i0ms = plan.i0.getTime();
     if (ms <= i0ms) return 0;
-    if (desalojoManual > 0) return (desalojoManual * (ms - i0ms)) / 3600000;
+    if (desalojoManual > 0) {
+      const share =
+        totalHLplan > 0 ? (diluidoBrandTotal[brand] || 0) / totalHLplan : 0;
+      return (desalojoManual * (ms - i0ms) * share) / 3600000;
+    }
     let hl = 0;
     Object.keys(trainsBlocks).forEach((k) => {
       (trainsBlocks[k] || []).forEach((bl) => {
         if (bl.type !== "production") return;
+        if (brandOf(bl.name || bl.codigo) !== brand) return;
         const ve = (Number(bl.velocidad) || 0) * (Number(bl.eficiencia) || 0);
         if (ve <= 0) return;
         const a = Math.max(bl.start.getTime(), i0ms);
@@ -766,8 +812,15 @@ function renderGanttFiltracion(plan) {
     });
     return hl;
   }
+  const nivelBrand = (brand, ms) =>
+    Math.max(
+      0,
+      (bbtFill0ByBrand[brand] || 0) +
+        diluidoBrandHasta(brand, ms) -
+        desalojoBrandHasta(brand, ms),
+    );
   const nivelBBT = (ms) =>
-    Math.max(0, bbtFill0 + diluidoHasta(ms) - desalojoHasta(ms));
+    bbtBrands.reduce((s, b) => s + nivelBrand(b, ms), 0);
   const espacioBBT = (ms) => Math.max(0, bbtCapTotal - nivelBBT(ms));
 
   // Primer instante en que los BBTs se llenan mientras aún falta por diluir.
@@ -829,7 +882,7 @@ function renderGanttFiltracion(plan) {
           desalojoManual > 0
             ? `, desalojo ${Math.round(desalojoManual).toLocaleString("es-CO")} hL/h`
             : ", desalojo según las líneas del instructivo"
-        }. No hay espacio a partir de <b>${fmtDateTime(new Date(fillMs))}</b> — quedarían <b>${Math.round(faltaPorDiluir(fillMs)).toLocaleString("es-CO")} HL</b> sin diluir.</div>`;
+}. Cada BBT solo admite su misma marca (el desalojo de una marca no libera espacio para otra). No hay espacio a partir de <b>${fmtDateTime(new Date(fillMs))}</b> — quedarían <b>${Math.round(faltaPorDiluir(fillMs)).toLocaleString("es-CO")} HL</b> sin diluir.</div>`;
     } else if (bbtCapTotal <= 0) {
       alertEl.innerHTML = `<div style="color:var(--muted); font-size:11.5px; padding:4px 0 8px;">Marca BBTs disponibles con capacidad en «Equipos / Tanques» para verificar el espacio de dilución.</div>`;
     } else {
