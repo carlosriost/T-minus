@@ -207,6 +207,19 @@ function inventoryOccupancyByEquipo() {
   return out;
 }
 
+// Índice del inventario "producto en proceso" por nombre de equipo normalizado
+// (TODOS los tipos, incluidos BBT). Si varias filas apuntan al mismo equipo,
+// gana la de más hL.
+function inventoryEntryByEquipo() {
+  const out = {};
+  (INVENTORY_BALANCE || []).forEach((e) => {
+    if (!e || !e.equipo) return;
+    const k = normalizeText(e.equipo);
+    if (!out[k] || (Number(e.hL) || 0) > (Number(out[k].hL) || 0)) out[k] = e;
+  });
+  return out;
+}
+
 // Disponibilidad de levadura. Cada fila representa una cosecha utilizable para
 // sembrar un bloque. La única compatibilidad exclusiva es Light -> Light para
 // producir Light. Para los demás mostos se admite levadura general o Light.

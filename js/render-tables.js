@@ -444,10 +444,17 @@ function renderInventoryBalance(plan) {
       } else if (tipo === "BBT") {
         estadoHtml = '<span class="tag ok">Listo · producto terminado</span>';
       } else if (dias != null && diasReq != null) {
-        estadoHtml =
-          dias >= diasReq
-            ? '<span class="tag ok">Listo</span>'
-            : `<span class="tag warn">En proceso · faltan ${(diasReq - dias).toFixed(1)} d</span>`;
+        if (dias >= diasReq) {
+          const listoTxt =
+            tipo === "FV"
+              ? "Listo para madurar"
+              : tipo === "SV" || tipo === "SV Pony"
+                ? "Listo para diluir"
+                : "Listo";
+          estadoHtml = `<span class="tag ok">${listoTxt}</span>`;
+        } else {
+          estadoHtml = `<span class="tag warn">En proceso · faltan ${(diasReq - dias).toFixed(1)} d</span>`;
+        }
       }
 
       // Se libera el equipo: FV al terminar fermentación, SV al terminar
@@ -541,6 +548,9 @@ function renderInventoryBalance(plan) {
     btn.addEventListener("click", (e) => {
       INVENTORY_BALANCE.splice(+e.currentTarget.dataset.removeInv, 1);
       saveInventoryBalance();
+      renderInventoryBalance(STATE && STATE.plan);
+      if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     });
   });
@@ -558,6 +568,8 @@ function renderInventoryBalance(plan) {
       });
       saveInventoryBalance();
       renderInventoryBalance(STATE && STATE.plan);
+      if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     });
   }
@@ -727,14 +739,39 @@ function renderTankCatalog() {
     typeof inventoryOccupancyByEquipo === "function"
       ? inventoryOccupancyByEquipo()
       : {};
+  const invByEq =
+    typeof inventoryEntryByEquipo === "function" ? inventoryEntryByEquipo() : {};
+  const hayInventario = (INVENTORY_BALANCE || []).length > 0;
   const mostoNombre = (id) =>
-    (MOSTO_CATALOG.find((mm) => mm.id === id) || {}).nombre || id || "?";
+    (MOSTO_CATALOG.find((mm) => mm.id === id) || {}).nombre || id || "";
+  const muted = (txt) =>
+    `<span style="color:var(--muted);">${escapeHtml(txt)}</span>`;
   const ocupacionCell = (t) => {
-    const o = occ[normalizeText(t.equipo || "")];
-    if (!o) return '<span style="color:var(--muted);">—</span>';
+    const tipo = t.tipo;
+    const esTanque =
+      tipo === "FV" || tipo === "SV" || tipo === "SV Pony" || tipo === "BBT";
+    if (!esTanque) return muted("—"); // "Equipo" u otros: no aplica
+    if (!hayInventario)
+      return muted("Sin dato · carga el Excel de producto en proceso");
+
+    const key = normalizeText(t.equipo || "");
+
+    if (tipo === "BBT") {
+      const e = invByEq[key];
+      const hL = e ? Math.round(Number(e.hL) || 0) : 0;
+      if (hL > 0) {
+        const prod = (e && (e.marcaTexto || mostoNombre(e.mostoId))) || "";
+        return `<span class="tag warn">Ocupado${prod ? " · " + escapeHtml(prod) : ""} · ${hL.toLocaleString("es-CO")} HL</span>`;
+      }
+      return '<span class="tag ok">Disponible</span>';
+    }
+
+    // FV / SV / SV Pony
+    const o = occ[key];
+    if (!o) return muted("Sin dato en inventario");
     if (o.vacio || o.faltanDias <= 0)
       return '<span class="tag ok">Disponible</span>';
-    return `<span class="tag warn">Ocupado · ${escapeHtml(mostoNombre(o.mostoId))} · libre ${fmtDate(o.fecha)}</span>`;
+    return `<span class="tag warn">Ocupado${o.mostoId ? " · " + escapeHtml(mostoNombre(o.mostoId)) : ""} · libre ${fmtDate(o.fecha)}</span>`;
   };
   const rows = TANK_CATALOG.map(
     (t, idx) => `<tr data-idx="${idx}">
