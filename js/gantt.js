@@ -102,13 +102,28 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
         ((b.end.getTime() - b.start.getTime()) / 3600000) * GANTT_PX_PER_HOUR,
       );
       const dur = fmtDuration(b.end - b.start);
+      const vel = Number(b.velocidad) || 0;
+      const efi = Number(b.eficiencia) || 0;
+      const velTxt =
+        b.type === "production" && vel > 0
+          ? `${Math.round(vel).toLocaleString("es-CO")} hL/h` +
+            (efi > 0 ? ` · ${Math.round(efi * 100)}% ef` : "")
+          : "";
       const titleAttr = escapeHtml(
-        `${b.name || b.codigo || ""} · ${fmtDateTime(b.start)} → ${fmtDateTime(b.end)} (${dur})`,
+        `${b.name || b.codigo || ""} · ${fmtDateTime(b.start)} → ${fmtDateTime(b.end)} (${dur})` +
+          (velTxt
+            ? ` · Velocidad ${Math.round(vel).toLocaleString("es-CO")} hL/h` +
+              (efi > 0 ? ` · Eficiencia ${Math.round(efi * 100)}%` : "") +
+              (efi > 0
+                ? ` · Efectiva ${Math.round(vel * efi).toLocaleString("es-CO")} hL/h`
+                : "")
+            : ""),
       );
       if (b.type === "production") {
         const colors = colorForPackagingEvent(b);
         const showText = width >= 22;
-        blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${colors.bg}; color:${colors.fg};" title="${titleAttr}">${showText ? `<b style="color:${colors.fg};">${escapeHtml(b.name || b.codigo || "")}</b><span style="color:${colors.fg};">${dur}</span>` : ""}</div>`;
+        const detalle = velTxt ? `${dur} · ${velTxt}` : dur;
+        blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${colors.bg}; color:${colors.fg};" title="${titleAttr}">${showText ? `<b style="color:${colors.fg};">${escapeHtml(b.name || b.codigo || "")}</b><span style="color:${colors.fg};">${detalle}</span>` : ""}</div>`;
       } else if (b.type === "changeover") {
         blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}"><b>🧽</b></div>`;
       } else {
@@ -354,6 +369,10 @@ const FILTRACION_STATE = {
   //         quedan al ciclo actual, así el primer cambio de ciclo se adelanta.
   filtroNuevo: true,
   restanteCicloHL: 0,
+  // Tasa a la que las líneas de envasado vacían los BBTs (hL/h). Si queda en 0
+  // y hay un instructivo cargado, se usa la velocidad efectiva real de las
+  // líneas activas en cada instante (velocidad × eficiencia).
+  desalojoHLh: 0,
   filas: [{ orden: 1, marca: "", hl: 0 }],
   // true = se oculta la configuración (parámetros + tabla) para dejar el Gantt
   // de filtración pegado debajo del de envasado y poder compararlos.
@@ -370,6 +389,7 @@ const FILTRACION_STATE = {
       FILTRACION_STATE.cipLightH = Number(raw.cipLightH) || 0;
       FILTRACION_STATE.filtroNuevo = raw.filtroNuevo !== false;
       FILTRACION_STATE.restanteCicloHL = Number(raw.restanteCicloHL) || 0;
+      FILTRACION_STATE.desalojoHLh = Number(raw.desalojoHLh) || 0;
       FILTRACION_STATE.cfgOculta = !!raw.cfgOculta;
       if (Array.isArray(raw.filas) && raw.filas.length) {
         FILTRACION_STATE.filas = raw.filas.map((f, i) => ({
@@ -543,6 +563,8 @@ function renderGanttFiltracion(plan) {
     if (totalsEl) totalsEl.textContent = "";
     const info = document.getElementById("ganttFiltracionCursorInfo");
     if (info) info.textContent = "";
+    const al = document.getElementById("ganttFiltracionAlert");
+    if (al) al.innerHTML = "";
     return;
   }
 
@@ -615,6 +637,96 @@ function renderGanttFiltracion(plan) {
     }
   });
 
+  // ---- Cuánto se ha diluido / falta por diluir en un instante -------------
+  const totalHLplan = Math.round(plan.totalHL);
+  function diluidoHasta(ms) {
+    let d = 0;
+    for (const s of segments) {
+      if (s.tipo !== "fil") continue;
+      const a = s.start.getTime();
+      const b = a + s.durH * 3600000;
+      if (ms >= b) d += s.hl;
+      else if (ms > a) d += (s.hl * (ms - a)) / (b - a);
+    }
+    return Math.min(totalHLplan, d);
+  }
+  const faltaPorDiluir = (ms) => Math.max(0, totalHLplan - diluidoHasta(ms));
+
+  // ---- Restricción de BBTs: no se puede diluir si los BBTs se llenan ------
+  // Capacidad total de BBTs disponibles (pestaña Equipos / Tanques) y lo que
+  // ya hay en ellos (inventario "producto en proceso").
+  const bbtCapTotal =
+    typeof TANK_CATALOG !== "undefined"
+      ? (TANK_CATALOG || [])
+          .filter((t) => t.tipo === "BBT" && t.disponible !== false)
+          .reduce((s, t) => s + (Number(t.capacidadHL) || 0), 0)
+      : 0;
+  const bbtFill0 =
+    typeof INVENTORY_BALANCE !== "undefined"
+      ? (INVENTORY_BALANCE || [])
+          .filter((e) => e.tipo === "BBT")
+          .reduce((s, e) => s + Math.max(0, Math.round(Number(e.hL) || 0)), 0)
+      : 0;
+
+  // Desalojo (hL/h a los que las líneas vacían los BBTs): manual si el usuario
+  // puso un valor; si no, la velocidad efectiva real (velocidad × eficiencia)
+  // de las líneas de envasado activas en cada instante, según el instructivo.
+  const desalojoManual = Number(FILTRACION_STATE.desalojoHLh) || 0;
+  const trainsBlocks =
+    (typeof STATE !== "undefined" && STATE && STATE.mergedByTrain) || {};
+  function desalojoHasta(ms) {
+    const i0ms = plan.i0.getTime();
+    if (ms <= i0ms) return 0;
+    if (desalojoManual > 0) return (desalojoManual * (ms - i0ms)) / 3600000;
+    let hl = 0;
+    Object.keys(trainsBlocks).forEach((k) => {
+      (trainsBlocks[k] || []).forEach((bl) => {
+        if (bl.type !== "production") return;
+        const ve = (Number(bl.velocidad) || 0) * (Number(bl.eficiencia) || 0);
+        if (ve <= 0) return;
+        const a = Math.max(bl.start.getTime(), i0ms);
+        const z = Math.min(bl.end.getTime(), ms);
+        if (z > a) hl += (ve * (z - a)) / 3600000;
+      });
+    });
+    return hl;
+  }
+  const nivelBBT = (ms) =>
+    Math.max(0, bbtFill0 + diluidoHasta(ms) - desalojoHasta(ms));
+  const espacioBBT = (ms) => Math.max(0, bbtCapTotal - nivelBBT(ms));
+
+  // Primer instante en que los BBTs se llenan mientras aún falta por diluir.
+  let fillMs = null;
+  if (bbtCapTotal > 0 && faltaPorDiluir(plan.i0.getTime()) > 1e-6) {
+    const step = 10 * 60000;
+    let prev = plan.i0.getTime();
+    for (
+      let ms = plan.i0.getTime();
+      ms <= plan.end.getTime() + step;
+      ms += step
+    ) {
+      if (nivelBBT(ms) >= bbtCapTotal - 1e-6 && faltaPorDiluir(ms) > 1e-6) {
+        let lo = prev;
+        let hi = ms;
+        for (let k = 0; k < 30; k++) {
+          const mid = (lo + hi) / 2;
+          if (nivelBBT(mid) >= bbtCapTotal - 1e-6) hi = mid;
+          else lo = mid;
+        }
+        fillMs = hi;
+        break;
+      }
+      prev = ms;
+    }
+  }
+  const xFill = fillMs
+    ? ((fillMs - rangeStart.getTime()) / 3600000) * GANTT_PX_PER_HOUR
+    : 0;
+  const markHtml = fillMs
+    ? `<div class="fil-fill-shade" style="left:${xFill}px; width:${Math.max(0, totalWidth - xFill)}px;"></div>` +
+      `<div class="fil-fill-mark" style="left:${xFill}px;" title="BBTs llenos"></div>`
+    : "";
+
   container.innerHTML = `
     <div id="ganttFiltracionScroll" style="overflow-x:auto; padding:0 0 16px;">
       <div style="position:relative; width:${labelWidth + totalWidth}px;">
@@ -623,6 +735,7 @@ function renderGanttFiltracion(plan) {
           <div class="lane-label">FILTRACIÓN</div>
           <div class="lane-track" style="width:${totalWidth}px;">
             <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLinesHtml}</div>
+            ${markHtml}
             ${blocksHtml}
             <div class="fil-cursor" hidden></div>
           </div>
@@ -631,19 +744,25 @@ function renderGanttFiltracion(plan) {
     </div>
   `;
 
-  // Línea vertical + lectura de "cuánto falta por diluir" al pasar el cursor.
-  const totalHLplan = Math.round(plan.totalHL);
-  function faltaPorDiluir(ms) {
-    let diluido = 0;
-    for (const s of segments) {
-      if (s.tipo !== "fil") continue;
-      const a = s.start.getTime();
-      const b = a + s.durH * 3600000;
-      if (ms >= b) diluido += s.hl;
-      else if (ms > a) diluido += (s.hl * (ms - a)) / (b - a);
+  // Aviso de BBTs.
+  const alertEl = document.getElementById("ganttFiltracionAlert");
+  if (alertEl) {
+    if (fillMs) {
+      alertEl.innerHTML = `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin:6px 0 12px; color:var(--danger); font-size:12.5px;">
+        <b>⚠️ No se puede completar la filtración: los BBTs se llenan.</b>
+        Capacidad de BBTs disponibles ${Math.round(bbtCapTotal).toLocaleString("es-CO")} HL (${Math.round(bbtFill0).toLocaleString("es-CO")} HL ya ocupados)${
+          desalojoManual > 0
+            ? `, desalojo ${Math.round(desalojoManual).toLocaleString("es-CO")} hL/h`
+            : ", desalojo según las líneas del instructivo"
+        }. No hay espacio a partir de <b>${fmtDateTime(new Date(fillMs))}</b> — quedarían <b>${Math.round(faltaPorDiluir(fillMs)).toLocaleString("es-CO")} HL</b> sin diluir.</div>`;
+    } else if (bbtCapTotal <= 0) {
+      alertEl.innerHTML = `<div style="color:var(--muted); font-size:11.5px; padding:4px 0 8px;">Marca BBTs disponibles con capacidad en «Equipos / Tanques» para verificar el espacio de dilución.</div>`;
+    } else {
+      alertEl.innerHTML = `<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:8px 14px; margin:6px 0 12px; color:var(--ok); font-size:12px;">✓ Hay espacio en BBTs para toda la filtración · capacidad ${Math.round(bbtCapTotal).toLocaleString("es-CO")} HL · ocupados ${Math.round(bbtFill0).toLocaleString("es-CO")} HL.</div>`;
     }
-    return Math.max(0, totalHLplan - diluido);
   }
+
+  // ---- Línea vertical + lectura al pasar el cursor -----------------------
   const track = container.querySelector(".lane-track");
   const cursorLine = container.querySelector(".fil-cursor");
   const infoEl = document.getElementById("ganttFiltracionCursorInfo");
@@ -653,14 +772,15 @@ function renderGanttFiltracion(plan) {
       const x = Math.max(0, Math.min(totalWidth, e.clientX - rect.left));
       cursorLine.hidden = false;
       cursorLine.style.left = x + "px";
-      const ms =
-        rangeStart.getTime() + (x / GANTT_PX_PER_HOUR) * 3600000;
+      const ms = rangeStart.getTime() + (x / GANTT_PX_PER_HOUR) * 3600000;
       const falta = Math.round(faltaPorDiluir(ms));
       if (infoEl)
         infoEl.textContent =
           `${fmtDateTime(new Date(ms))}` +
           `  ·  faltan ${falta.toLocaleString("es-CO")} HL por diluir` +
-          `  ·  diluidos ${(totalHLplan - falta).toLocaleString("es-CO")} / ${totalHLplan.toLocaleString("es-CO")} HL`;
+          (bbtCapTotal > 0
+            ? `  ·  espacio en BBTs: ${Math.round(espacioBBT(ms)).toLocaleString("es-CO")} HL`
+            : "");
     });
     track.addEventListener("mouseleave", () => {
       cursorLine.hidden = true;
@@ -808,6 +928,10 @@ function initFiltracionPanel() {
             <label class="field">Duración CIP cambio a Light (hh:mm:ss)</label>
             <input type="text" class="cat-input cat-time" id="filCipLight" placeholder="8:00:00" />
           </div>
+          <div class="fil-field">
+            <label class="field">Desalojo de BBTs (hL/h) — 0 = usar instructivo</label>
+            <input type="number" min="0" step="1" class="cat-input" id="filDesalojo" placeholder="auto" />
+          </div>
         </div>
         <div class="table-scroll" id="filtracionFilasWrap"></div>
         <div style="margin-top:12px;">
@@ -815,6 +939,7 @@ function initFiltracionPanel() {
         </div>
         <div id="filtracionStatus" style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:10px; min-height:16px;"></div>
       </div>
+      <div id="ganttFiltracionAlert" style="padding:0 20px;"></div>
       <div id="ganttFiltracionContainer" class="hidden"></div>
       <div id="ganttFiltracionCursorInfo" style="font-family:var(--mono); font-size:12px; color:var(--accent2); padding:2px 20px 0; min-height:18px;"></div>
       <div class="legend" id="ganttFiltracionLegend"></div>
@@ -840,10 +965,12 @@ function initFiltracionPanel() {
   const filtroNuevoInput = document.getElementById("filFiltroNuevo");
   const restanteInput = document.getElementById("filRestanteCiclo");
   const restanteField = document.getElementById("filRestanteField");
+  const desalojoInput = document.getElementById("filDesalojo");
 
   i0Input.value = FILTRACION_STATE.i0 || "";
   flujoInput.value = FILTRACION_STATE.flujoHLh || "";
   cicloInput.value = FILTRACION_STATE.cicloHL || "";
+  desalojoInput.value = FILTRACION_STATE.desalojoHLh || "";
   filtroNuevoInput.checked = FILTRACION_STATE.filtroNuevo !== false;
   restanteInput.value = FILTRACION_STATE.restanteCicloHL || "";
   function applyFiltroNuevo() {
@@ -876,6 +1003,10 @@ function initFiltracionPanel() {
   });
   restanteInput.addEventListener("input", () => {
     FILTRACION_STATE.restanteCicloHL = Number(restanteInput.value) || 0;
+    recomputeFiltracion();
+  });
+  desalojoInput.addEventListener("input", () => {
+    FILTRACION_STATE.desalojoHLh = Number(desalojoInput.value) || 0;
     recomputeFiltracion();
   });
   cambioInput.addEventListener("change", () => {

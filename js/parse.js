@@ -252,6 +252,10 @@ function parseSuite360Workbook(workbook, sheetName) {
           end,
           unidades,
           hectolitros,
+          // De la hoja "Velocidad Eficiencia": velocidad nominal (hL/h) y
+          // eficiencia de la línea para este SKU (0 si no se encontró).
+          velocidad: sku ? Number(sku.speed) || 0 : 0,
+          eficiencia: sku ? Number(sku.efficiency) || 0 : 0,
         });
       } else {
         rawEvents[t].push({

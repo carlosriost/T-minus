@@ -683,6 +683,30 @@
         pointer-events: none;
         z-index: 25;
       }
+      /* Marca del instante en que los BBTs se llenan + zona sin espacio */
+      .fil-fill-mark {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 0;
+        border-left: 2px solid var(--danger);
+        pointer-events: none;
+        z-index: 24;
+      }
+      .fil-fill-shade {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(237, 28, 43, 0.12),
+          rgba(237, 28, 43, 0.12) 6px,
+          rgba(237, 28, 43, 0.03) 6px,
+          rgba(237, 28, 43, 0.03) 12px
+        );
+        pointer-events: none;
+        z-index: 1;
+      }
 
       .legend {
         display: flex;

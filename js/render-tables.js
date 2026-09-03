@@ -533,6 +533,7 @@ function renderInventoryBalance(plan) {
         renderInventoryBalance(STATE && STATE.plan);
         if (typeof renderTankCatalog === "function") renderTankCatalog();
       }
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     });
   });
@@ -606,6 +607,7 @@ renderInventoryBalance(STATE && STATE.plan);
         saveInventoryBalance();
         renderInventoryBalance(STATE && STATE.plan);
         if (typeof renderTankCatalog === "function") renderTankCatalog();
+        if (typeof recomputeFiltracion === "function") recomputeFiltracion();
         if (typeof recompute === "function") recompute();
         if (status) {
           status.style.color = "var(--ok)";
@@ -764,6 +766,7 @@ function renderTankCatalog() {
               : e.target.value;
       if (field === "aseoHoras")
         e.target.value = formatHMS(TANK_CATALOG[idx].aseoHoras);
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     }),
   );
@@ -771,6 +774,7 @@ function renderTankCatalog() {
     btn.addEventListener("click", (e) => {
       TANK_CATALOG.splice(+e.currentTarget.dataset.removeTank, 1);
       renderTankCatalog();
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
       recompute();
     }),
   );

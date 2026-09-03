@@ -90,6 +90,9 @@ function recompute() {
   renderSinHomologar(plan.sinHomologar);
   renderInventoryBalance(plan);
   renderYeastStatus(seq);
+  // El Gantt de filtración usa la velocidad de las líneas del instructivo para
+  // el desalojo de BBTs: recalcularlo cuando cambie el análisis de envasado.
+  if (typeof recomputeFiltracion === "function") recomputeFiltracion();
 }
 
 function renderKPIs(plan, seq) {
