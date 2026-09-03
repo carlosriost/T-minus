@@ -107,13 +107,13 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
       );
       if (b.type === "production") {
         const colors = colorForPackagingEvent(b);
-        const showText = width >= 46;
+        const showText = width >= 22;
         blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${colors.bg}; color:${colors.fg};" title="${titleAttr}">${showText ? `<b style="color:${colors.fg};">${escapeHtml(b.name || b.codigo || "")}</b><span style="color:${colors.fg};">${dur}</span>` : ""}</div>`;
       } else if (b.type === "changeover") {
         blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}"><b>🧽</b></div>`;
       } else {
         const bg = TRAIN_EVENT_COLORS[b.type] || TRAIN_EVENT_COLORS.other;
-        const showText = width >= 46;
+        const showText = width >= 22;
         blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${bg};" title="${titleAttr}">${showText ? `<b>${escapeHtml(b.name || b.codigo || "")}</b><span>${dur}</span>` : ""}</div>`;
       }
     });
@@ -242,7 +242,7 @@ function renderGanttCocina(seq, weekStartRaw) {
       blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}"><b>🧽</b></div>`;
     } else {
       const bg = colorForMosto(r.mostoId);
-      const showText = width >= 46;
+      const showText = width >= 22;
       const borderStyle = r.violaDeadline
         ? "box-shadow:inset 0 0 0 2px var(--danger); outline:2px solid var(--danger); outline-offset:-2px;"
         : "";
@@ -541,6 +541,8 @@ function renderGanttFiltracion(plan) {
     )}</p>`;
     if (legendEl) legendEl.innerHTML = "";
     if (totalsEl) totalsEl.textContent = "";
+    const info = document.getElementById("ganttFiltracionCursorInfo");
+    if (info) info.textContent = "";
     return;
   }
 
@@ -583,7 +585,7 @@ function renderGanttFiltracion(plan) {
       GANTT_PX_PER_HOUR;
     const width = Math.max(4, seg.durH * GANTT_PX_PER_HOUR);
     const dur = fmtDuration(seg.durH * 3600000);
-    const showText = width >= 46;
+    const showText = width >= 22;
 
     if (seg.tipo === "fil") {
       const label =
@@ -622,11 +624,49 @@ function renderGanttFiltracion(plan) {
           <div class="lane-track" style="width:${totalWidth}px;">
             <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLinesHtml}</div>
             ${blocksHtml}
+            <div class="fil-cursor" hidden></div>
           </div>
         </div>
       </div>
     </div>
   `;
+
+  // Línea vertical + lectura de "cuánto falta por diluir" al pasar el cursor.
+  const totalHLplan = Math.round(plan.totalHL);
+  function faltaPorDiluir(ms) {
+    let diluido = 0;
+    for (const s of segments) {
+      if (s.tipo !== "fil") continue;
+      const a = s.start.getTime();
+      const b = a + s.durH * 3600000;
+      if (ms >= b) diluido += s.hl;
+      else if (ms > a) diluido += (s.hl * (ms - a)) / (b - a);
+    }
+    return Math.max(0, totalHLplan - diluido);
+  }
+  const track = container.querySelector(".lane-track");
+  const cursorLine = container.querySelector(".fil-cursor");
+  const infoEl = document.getElementById("ganttFiltracionCursorInfo");
+  if (track && cursorLine) {
+    track.addEventListener("mousemove", (e) => {
+      const rect = track.getBoundingClientRect();
+      const x = Math.max(0, Math.min(totalWidth, e.clientX - rect.left));
+      cursorLine.hidden = false;
+      cursorLine.style.left = x + "px";
+      const ms =
+        rangeStart.getTime() + (x / GANTT_PX_PER_HOUR) * 3600000;
+      const falta = Math.round(faltaPorDiluir(ms));
+      if (infoEl)
+        infoEl.textContent =
+          `${fmtDateTime(new Date(ms))}` +
+          `  ·  faltan ${falta.toLocaleString("es-CO")} HL por diluir` +
+          `  ·  diluidos ${(totalHLplan - falta).toLocaleString("es-CO")} / ${totalHLplan.toLocaleString("es-CO")} HL`;
+    });
+    track.addEventListener("mouseleave", () => {
+      cursorLine.hidden = true;
+      if (infoEl) infoEl.textContent = "";
+    });
+  }
 
   // Leyenda (mismas clases .legend/.item/.sw que los demás Gantt).
   const legendMap = {};
@@ -776,6 +816,7 @@ function initFiltracionPanel() {
         <div id="filtracionStatus" style="font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:10px; min-height:16px;"></div>
       </div>
       <div id="ganttFiltracionContainer" class="hidden"></div>
+      <div id="ganttFiltracionCursorInfo" style="font-family:var(--mono); font-size:12px; color:var(--accent2); padding:2px 20px 0; min-height:18px;"></div>
       <div class="legend" id="ganttFiltracionLegend"></div>
       <div id="ganttFiltracionTotals" style="font-family:var(--mono); font-size:12px; color:var(--muted); padding:0 20px 14px;"></div>
     </div>
