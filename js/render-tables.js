@@ -734,7 +734,7 @@ function renderYeastConfig() {
         )
         .join("");
       cosWrap.innerHTML = `<table><thead><tr><th>Levadura (mosto)</th><th>Tipo</th><th>Fuente</th><th>Disponible desde</th></tr></thead><tbody>${cosRows}</tbody></table>
-        <div class="hint" style="margin-top:6px;">Solo se cosecha de los fermentadores EXT, a ${YEAST_HARVEST_DAYS} días de fermentación. Estas cosechas ya se tienen en cuenta en la validación de bloques Light.</div>`;
+        <div class="hint" style="margin-top:6px;">Solo de fermentadores EXT, a ${YEAST_HARVEST_DAYS} días.</div>`;
     }
   }
 

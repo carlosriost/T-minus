@@ -24,10 +24,6 @@
         <div class="divider"></div>
         <div>
           <h1>Interfaz de <span class="accent">Planeación</span></h1>
-          <p>
-            Sube el Excel semanal del plan de envasado y obtén el mosto, volumen
-            y fechas de inicio de cada cocimiento requerido.
-          </p>
         </div>
       </div>
       <div class="header-right">
@@ -149,8 +145,7 @@
         <div class="container">
           <section class="view" id="view-datos" data-view-el>
             <p class="tab-panel-sub" style="margin: 0 0 14px">
-              Sube aquí todos los Excel del programa. Se procesan 100% en tu
-              navegador — no se envían a ningún servidor.
+              Se procesan en tu navegador; no se envían a ningún servidor.
             </p>
 
             <div class="upload-zone" id="dropZone">
@@ -171,10 +166,7 @@
 
             <div class="upload-zone" id="ppDropZone" style="margin-top: 16px">
               <h2>2 · Producto en proceso (FV / SV / BBT)</h2>
-              <p>
-                Inventario por equipo: lo que hay en cada tanque, sus días y los
-                HL diluidos. Hojas «Reporte» y «BBTs».
-              </p>
+              <p>Hojas «Reporte» y «BBTs».</p>
               <label class="btn primary" for="ppFileInput">Elegir archivo</label>
               <input
                 type="file"
@@ -187,10 +179,6 @@
             <div class="i0-panel" id="i0Panel">
               <div>
                 <div class="i0-title">Fecha y hora I0 (momento de programación)</div>
-                <div class="i0-sub">
-                  Punto de referencia y arranque más temprano posible del primer
-                  cocimiento.
-                </div>
               </div>
               <input
                 type="datetime-local"
@@ -218,10 +206,7 @@
             <div class="empty-state">
               <div class="empty-state-ico">📥</div>
               <h3>Aún no hay datos para mostrar aquí</h3>
-              <p>
-                Carga el Excel semanal del plan de envasado para generar la
-                programación, las secuencias y los Gantt.
-              </p>
+              <p>Carga el Excel del plan de envasado para empezar.</p>
               <button class="btn primary" data-goto="view-datos">
                 Ir a «Datos de entrada»
               </button>
@@ -264,9 +249,7 @@
             <div class="tab-panel hidden" id="tab-balance">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Inventario disponible por mosto (HL). Se descuenta del volumen a
-                  cocinar, sin cambiar el volumen a envasar. El Excel de producto
-                  en proceso se carga en «Datos de entrada».
+                  Se descuenta del volumen a cocinar, no del volumen a envasar.
                 </p>
                 <div class="table-scroll" id="balanceTableWrap"></div>
               </div>
@@ -274,9 +257,6 @@
 
             <div class="tab-panel hidden" id="tab-aseos-cambio">
               <div class="tab-panel-body">
-                <p class="tab-panel-sub">
-                  Duración del aseo según marca de origen y destino.
-                </p>
                 <div class="table-scroll" id="aseoTableWrap"></div>
                 <div
                   style="
@@ -369,8 +349,7 @@
             <div class="tab-panel hidden" id="tab-equipos">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Asignación por prioridad A → B → C. «Aseo después de liberar» =
-                  tiempo para volver a disponer el equipo.
+                  «Aseo después de liberar» = tiempo para volver a disponer el equipo.
                 </p>
                 <div class="table-scroll" id="tankTableWrap"></div>
                 <div style="margin-top: 12px">
@@ -382,9 +361,7 @@
             </div>
             <div class="tab-panel hidden" id="tab-levadura">
               <div class="tab-panel-body">
-                <p class="tab-panel-sub">
-                  Cosechas de levadura por marca. Light solo admite levadura Light.
-                </p>
+                <p class="tab-panel-sub">Light solo admite levadura Light.</p>
                 <div id="yeastSummaryWrap" style="margin-bottom:12px;"></div>
                 <h3 style="margin:16px 0 6px;font-size:13px;color:var(--text);font-weight:650;">Cosechas previstas (calculadas)</h3>
                 <div class="table-scroll" id="yeastCosechasWrap"></div>
@@ -472,9 +449,6 @@
 
               <div class="tab-panel hidden" id="tab-tanques">
                 <div class="tab-panel-body">
-                  <p class="tab-panel-sub">
-                    Asignación de líquido por etapa y prioridad A → B → C.
-                  </p>
                   <div id="tanquesAlertWrap"></div>
                   <div class="table-scroll" id="tanquesTableWrap"></div>
                 </div>
