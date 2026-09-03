@@ -746,13 +746,16 @@ function renderTankCatalog() {
     (MOSTO_CATALOG.find((mm) => mm.id === id) || {}).nombre || id || "";
   const muted = (txt) =>
     `<span style="color:var(--muted);">${escapeHtml(txt)}</span>`;
+  // Si el inventario no dice que un equipo esté ocupado, se considera DISPONIBLE
+  // (sin dato = disponible), tanto si no se ha cargado inventario como si ese
+  // equipo no aparece en él.
   const ocupacionCell = (t) => {
     const tipo = t.tipo;
     const esTanque =
       tipo === "FV" || tipo === "SV" || tipo === "SV Pony" || tipo === "BBT";
     if (!esTanque) return muted("—"); // "Equipo" u otros: no aplica
-    if (!hayInventario)
-      return muted("Sin dato · carga el Excel de producto en proceso");
+    const disponible = '<span class="tag ok">Disponible</span>';
+    if (!hayInventario) return disponible;
 
     const key = normalizeText(t.equipo || "");
 
@@ -763,14 +766,12 @@ function renderTankCatalog() {
         const prod = (e && (e.marcaTexto || mostoNombre(e.mostoId))) || "";
         return `<span class="tag warn">Ocupado${prod ? " · " + escapeHtml(prod) : ""} · ${hL.toLocaleString("es-CO")} HL</span>`;
       }
-      return '<span class="tag ok">Disponible</span>';
+      return disponible;
     }
 
     // FV / SV / SV Pony
     const o = occ[key];
-    if (!o) return muted("Sin dato en inventario");
-    if (o.vacio || o.faltanDias <= 0)
-      return '<span class="tag ok">Disponible</span>';
+    if (!o || o.vacio || o.faltanDias <= 0) return disponible;
     return `<span class="tag warn">Ocupado${o.mostoId ? " · " + escapeHtml(mostoNombre(o.mostoId)) : ""} · libre ${fmtDate(o.fecha)}</span>`;
   };
   const rows = TANK_CATALOG.map(
