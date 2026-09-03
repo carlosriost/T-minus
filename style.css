@@ -975,9 +975,21 @@
       .sb-ico {
         flex: 0 0 20px;
         width: 20px;
-        text-align: center;
-        font-size: 15px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         line-height: 1;
+      }
+      .sb-ico svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .sb-collapse-ico svg {
+        width: 14px;
+        height: 14px;
+        display: block;
       }
       .sb-txt {
         flex: 1;
