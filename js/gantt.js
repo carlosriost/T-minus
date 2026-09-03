@@ -388,23 +388,6 @@ function saveFiltracionState() {
 }
 
 /* ---- Cálculo de la línea de tiempo ----------------------------------- */
-// Parte un total de hL en tramos de "ciclo" hL (el último tramo puede ser menor).
-// "primerTramo" (opcional) limita solo el primer tramo: sirve para cuando el
-// filtro no está nuevo y al ciclo actual le quedan menos hL disponibles.
-function chunkHLFiltracion(total, ciclo, primerTramo) {
-  if (!(ciclo > 0)) return [total];
-  const out = [];
-  let left = total;
-  let cap = primerTramo > 0 ? Math.min(primerTramo, ciclo) : ciclo;
-  while (left > 1e-6) {
-    const c = Math.min(cap, left);
-    out.push(c);
-    left -= c;
-    cap = ciclo;
-  }
-  return out.length ? out : [total];
-}
-
 function buildFiltracionPlan(st) {
   const i0 = parseInputDateTimeUTC(st.i0);
   const flujo = Number(st.flujoHLh) || 0;
@@ -454,15 +437,50 @@ function buildFiltracionPlan(st) {
   let cursor = i0.getTime();
   let nCip = 0;
   let nCambios = 0;
-  // Se inserta un "cambio de ciclo" antes de cada corrida de filtración que
-  // venga después de otra corrida de filtración: sea porque una misma marca
-  // supera un ciclo (varios tramos) o porque cambia de marca. NO se inserta
-  // antes de la primera corrida ni cuando justo antes hubo un CIP a Light.
-  let prevFueFiltracion = false;
-  let primeraCorrida = true;
+
+  // Modelo de ciclos: un ciclo se llena SIEMPRE hasta "ciclo" hL, aunque para
+  // ello se combinen hL de marcas distintas dentro del mismo ciclo (no se hace
+  // cambio de ciclo solo por cambiar de marca). Única excepción: Light.
+  //   · de Light  -> otra marca en el mismo ciclo: permitido.
+  //   · de otra marca -> Light en el mismo ciclo: NO. Antes de una corrida
+  //     Light se cierra el ciclo si ya tiene hL de otra marca.
+  const cicloCap = ciclo > 0 ? ciclo : Infinity;
+  let capRestante = filtroNuevo
+    ? cicloCap
+    : Math.min(primerCicloHL > 0 ? primerCicloHL : cicloCap, cicloCap);
+  let cicloTieneNoLight = !filtroNuevo && capRestante < cicloCap - 1e-6;
+  let nCiclo = 1;
+
+  function cerrarCiclo() {
+    if (cambioH > 0) {
+      segments.push({
+        tipo: "cambio",
+        marca: "Cambio de ciclo",
+        start: new Date(cursor),
+        durH: cambioH,
+      });
+      cursor += cambioH * 3600000;
+      nCambios += 1;
+    }
+    capRestante = cicloCap;
+    cicloTieneNoLight = false;
+    nCiclo += 1;
+  }
 
   filas.forEach((f) => {
     const isLight = /\blight\b/.test(normalizeText(f.marca));
+
+    // Regla Light: un ciclo no puede pasar de [otra marca] -> [Light].
+    if (
+      isLight &&
+      Number.isFinite(cicloCap) &&
+      cicloTieneNoLight &&
+      capRestante < cicloCap - 1e-6
+    ) {
+      cerrarCiclo();
+    }
+
+    // CIP antes de cada corrida Light.
     if (isLight && cipH > 0) {
       segments.push({
         tipo: "cip",
@@ -472,39 +490,26 @@ function buildFiltracionPlan(st) {
       });
       cursor += cipH * 3600000;
       nCip += 1;
-      prevFueFiltracion = false;
     }
-    const chunks = chunkHLFiltracion(
-      f.hl,
-      ciclo,
-      primeraCorrida ? primerCicloHL : ciclo,
-    );
-    primeraCorrida = false;
-    chunks.forEach((c, idx) => {
-      if (prevFueFiltracion && cambioH > 0) {
-        segments.push({
-          tipo: "cambio",
-          marca: "Cambio de ciclo",
-          start: new Date(cursor),
-          durH: cambioH,
-        });
-        cursor += cambioH * 3600000;
-        nCambios += 1;
-      }
-      const durH = c / flujo;
+
+    let pending = f.hl;
+    while (pending > 1e-6) {
+      if (capRestante <= 1e-6) cerrarCiclo(); // ciclo lleno -> uno nuevo
+      const take = Math.min(pending, capRestante);
       segments.push({
         tipo: "fil",
         marca: f.marca,
         start: new Date(cursor),
-        durH,
-        hl: c,
+        durH: take / flujo,
+        hl: take,
         flujo,
-        ciclo: chunks.length > 1 ? idx + 1 : 0,
-        ciclos: chunks.length,
+        cicloNum: Number.isFinite(cicloCap) ? nCiclo : 0,
       });
-      cursor += durH * 3600000;
-      prevFueFiltracion = true;
-    });
+      cursor += (take / flujo) * 3600000;
+      pending -= take;
+      capRestante -= take;
+      if (!isLight) cicloTieneNoLight = true;
+    }
   });
 
   return {
@@ -514,6 +519,7 @@ function buildFiltracionPlan(st) {
     end: new Date(cursor),
     nCip,
     nCambios,
+    nCiclos: Number.isFinite(cicloCap) ? nCiclo : 0,
     totalHL: filas.reduce((s, f) => s + f.hl, 0),
     filas: filas.length,
     filtroNuevo,
@@ -581,7 +587,7 @@ function renderGanttFiltracion(plan) {
 
     if (seg.tipo === "fil") {
       const label =
-        seg.ciclo > 0 ? `${seg.marca} · ciclo ${seg.ciclo}/${seg.ciclos}` : seg.marca;
+        seg.cicloNum > 0 ? `${seg.marca} · ciclo ${seg.cicloNum}` : seg.marca;
       const detalle = `${Math.round(seg.hl).toLocaleString("es-CO")} HL · ${Math.round(
         seg.flujo,
       ).toLocaleString("es-CO")} hL/h · ${dur}`;
@@ -646,6 +652,7 @@ function renderGanttFiltracion(plan) {
       `  ·  Duración total: ${durTotal}` +
       `  ·  Bloques de marca: ${plan.filas}` +
       `  ·  Total a diluir: ${Math.round(plan.totalHL).toLocaleString("es-CO")} HL` +
+      (plan.nCiclos ? `  ·  Ciclos: ${plan.nCiclos}` : "") +
       `  ·  Cambios de ciclo: ${plan.nCambios}` +
       `  ·  CIP cambio a Light: ${plan.nCip}` +
       (plan.filtroNuevo
