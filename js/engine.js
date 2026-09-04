@@ -1176,6 +1176,19 @@ function sequenceWeek(
       // La cosecha de este bloque Light ya está contemplada en yeastPool a
       // través de computedYeastHarvests (a los YEAST_HARVEST_DAYS días del
       // primer cocimiento del bloque).
+    } else if (block.mostoId === "pony") {
+      // Pony Malta no fermenta (0 h de fermentación, no pasa por FV): no usa
+      // levadura, así que no aplica ninguna restricción ni consumo del pool.
+      yeastEvents.push({
+        blockLabel: block.blockLabel,
+        mostoId: block.mostoId,
+        estado: "N/A",
+        requerida: "No aplica",
+        fuente: "Pony no fermenta",
+        disponibleDesde: null,
+        inicio: actualFirst,
+        detalle: "Pony Malta no usa levadura: sale de cocina directo a SV, sin fermentación.",
+      });
     } else {
       yeastEvents.push({
         blockLabel: block.blockLabel,
