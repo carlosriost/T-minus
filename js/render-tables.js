@@ -456,9 +456,18 @@ function renderInventoryBalance(plan) {
         tipo !== "BBT" &&
         (entry.vacio || (hLnum <= 0 && (dias == null || dias <= 0)));
 
+      // Madurador con levadura guardada (hL sin días registrados): el equipo
+      // está ocupado, pero NO es producto en proceso — no cuenta en el
+      // inventario disponible ni tiene una fecha de liberación calculable.
+      const esLevadura =
+        typeof esLevaduraEnMadurador === "function" &&
+        esLevaduraEnMadurador(entry);
+
       // Estado
       let estadoHtml = '<span class="tag warn">Sin datos</span>';
-      if (disponibleAhora) {
+      if (esLevadura) {
+        estadoHtml = '<span class="tag warn">Ocupado · levadura (no cuenta en inventario)</span>';
+      } else if (disponibleAhora) {
         estadoHtml = '<span class="tag ok">Disponible</span>';
       } else if (tipo === "BBT") {
         estadoHtml = '<span class="tag ok">Listo · producto terminado</span>';
@@ -480,7 +489,10 @@ function renderInventoryBalance(plan) {
       // maduración. Que la etapa haya terminado NO significa que el tanque
       // esté vacío: sigue con producto hasta que se libere.
       let liberaHtml = "—";
-      if (disponibleAhora) {
+      if (esLevadura) {
+        liberaHtml =
+          '<span style="color:var(--muted);">Sin fecha · se libera al retirar la levadura del inventario</span>';
+      } else if (disponibleAhora) {
         liberaHtml = '<span class="tag ok">Libre ahora</span>';
       } else if (tipo === "BBT") {
         liberaHtml = '<span class="tag ok">Listo para envase</span>';

@@ -142,12 +142,25 @@ function saveInventoryBalance() {
     );
   } catch (_) {}
 }
+// Un madurador (SV / SV Pony) con hL pero SIN días registrados no es producto
+// en proceso: es el equipo ocupado con levadura (guardada ahí, no madurando).
+// No cuenta como inventario disponible ni libera el equipo por sí sola.
+function esLevaduraEnMadurador(e) {
+  return (
+    !!e &&
+    (e.tipo === "SV" || e.tipo === "SV Pony") &&
+    Number(e.hL) > 0 &&
+    (e.diasEnEquipo === "" || e.diasEnEquipo == null)
+  );
+}
+
 // Suma el HL normalizado de todos los lotes por mosto — es lo que consume computeCocinaPlan().
 function inventoryTotalsByMosto(catalog) {
   const totals = {};
   (catalog || []).forEach((m) => (totals[m.id] = 0));
   (INVENTORY_BALANCE || []).forEach((e) => {
     if (!e || e.mostoId == null) return;
+    if (esLevaduraEnMadurador(e)) return; // levadura, no producto: no cubre demanda
     totals[e.mostoId] = (totals[e.mostoId] || 0) + (Number(e.hL) || 0);
   });
   return totals;
@@ -171,6 +184,28 @@ function inventoryOccupancyByEquipo() {
       e.diasEnEquipo === "" || e.diasEnEquipo == null
         ? 0
         : Math.round(Number(e.diasEnEquipo) || 0);
+
+    // Madurador con levadura guardada (hL sin días): el equipo está ocupado
+    // pero no hay reloj de maduración corriendo, así que no se puede calcular
+    // cuándo se libera. Se marca ocupado indefinidamente (hasta que se
+    // actualice el inventario) en vez de asumir una fecha de liberación falsa.
+    if (esLevaduraEnMadurador(e)) {
+      const faltanDias = Infinity;
+      const fecha = new Date(i0.getTime() + 3650 * 86400000);
+      if (!out[key] || out[key].vacio || out[key].faltanDias !== Infinity) {
+        out[key] = {
+          mostoId: e.mostoId || null,
+          tipo: e.tipo,
+          faltanDias,
+          fecha,
+          hL,
+          vacio: false,
+          levadura: true,
+        };
+      }
+      return;
+    }
+
     const vacio = e.vacio || (hL <= 0 && dias <= 0);
     if (vacio) {
       if (!out[key])
