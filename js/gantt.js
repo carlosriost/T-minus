@@ -777,6 +777,9 @@ function renderGanttFiltracion(plan) {
       }
       return null;
     };
+    // Igualdad de marca laxa: "aguila light" ~ "light".
+    const brandEq = (a, b) =>
+      !!a && !!b && (a === b || a.includes(b) || b.includes(a));
     espacioAt = (ms) => {
       const brand = marcaActivaAt(ms);
       const bk = brand ? normalizeText(brand) : null;
@@ -786,7 +789,12 @@ function renderGanttFiltracion(plan) {
         const n = nivelAt(t.niveles, ms) || { hL: 0, marca: null };
         const libre = Math.max(0, t.cap - n.hL);
         general += libre;
-        if (bk && (n.hL <= 1e-6 || normalizeText(n.marca || "") === bk))
+        if (!bk) return;
+        // Un BBT VACÍO del todo sirve para cualquier marca: cuenta su capacidad.
+        // Un BBT CON LÍQUIDO solo cuenta si es de ESTA misma marca, y solo su
+        // hueco (cap − hL), porque se puede rellenar con esa misma marca.
+        // Un BBT con líquido de otra marca no cuenta hasta quedar vacío.
+        if (n.hL <= 1e-6 || brandEq(normalizeText(n.marca || ""), bk))
           marca += libre;
       });
       return { general, marca, brand };
