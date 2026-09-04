@@ -213,20 +213,39 @@ function splitEnTramos(n, max, min) {
   return out;
 }
 
-function computeCocinaPlan(brands, catalog, inventoryBalance) {
+function computeCocinaPlan(brands, catalog, inventoryBatches) {
   const sinHomologar = [];
   const results = [];
 
-  // Balance Semanal: copia consumible del inventario disponible por mosto. Se va
-  // descontando en el orden en que aparecen los bloques del plan de envasado, así
-  // que el inventario cubre primero el bloque más próximo de esa marca.
-  const remainingInv = {};
-  (catalog || []).forEach((m) => {
-    remainingInv[m.id] = Math.max(
-      0,
-      Number((inventoryBalance || {})[m.id]) || 0,
+  // Balance Semanal: copia consumible del inventario por mosto, POR LOTE, cada
+  // uno con la fecha en la que de verdad estará listo (inventoryBatchesByMosto:
+  // BBT ya listo, FV/SV según lo que les falte de fermentación/maduración). Se
+  // va descontando en el orden en que aparecen los bloques del plan de
+  // envasado, así que el inventario cubre primero el bloque más próximo de esa
+  // marca — pero SOLO con lotes que ya estarán listos para esa fecha; un FV que
+  // recién empezó a fermentar no puede cubrir un envasado de esta semana.
+  const remainingBatches = {};
+  Object.keys(inventoryBatches || {}).forEach((mostoId) => {
+    remainingBatches[mostoId] = (inventoryBatches[mostoId] || []).map(
+      (lote) => ({ hL: lote.hL, listoEn: lote.listoEn }),
     );
   });
+  // Lotes ordenados por fecha de disponibilidad ascendente: al cortar en el
+  // primero que no alcanza a estar listo, ninguno de los siguientes tampoco
+  // (todos son iguales o más tardíos).
+  function tomarDeInventario(mostoId, hastaFecha, necesario) {
+    const lotes = remainingBatches[mostoId];
+    if (!lotes || !hastaFecha || necesario <= 1e-9) return 0;
+    let tomado = 0;
+    for (const lote of lotes) {
+      if (tomado >= necesario - 1e-9) break;
+      if (lote.listoEn.getTime() > hastaFecha.getTime()) break;
+      const take = Math.min(lote.hL, necesario - tomado);
+      lote.hL -= take;
+      tomado += take;
+    }
+    return tomado;
+  }
 
   // IMPORTANTE: no se agrupan todos los registros de una misma marca/mosto.
   // Cada bloque de envasado conserva su propia fecha de necesidad y volumen,
@@ -245,10 +264,13 @@ function computeCocinaPlan(brands, catalog, inventoryBalance) {
 
     // El inventario disponible se descuenta del volumen que hay que COCINAR, no del
     // volumen a envasar: el compromiso de envasado no cambia, solo cuánto de eso sale
-    // de un cocimiento nuevo vs. de cerveza que ya está lista en inventario.
-    const invDisponible = remainingInv[mostoId] || 0;
-    const cubiertoPorInventario = Math.min(invDisponible, volumenEnvasar);
-    remainingInv[mostoId] = invDisponible - cubiertoPorInventario;
+    // de un cocimiento nuevo vs. de cerveza que ya está lista en inventario. Solo se
+    // toman lotes que estarán listos EN O ANTES de la fecha de envasado de este bloque.
+    const cubiertoPorInventario = tomarDeInventario(
+      mostoId,
+      b.earliest || null,
+      volumenEnvasar,
+    );
     const volumenEnvasarPendiente = volumenEnvasar - cubiertoPorInventario;
 
     const volumenCocinar = volumenEnvasarPendiente / factor;

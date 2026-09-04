@@ -162,7 +162,13 @@ function esLevaduraEnMadurador(e) {
   );
 }
 
-// Suma el HL normalizado de todos los lotes por mosto — es lo que consume computeCocinaPlan().
+// Suma el HL normalizado de todos los lotes por mosto — TOTAL en el pipeline
+// (BBT terminado + FV fermentando + SV madurando), sin importar si ya está
+// listo o le faltan días. Es solo para MOSTRAR "inventario disponible" en el
+// Balance; computeCocinaPlan ya NO usa esta suma para descontar demanda (ver
+// inventoryBatchesByMosto) porque un FV que recién empezó a fermentar no
+// puede cubrir un envasado de esta semana solo porque "hay volumen" en algún
+// lado del proceso.
 function inventoryTotalsByMosto(catalog) {
   const totals = {};
   (catalog || []).forEach((m) => (totals[m.id] = 0));
@@ -172,6 +178,48 @@ function inventoryTotalsByMosto(catalog) {
     totals[e.mostoId] = (totals[e.mostoId] || 0) + (Number(e.hL) || 0);
   });
   return totals;
+}
+
+// Lotes de inventario por mosto CON su fecha real de disponibilidad (BBT: ya
+// listo / I0; FV: I0 + días de fermentación que le falten; SV: I0 + días de
+// maduración que le falten) — es lo que computeCocinaPlan() debe usar para
+// descontar demanda: un lote solo puede cubrir un envasado que ocurra EN O
+// DESPUÉS de su fecha de disponibilidad, nunca uno anterior. Ordenados por
+// fecha de disponibilidad (el que esté listo primero se consume primero).
+// Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
+function inventoryBatchesByMosto(catalog) {
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const catById = {};
+  (catalog || []).forEach((m) => (catById[m.id] = m));
+  const out = {};
+  (INVENTORY_BALANCE || []).forEach((e) => {
+    if (!e || e.mostoId == null) return;
+    if (esLevaduraEnMadurador(e)) return;
+    const hL = Number(e.hL) || 0;
+    if (hL <= 0) return;
+    let listoEn = i0;
+    if (e.tipo === "FV" || e.tipo === "SV" || e.tipo === "SV Pony") {
+      const m = catById[e.mostoId];
+      const dias =
+        e.diasEnEquipo === "" || e.diasEnEquipo == null
+          ? 0
+          : Number(e.diasEnEquipo) || 0;
+      const diasReq = m
+        ? (e.tipo === "FV"
+            ? Number(m.tiempoFermentacionHoras) || 0
+            : Number(m.tiempoMaduracionHoras) || 0) / 24
+        : 0;
+      const faltanDias = Math.max(0, diasReq - dias);
+      listoEn = new Date(i0.getTime() + faltanDias * 86400000);
+    }
+    // BBT: producto terminado, disponible desde ya (listoEn = i0).
+    if (!out[e.mostoId]) out[e.mostoId] = [];
+    out[e.mostoId].push({ hL, listoEn });
+  });
+  Object.keys(out).forEach((k) =>
+    out[k].sort((a, b) => a.listoEn - b.listoEn),
+  );
+  return out;
 }
 
 // Ocupación actual de cada equipo (FV/SV) según el inventario "producto en

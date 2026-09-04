@@ -81,7 +81,7 @@ function recompute() {
   const plan = computeCocinaPlan(
     STATE.brands,
     MOSTO_CATALOG,
-    inventoryTotalsByMosto(MOSTO_CATALOG),
+    inventoryBatchesByMosto(MOSTO_CATALOG),
   );
   STATE.plan = plan;
   // La tabla "Programación de cocinas" es la fuente de verdad de las fechas:
