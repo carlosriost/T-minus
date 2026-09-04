@@ -82,7 +82,7 @@ function recompute() {
   renderCocinaPlan(plan);
   renderSequence(seq);
   renderTankAssignments(seq.tankAssignment);
-  renderGanttEnvasado(STATE.mergedByTrain, weekStart);
+  renderGanttEnvasado(STATE.mergedByTrain, weekStart, STATE.parsed.weeks);
   renderGanttCocina(seq, weekStart);
   renderConflictos(seq);
   renderReglas(seq);

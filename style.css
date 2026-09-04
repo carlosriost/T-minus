@@ -548,6 +548,45 @@
         top: 0;
         z-index: 4;
       }
+      /* Marcador de "Semana N" cuando el Gantt fusiona varias hojas del
+         instructivo en una sola línea de tiempo. */
+      .week-header {
+        display: flex;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        height: 24px;
+      }
+      .week-header .lane-label {
+        height: 24px;
+      }
+      .week-track {
+        position: relative;
+        height: 24px;
+        flex: 0 0 auto;
+      }
+      .week-cell {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        justify-content: flex-start;
+        padding-left: 8px;
+        border-right: 2px solid var(--accent2);
+        background: var(--panel2);
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .week-cell b {
+        color: var(--accent2);
+        font-size: 12px;
+      }
       .day-cell {
         flex: none;
         border-right: 1px solid var(--line);

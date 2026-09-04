@@ -20,16 +20,61 @@ function findHeaderRow(aoa) {
  *    horas en la fila 10 y bloques por TREN en las filas 11/15/19/23.
  */
 function parseWorkbook(workbook) {
-  const suiteSheetName = workbook.SheetNames.find((name) => /^Semana\s+\d+$/i.test(String(name).trim()));
-  if (suiteSheetName) {
-    const ws = workbook.Sheets[suiteSheetName];
+  const suiteSheetNames = workbook.SheetNames.filter((name) =>
+    /^Semana\s+\d+$/i.test(String(name).trim()),
+  );
+  const looksLikeSuite360 = (name) => {
+    const ws = workbook.Sheets[name];
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
-    const looksLikeSuite360 = aoa.some((row) =>
+    return aoa.some((row) =>
       (row || []).some((v) => !isBlank(v) && String(v).trim().toUpperCase() === "TURNOS EN LÍNEA"),
     );
-    if (looksLikeSuite360) return parseSuite360Workbook(workbook, suiteSheetName);
+  };
+  const suite360Names = suiteSheetNames.filter(looksLikeSuite360);
+  if (suite360Names.length) {
+    // Varias hojas "Semana N": se ordenan por número y se fusionan en UNA sola
+    // línea de tiempo (cada hoja ya trae sus propias fechas reales, así que
+    // solo hay que concatenar los eventos de cada tren).
+    const ordered = suite360Names
+      .map((name) => ({
+        name,
+        num: Number((String(name).match(/\d+/) || ["0"])[0]) || 0,
+      }))
+      .sort((a, b) => a.num - b.num)
+      .map((x) => x.name);
+    const parsedWeeks = ordered.map((name) => parseSuite360Workbook(workbook, name));
+    return mergeSuite360Weeks(parsedWeeks);
   }
   return parseLegacyWorkbook(workbook);
+}
+
+// Combina el resultado de parseSuite360Workbook() de una o más hojas "Semana N"
+// en un solo objeto "parsed": concatena rawEvents por tren y arma la lista de
+// semanas (weeks) para marcar el inicio de cada una en el Gantt de envasado.
+function mergeSuite360Weeks(parsedWeeks) {
+  const weeks = parsedWeeks.map((p) => ({
+    label: p.weekLabel,
+    start: p.weekStartDate,
+    end: p.explicitWeekEnd,
+  }));
+  if (parsedWeeks.length === 1) return { ...parsedWeeks[0], weeks };
+
+  const rawEvents = { 5: [], 7: [], 8: [], 9: [] };
+  TRAINS.forEach((t) => {
+    parsedWeeks.forEach((p) => rawEvents[t].push(...((p.rawEvents || {})[t] || [])));
+  });
+  const first = parsedWeeks[0];
+  const last = parsedWeeks[parsedWeeks.length - 1];
+  return {
+    weekLabel: weeks.map((w) => w.label).join(" → "),
+    headerDate: first.headerDate,
+    weekStartDate: first.weekStartDate,
+    explicitWeekStart: first.explicitWeekStart,
+    explicitWeekEnd: last.explicitWeekEnd,
+    rawEvents,
+    summary: [],
+    weeks,
+  };
 }
 
 function suiteCellDateUTC(v) {

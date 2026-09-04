@@ -84,7 +84,7 @@ function ganttLinkCursor(ms) {
   }
 }
 
-function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
+function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   const container = document.getElementById("ganttContainer");
   if (!container) return;
   const allBlocks = TRAINS.flatMap((t) =>
@@ -131,6 +131,39 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
   let dayLinesHtml = "";
   for (let d = 1; d < totalDays; d++) {
     dayLinesHtml += `<div class="day-line" style="left:${d * dayWidth}px;"></div>`;
+  }
+
+  // Marcador de semana: cuando el instructivo trae varias hojas "Semana N"
+  // fusionadas en una sola línea de tiempo, se rotula el inicio de cada una.
+  let weekHeaderHtml = "";
+  if (Array.isArray(weeks) && weeks.length > 1) {
+    let weekCellsHtml = "";
+    weeks.forEach((w, i) => {
+      if (!w || !w.start) return;
+      const wStart = new Date(
+        Date.UTC(w.start.getUTCFullYear(), w.start.getUTCMonth(), w.start.getUTCDate()),
+      );
+      const nextStart = weeks[i + 1] && weeks[i + 1].start;
+      const wEndExclusive = nextStart
+        ? new Date(Date.UTC(nextStart.getUTCFullYear(), nextStart.getUTCMonth(), nextStart.getUTCDate()))
+        : addDays(wStart, 7);
+      const left = Math.max(
+        0,
+        ((wStart.getTime() - rangeStart.getTime()) / 3600000) * GANTT_PX_PER_HOUR,
+      );
+      const right = Math.min(
+        totalWidth,
+        ((wEndExclusive.getTime() - rangeStart.getTime()) / 3600000) * GANTT_PX_PER_HOUR,
+      );
+      const width = right - left;
+      if (width <= 0) return;
+      weekCellsHtml += `<div class="week-cell" style="left:${left}px; width:${width}px;"><b>${escapeHtml(w.label || "Semana " + (i + 1))}</b><span>${fmtDate(w.start)}</span></div>`;
+    });
+    weekHeaderHtml = `
+      <div class="week-header">
+        <div class="lane-label" style="background:var(--bg2); border-right:1px solid var(--line);"></div>
+        <div class="week-track" style="width:${totalWidth}px;">${weekCellsHtml}</div>
+      </div>`;
   }
 
   const laneRowsHtml = TRAINS.map((t) => {
@@ -198,7 +231,8 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw) {
   container.innerHTML = `
     <div id="ganttScroll">
       <div id="ganttWrap" style="width:${labelWidth + totalWidth}px;">
-        <div class="day-header">${dayHeaderHtml}</div>
+        ${weekHeaderHtml}
+        <div class="day-header" style="top:${weekHeaderHtml ? "24px" : "0"};">${dayHeaderHtml}</div>
         ${laneRowsHtml}
         <div class="gantt-xcursor" hidden></div>
       </div>
