@@ -319,7 +319,12 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
 
   // Mantener el orden de bloques del plan de envasado. NO ordenar por start de cocina.
   results.sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-  return { results, sinHomologar };
+  // Lo que sobró de cada lote (no se usó porque no había demanda a tiempo para
+  // consumirlo, o porque estará listo después de la última fecha cargada) —
+  // se expone para poder explicar el "inventario sobrante" del Balance: no es
+  // que "no cuadre", es que ese HL no alcanza a estar listo para ninguno de
+  // los envasados que sí se cargaron.
+  return { results, sinHomologar, remainingInventoryBatches: remainingBatches };
 }
 
 /* =========================================================================

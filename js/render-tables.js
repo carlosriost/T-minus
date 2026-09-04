@@ -422,17 +422,35 @@ function renderInventoryBalance(plan) {
         ? `${weeksLoaded[0].label} (${fmtDate(weeksLoaded[0].start)})`
         : "";
   const disponibleByMosto = inventoryTotalsByMosto(MOSTO_CATALOG);
+  const remainingBatches = (plan && plan.remainingInventoryBatches) || {};
   const resumenRows = MOSTO_CATALOG.map((m) => {
     const disponible = disponibleByMosto[m.id] || 0;
     const t = totalsByMosto[m.id] || { envasar: 0, cubierto: 0, cocinar: 0 };
     const sobrante = Math.max(0, disponible - t.cubierto);
+    // Puede sobrar inventario Y a la vez faltar por cocinar, sin contradicción:
+    // no es que "no cuadre la suma" — es que ese HL sobrante no alcanza a estar
+    // LISTO (fermentación/maduración) para ninguno de los envasados cargados
+    // que todavía lo necesitan; solo servirá para una demanda futura que aún
+    // no se ha cargado. Se explica con la fecha real del lote más próximo.
+    let notaHtml = "";
+    if (sobrante > 1 && t.cocinar > 1e-6) {
+      const lotesSobrantes = (remainingBatches[m.id] || []).filter(
+        (l) => l.hL > 1e-6,
+      );
+      if (lotesSobrantes.length) {
+        const masProximo = lotesSobrantes.reduce((a, b) =>
+          a.listoEn < b.listoEn ? a : b,
+        );
+        notaHtml = `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;">Hay ${Math.round(t.cocinar).toLocaleString("es-CO")} HL por cocinar Y a la vez ${Math.round(sobrante).toLocaleString("es-CO")} HL sobrantes: no se contradicen — parte del inventario (el lote sobrante más próximo, ${Math.round(masProximo.hL).toLocaleString("es-CO")} HL) no está listo hasta ${fmtDateTime(masProximo.listoEn)}, así que no alcanzó a cubrir un envasado anterior a esa fecha.</div>`;
+      }
+    }
     return `<tr>
       <td>${escapeHtml(m.nombre)}</td>
       <td>${Math.round(disponible).toLocaleString("es-CO")} HL</td>
       <td>${Math.round(t.envasar).toLocaleString("es-CO")} HL</td>
       <td>${Math.round(t.cubierto).toLocaleString("es-CO")} HL</td>
       <td>${Math.round(t.cocinar).toLocaleString("es-CO")} HL</td>
-      <td>${Math.round(sobrante).toLocaleString("es-CO")} HL</td>
+      <td>${Math.round(sobrante).toLocaleString("es-CO")} HL${notaHtml}</td>
     </tr>`;
   }).join("");
   const alcanceHtml = alcanceTxt
