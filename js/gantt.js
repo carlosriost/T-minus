@@ -777,17 +777,26 @@ function renderGanttFiltracion(plan) {
       }
       return null;
     };
+    // Igualdad de marca laxa: "aguila light" ~ "light".
+    const brandEq = (a, b) =>
+      !!a && !!b && (a === b || a.includes(b) || b.includes(a));
     espacioAt = (ms) => {
       const brand = marcaActivaAt(ms);
       const bk = brand ? normalizeText(brand) : null;
       let general = 0;
       let marca = 0;
       bbtSim.tanks.forEach((t) => {
-        const n = nivelAt(t.niveles, ms) || { hL: 0, marca: null };
+        const n = nivelAt(t.niveles, ms) || { hL: 0, marcaRef: null };
         const libre = Math.max(0, t.cap - n.hL);
         general += libre;
-        if (bk && (n.hL <= 1e-6 || normalizeText(n.marca || "") === bk))
-          marca += libre;
+        if (!bk) return;
+        const ref = normalizeText(n.marcaRef || "");
+        // Cuenta para la marca en curso si: el BBT tiene esa marca (su hueco),
+        // o está vacío y nunca se usó, o está vacío y su última marca era esta.
+        // Un BBT que se vació de OTRA marca NO cuenta (sigue "reservado" a ella).
+        const cuenta =
+          n.hL > 1e-6 ? brandEq(ref, bk) : !ref || brandEq(ref, bk);
+        if (cuenta) marca += libre;
       });
       return { general, marca, brand };
     };
@@ -968,6 +977,10 @@ function simulateBBTLifecycle(plan) {
           brandKey: nText(e.marcaTexto) || null,
           marca: (e.marcaTexto || "").trim() || null,
           mostoId: matchMosto(e.marcaTexto, MOSTO_CATALOG),
+          // Marca "pegajosa": la última que tuvo el BBT. Se conserva aunque el
+          // BBT se vacíe, para que un BBT que se vació de Poker NO cuente como
+          // espacio para Light solo por estar vacío.
+          ultimaMarca: nText(e.marcaTexto) || null,
           estado: "envase",
           libreEn: i0ms,
         });
@@ -982,6 +995,7 @@ function simulateBBTLifecycle(plan) {
       brandKey: null,
       marca: null,
       mostoId: null,
+      ultimaMarca: null, // vacío de fábrica: sirve para cualquier marca
       estado: "vacio",
       libreEn: i0ms,
     });
@@ -1084,15 +1098,25 @@ function simulateBBTLifecycle(plan) {
       let guard = 0;
       while (need > 1e-6 && guard++ < 128) {
         if (!llenando || llenando.estado !== "llenando") {
+          const fk = f.marca ? nText(f.marca) : null;
           llenando =
             slots.find((s) => s.estado === "llenando") ||
+            // 1º un BBT vacío que ya era de esta marca (o vacío de fábrica)
+            slots.find(
+              (s) =>
+                s.estado === "vacio" &&
+                s.libreEn <= ms &&
+                (!s.ultimaMarca || !fk || s.ultimaMarca === fk),
+            ) ||
+            // 2º cualquier BBT vacío (se reasigna a esta marca)
             slots.find((s) => s.estado === "vacio" && s.libreEn <= ms) ||
             null;
           if (llenando) {
             llenando.estado = "llenando";
             llenando.mostoId = f.mostoId;
             llenando.marca = f.marca;
-            llenando.brandKey = f.marca ? nText(f.marca) : null;
+            llenando.brandKey = fk;
+            if (fk) llenando.ultimaMarca = fk;
           }
         }
         if (!llenando) {
@@ -1115,7 +1139,15 @@ function simulateBBTLifecycle(plan) {
     slots.forEach((s, i) => {
       const ev = estadoVis(s, drained[i]);
       const mk = s.marca || null;
-      tanks[i].niveles.push({ ms, hL: Math.round(s.hL), estadoVis: ev, marca: mk });
+      tanks[i].niveles.push({
+        ms,
+        hL: Math.round(s.hL),
+        estadoVis: ev,
+        marca: mk,
+        // marca de referencia: la del contenido si hay, y si no la última que
+        // tuvo (null solo si el BBT nunca se usó).
+        marcaRef: s.hL > 1e-6 ? mk : s.ultimaMarca || null,
+      });
       const p = prev[i];
       if (!p || p.ev !== ev || p.mk !== mk) {
         if (p) p.seg.endMs = ms;
