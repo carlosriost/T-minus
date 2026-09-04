@@ -20,17 +20,31 @@ function findHeaderRow(aoa) {
  *    horas en la fila 10 y bloques por TREN en las filas 11/15/19/23.
  */
 function parseWorkbook(workbook) {
+  // Tolerante a variaciones del nombre real de la hoja: "Semana 1", "SEMANA_1",
+  // "Semana1", con espacios o guiones bajos de más — lo único que importa es
+  // que empiece por "semana" seguido de un número. Antes exigía una coincidencia
+  // EXACTA (incluida la tilde de "LÍNEA" sin acentos variables) y una hoja con
+  // el nombre levemente distinto quedaba fuera de la fusión sin ningún aviso.
   const suiteSheetNames = workbook.SheetNames.filter((name) =>
-    /^Semana\s+\d+$/i.test(String(name).trim()),
+    /^semana[\s_-]*\d+/.test(normalizeText(name)),
   );
   const looksLikeSuite360 = (name) => {
     const ws = workbook.Sheets[name];
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
     return aoa.some((row) =>
-      (row || []).some((v) => !isBlank(v) && String(v).trim().toUpperCase() === "TURNOS EN LÍNEA"),
+      (row || []).some(
+        (v) => !isBlank(v) && normalizeText(v).trim() === "turnos en linea",
+      ),
     );
   };
   const suite360Names = suiteSheetNames.filter(looksLikeSuite360);
+  // Hojas que se llaman "Semana N" pero NO se reconocieron como Suite 360 (no
+  // traen "Turnos en línea"): antes quedaban fuera de la fusión sin ningún
+  // aviso, dando la impresión de que "faltaban" semanas. Se listan para que el
+  // usuario las vea en el mensaje de carga en vez de que desaparezcan solas.
+  const sheetsSinReconocer = suiteSheetNames.filter(
+    (n) => !suite360Names.includes(n),
+  );
   if (suite360Names.length) {
     // Varias hojas "Semana N": se ordenan por número y se fusionan en UNA sola
     // línea de tiempo (cada hoja ya trae sus propias fechas reales, así que
@@ -43,7 +57,9 @@ function parseWorkbook(workbook) {
       .sort((a, b) => a.num - b.num)
       .map((x) => x.name);
     const parsedWeeks = ordered.map((name) => parseSuite360Workbook(workbook, name));
-    return mergeSuite360Weeks(parsedWeeks);
+    const merged = mergeSuite360Weeks(parsedWeeks);
+    merged.sheetsSinReconocer = sheetsSinReconocer;
+    return merged;
   }
   return parseLegacyWorkbook(workbook);
 }

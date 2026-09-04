@@ -251,8 +251,12 @@ function inventoryOccupancyByEquipo() {
 }
 
 // Próximo vencimiento de lo que YA está madurando/maduro en los SV, separado
-// en "pony" (SV Pony) y "cerveza" (SV normales, cualquier otro mosto). Usa
-// tiempoVencimientoHoras del catálogo (0 = ese mosto no controla vencimiento).
+// en "pony" y "cerveza" (cualquier otro mosto). Usa tiempoVencimientoHoras
+// del catálogo (0 = ese mosto no controla vencimiento). Se agrupa por la
+// MARCA (mostoId), no por el tipo de equipo: un lote de mostoId "pony" es
+// Pony aunque su fila de inventario haya quedado cargada como "SV" en vez de
+// "SV Pony" (Pony solo madura en SV Pony — ver assignTanks/canSV — así que un
+// registro "SV" con mostoId pony es un lote Pony mal tipeado, no cerveza).
 // No cuenta los SV con levadura guardada (no son producto real). Devuelve
 // {pony: Date|null, cerveza: Date|null} con la fecha más próxima de cada uno.
 function proximoVencimientoSV(catalog) {
@@ -281,7 +285,7 @@ function proximoVencimientoSV(catalog) {
     const fechaVence = new Date(
       i0.getTime() - dias * 86400000 + vencH * 3600000,
     );
-    if (e.tipo === "SV Pony") {
+    if (e.mostoId === "pony") {
       if (!pony || fechaVence < pony) pony = fechaVence;
     } else {
       if (!cerveza || fechaVence < cerveza) cerveza = fechaVence;

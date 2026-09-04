@@ -49,6 +49,28 @@ function render(parsed) {
       : "") +
     (i0 ? "  ·  I0: " + fmtDateTime(i0) : "");
 
+  // Confirmación explícita de cuántas hojas "Semana N" se leyeron y fusionaron,
+  // para que quede claro que el balance/la programación cubren TODO lo cargado
+  // (y para avisar si alguna hoja con nombre "Semana N" no se pudo reconocer).
+  const weeksAlertEl = document.getElementById("weeksLoadedAlert");
+  if (weeksAlertEl) {
+    const weeks = parsed.weeks || [];
+    const sinReconocer = parsed.sheetsSinReconocer || [];
+    let html = "";
+    if (weeks.length > 1) {
+      const lista = weeks
+        .map((w) => `${w.label} (${fmtDate(w.start)})`)
+        .join(" → ");
+      html += `<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--ok); font-size:12.5px;">✓ ${weeks.length} hojas de semana leídas y fusionadas en un solo plan: ${lista}. La programación y el balance cubren TODO este rango.</div>`;
+    } else if (weeks.length === 1) {
+      html += `<div style="color:var(--muted); font-size:11.5px; margin-bottom:10px;">1 hoja de semana leída: ${weeks[0].label} (${fmtDate(weeks[0].start)}).</div>`;
+    }
+    if (sinReconocer.length) {
+      html += `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${sinReconocer.length} hoja(s) con nombre "Semana N" NO se pudieron leer (no traen "Turnos en línea" en el formato esperado) y quedaron FUERA de la programación: ${sinReconocer.map(escapeHtml).join(", ")}. Revísalas.</div>`;
+    }
+    weeksAlertEl.innerHTML = html;
+  }
+
   recompute();
   document.getElementById("results").classList.remove("hidden");
   document.getElementById("ganttTopPanel").classList.remove("hidden");
