@@ -1150,12 +1150,11 @@ function simulateBBTLifecycle(plan) {
   });
 }
 
-let BBT_TL = null; // {sim, rs, totalWidth, colCache} para el scrubber
+let BBT_TL = null; // {sim, colCache} para el scrubber
 
 function renderBBTTimeline(plan) {
-  const cont = document.getElementById("bbtTimelineContainer");
-  if (!cont) return;
   const gaugesEl = document.getElementById("bbtGauges");
+  if (!gaugesEl) return;
   const legendEl = document.getElementById("bbtTimelineLegend");
   const alertEl = document.getElementById("bbtTimelineAlert");
   const info = document.getElementById("bbtTimeInfo");
@@ -1163,8 +1162,7 @@ function renderBBTTimeline(plan) {
 
   const sim = simulateBBTLifecycle(plan);
   if (!sim.ok) {
-    cont.innerHTML = `<p class="empty-note">${escapeHtml(sim.error || "Sin datos.")}</p>`;
-    if (gaugesEl) gaugesEl.innerHTML = "";
+    gaugesEl.innerHTML = `<p class="empty-note">${escapeHtml(sim.error || "Sin datos.")}</p>`;
     if (legendEl) legendEl.innerHTML = "";
     if (alertEl) alertEl.innerHTML = "";
     if (info) info.textContent = "";
@@ -1172,96 +1170,10 @@ function renderBBTTimeline(plan) {
     return;
   }
 
-  const first = new Date(sim.i0ms);
-  const rangeStart = new Date(
-    Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate()),
-  );
-  const rs = rangeStart.getTime();
-  const totalHours = Math.max(24, Math.ceil((sim.endMs - rs) / 3600000));
-  const totalDays = Math.ceil(totalHours / 24);
-  const dayWidth = 24 * GANTT_PX_PER_HOUR;
-  const totalWidth = totalDays * dayWidth;
-
-  const colCache = {};
-  const stateStyle = (ev, marca) => {
-    if (ev === "vacío")
-      return { bg: "var(--bg2)", fg: "var(--muted)", dashed: true };
-    if (ev === "aseo")
-      return {
-        bg: "repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px)",
-        fg: "#000",
-      };
-    const c = colorForFiltracion(marca || "—", colCache);
-    if (ev === "llenando") return { bg: c.bg, fg: c.fg, op: 0.5 };
-    if (ev === "enviando") return { bg: c.bg, fg: c.fg, op: 0.82 };
-    return { bg: c.bg, fg: c.fg };
-  };
-
-  let dayHeader =
-    '<div class="lane-label" style="background:var(--bg2); border-right:1px solid var(--line);"></div>';
-  for (let d = 0; d < totalDays; d++)
-    dayHeader += `<div class="day-cell" style="width:${dayWidth}px;"><b>${fmtDate(addDays(rangeStart, d))}</b></div>`;
-  let dayLines = "";
-  for (let d = 1; d < totalDays; d++)
-    dayLines += `<div class="day-line" style="left:${d * dayWidth}px;"></div>`;
-
-  const rowsHtml = sim.tanks
-    .map((t) => {
-      let blocks = "";
-      t.hist.forEach((h) => {
-        if (h.estadoVis === "vacío") return;
-        const a = Math.max(h.startMs, rs);
-        const z = Math.max(a, Math.min(h.endMs, sim.endMs));
-        if (z <= a) return;
-        const left = ((a - rs) / 3600000) * GANTT_PX_PER_HOUR;
-        const w = Math.max(2, ((z - a) / 3600000) * GANTT_PX_PER_HOUR);
-        const st = stateStyle(h.estadoVis, h.marca);
-        const label = `${h.marca ? h.marca + " · " : ""}${h.estadoVis}`;
-        const title = escapeHtml(
-          `${t.equipo} · ${label} · ${fmtDateTime(new Date(h.startMs))} → ${fmtDateTime(new Date(h.endMs))}`,
-        );
-        blocks += `<div class="block" style="left:${left}px; width:${w}px; background:${st.bg}; color:${st.fg};${st.op ? "opacity:" + st.op + ";" : ""}${st.dashed ? "border:1px dashed var(--line);" : ""}" title="${title}">${
-          w >= 30 ? `<b style="color:${st.fg};">${escapeHtml(label)}</b>` : ""
-        }</div>`;
-      });
-      return `<div class="gantt-row">
-        <div class="lane-label">${escapeHtml(t.equipo)}<span style="display:block;font-size:9px;color:var(--muted);">${Math.round(t.cap).toLocaleString("es-CO")} HL</span></div>
-        <div class="lane-track" style="width:${totalWidth}px;">
-          <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLines}</div>
-          ${blocks}
-        </div>
-      </div>`;
-    })
-    .join("");
-
-  cont.innerHTML = `
-    <div style="overflow-x:auto; padding:0 0 12px;">
-      <div style="position:relative; width:${96 + totalWidth}px;">
-        <div class="day-header">${dayHeader}</div>
-        <div style="position:relative;">
-          ${rowsHtml}
-          <div class="bbt-xcursor" id="bbtXCursor" hidden></div>
-        </div>
-      </div>
-    </div>`;
-
   if (legendEl) {
-    const items = [
-      ["llenando", "background:#8a8a8a;opacity:.5;"],
-      ["lleno", "background:#8a8a8a;"],
-      ["enviando a envase", "background:#8a8a8a;opacity:.82;"],
-      [
-        "aseo / cambio",
-        "background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);",
-      ],
-    ];
     legendEl.innerHTML =
-      items
-        .map(
-          ([l, s]) => `<div class="item"><span class="sw" style="${s}"></span>${l}</div>`,
-        )
-        .join("") +
-      `<div class="item" style="color:var(--muted);">·  el color de fondo es la marca</div>`;
+      `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);"></span>aseo / cambio</div>` +
+      `<div class="item" style="color:var(--muted);">·  el color del tanque es la marca</div>`;
   }
 
   if (alertEl) {
@@ -1270,7 +1182,7 @@ function renderBBTTimeline(plan) {
       : `<div style="color:var(--muted); font-size:11.5px; padding:2px 0 8px;">${sim.tanks.length} BBT simulados · arrastra la línea de tiempo (o pulsa ▶) para ver el nivel y la marca de cada tanque en cada momento.</div>`;
   }
 
-  BBT_TL = { sim, rs, totalWidth, colCache };
+  BBT_TL = { sim, colCache: {} };
   if (slider) {
     const keep = Number(slider.dataset.frac || 0);
     slider.value = Math.round(Math.max(0, Math.min(1, keep)) * 1000);
@@ -1295,19 +1207,15 @@ function bbtNivelAt(niveles, ms) {
 
 function bbtScrubTo(sliderVal) {
   if (!BBT_TL) return;
-  const { sim, rs, colCache } = BBT_TL;
+  const { sim, colCache } = BBT_TL;
   const frac = Math.max(0, Math.min(1, (Number(sliderVal) || 0) / 1000));
   const ms = sim.i0ms + frac * (sim.endMs - sim.i0ms);
   const slider = document.getElementById("bbtTimeSlider");
   if (slider) slider.dataset.frac = frac;
   const info = document.getElementById("bbtTimeInfo");
   const gaugesEl = document.getElementById("bbtGauges");
-  const cursor = document.getElementById("bbtXCursor");
 
-  if (cursor) {
-    cursor.hidden = false;
-    cursor.style.left = 96 + ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR + "px";
-  }
+  // Mueve también el cursor de los Gantt de envasado/filtración al mismo instante.
   if (typeof ganttLinkCursor === "function") ganttLinkCursor(ms);
 
   let conProd = 0;
@@ -1486,7 +1394,6 @@ function initFiltracionPanel() {
     <div class="panel-head"><h3>BBTs en el tiempo</h3></div>
     <div class="panel-body">
       <div id="bbtTimelineAlert" style="padding:0 20px;"></div>
-      <div id="bbtTimelineContainer"></div>
       <div style="display:flex; align-items:center; gap:12px; padding:8px 20px;">
         <button class="btn small" id="bbtPlayBtn" type="button">▶ Reproducir</button>
         <input type="range" id="bbtTimeSlider" min="0" max="1000" value="0" step="1" style="flex:1;" />

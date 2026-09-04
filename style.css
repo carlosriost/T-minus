@@ -686,16 +686,7 @@
         pointer-events: none;
         z-index: 25;
       }
-      /* BBTs en el tiempo: cursor del deslizador + medidores de nivel */
-      .bbt-xcursor {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: 0;
-        border-left: 1px solid var(--accent2);
-        pointer-events: none;
-        z-index: 30;
-      }
+      /* BBTs en el tiempo: medidores de nivel por tanque */
       .bbt-gauge {
         width: 66px;
         flex: 0 0 66px;
