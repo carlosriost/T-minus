@@ -1329,6 +1329,20 @@ function sequenceWeek(
   rows.push(...grouped);
   rows.forEach((r, idx) => (r.n = idx + 1));
 
+  // "inicio de bloque" / "fin de bloque" es un rótulo que anuncia un cambio real
+  // de marca a continuación. Cada demanda de envasado arma su propio bloque de
+  // cocina (arriba, deliberadamente sin agruparse por marca — ver comentario en
+  // computeCocinaPlan), pero cuando dos de esos bloques quedan consecutivos y son
+  // de LA MISMA marca, no debe mostrarse un falso fin/inicio entre ellos: se
+  // recalculan los rótulos aquí mirando la marca del cocimiento vecino real.
+  const cocRows = rows.filter((r) => r.tipo === "cocimiento");
+  cocRows.forEach((r, i) => {
+    const prev = cocRows[i - 1];
+    const next = cocRows[i + 1];
+    r.blockStart = !prev || prev.mostoId !== r.mostoId;
+    r.blockEnd = !next || next.mostoId !== r.mostoId;
+  });
+
   // Para las reglas/recomendaciones, usar el orden físico ejecutado.
   blocks = executionBlocks;
   // Verificación final de fecha límite usando LAS FECHAS ACTUALES de la secuencia.
