@@ -129,13 +129,23 @@ function suiteDisplayName(product, activity) {
   const p = String(product || "").trim();
   const a = String(activity || "").trim();
   const n = normalizeText(p);
-  let brand = p;
-  if (/^cost/.test(n)) brand = "Costeñita";
-  else if (/^a light|aguila light/.test(n)) brand = "Águila Light";
-  else if (/^ag\b|^aguila\b/.test(n)) brand = "Águila";
-  else if (/^pok/.test(n)) brand = "Poker";
-  else if (/^pil/.test(n)) brand = "Pilsen";
-  else if (/^pmg|^pm\b|pony/.test(n)) brand = "Pony Malta";
+  // Sin anclar al INICIO del texto (antes usaba ^cost, ^ag\b, etc.): un código
+  // o prefijo antes del nombre de marca (pasa en algunas semanas del
+  // instructivo) hacía que el patrón anclado nunca coincidiera y la marca
+  // quedara sin reconocer — y por lo tanto sin homologar a ningún mosto más
+  // adelante, desapareciendo del balance sin ningún aviso.
+  let brand = p; // si no se reconoce nada, se deja el texto crudo
+  if (n.includes("cost")) brand = "Costeñita";
+  else if (
+    n.includes("aguila light") ||
+    n.includes("a light") ||
+    n.includes("aguila lig")
+  )
+    brand = "Águila Light";
+  else if (n.includes("poker") || /\bpok\b/.test(n)) brand = "Poker";
+  else if (n.includes("pilsen") || /\bpil\b/.test(n)) brand = "Pilsen";
+  else if (n.includes("pony") || /\bpmg?\b/.test(n)) brand = "Pony Malta";
+  else if (n.includes("aguila") || /\bag\b/.test(n)) brand = "Águila";
   return [brand, a && !/^DPA|^NST/i.test(a) ? a : ""].filter(Boolean).join(" · ");
 }
 

@@ -438,8 +438,18 @@ function renderInventoryBalance(plan) {
   const alcanceHtml = alcanceTxt
     ? `<div style="color:var(--muted); font-size:11.5px; margin-bottom:6px;">Balance de ${alcanceTxt} — la suma cubre TODO lo cargado, no solo una semana.</div>`
     : "";
+  // Marcas que el Gantt de envasado SÍ pide pero que no homologaron a ningún
+  // mosto (texto de marca no reconocido) NUNCA entran a este resumen — con
+  // varias semanas fusionadas, una sola fila de un formato/nombre distinto en
+  // alguna semana basta para que esa demanda "desaparezca" del balance sin
+  // aviso. Se muestra aquí mismo, no solo en la pestaña "Sin homologar".
+  const sinHom = (plan && plan.sinHomologar) || [];
+  const sinHomTotal = sinHom.reduce((s, b) => s + (Number(b.volumen) || 0), 0);
+  const sinHomHtml = sinHom.length
+    ? `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${Math.round(sinHomTotal).toLocaleString("es-CO")} HL pedidos en el Gantt de envasado NO están en este balance porque su marca no homologó a ningún mosto: ${sinHom.map((b) => `${escapeHtml(b.name)} (${Math.round(b.volumen).toLocaleString("es-CO")} HL)`).join(", ")}. Ajusta las palabras clave en el Catálogo de mostos o revisa la pestaña "Sin homologar".</div>`
+    : "";
   const resumenHtml = resumenRows
-    ? `${alcanceHtml}<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar (total cargado)</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
+    ? `${alcanceHtml}${sinHomHtml}<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar (total cargado)</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
     : '<p class="empty-note">Agrega al menos un mosto en el Catálogo de mostos para poder registrar inventario.</p>';
 
   // ---- Detalle por lote: equipo, marca, días en el equipo y HL normalizados ----
