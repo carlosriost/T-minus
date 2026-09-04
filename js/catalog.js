@@ -10,9 +10,10 @@
 // Los tiempos se editan en formato hh:mm:ss (horas:minutos:segundos) y se guardan internamente en horas.
 // IMPORTANTE: "Light" va antes que "Estandar" en la lista para que "Águila Light" homologue a
 // Mosto Light y no quede capturada primero por la palabra clave genérica "aguila" de Estandar.
-// tiempoVencimientoHoras = cuánto puede esperar un lote, YA MADURO, en su SV
-// antes de dañarse (0 = sin vencimiento / no se controla). Se cuenta DESPUÉS
-// de tiempoMaduracionHoras, hasta que arranca el envasado de ese lote.
+// tiempoVencimientoHoras = tiempo MÁXIMO TOTAL que un lote puede estar en su
+// SV antes de dañarse (0 = sin vencimiento / no se controla), maduración
+// incluida: se cuenta desde que el lote entra al SV (fin de cocina), no desde
+// que termina de madurar.
 let MOSTO_CATALOG = [
   {
     id: "light",
@@ -273,13 +274,12 @@ function proximoVencimientoSV(catalog) {
       e.diasEnEquipo === "" || e.diasEnEquipo == null
         ? 0
         : Number(e.diasEnEquipo) || 0;
-    const maduracionDias = (Number(m.tiempoMaduracionHoras) || 0) / 24;
-    // Fecha en que termina (o terminó, si es negativo) la maduración de este
-    // lote, más el plazo de vencimiento propio del mosto.
+    // tiempoVencimientoHoras es el máximo TOTAL en el SV (maduración incluida),
+    // contado desde que el lote entró al equipo — no desde que terminó de
+    // madurar. "dias" ya son los que lleva adentro, así que la entrada al
+    // equipo fue hace "dias" días.
     const fechaVence = new Date(
-      i0.getTime() +
-        (maduracionDias - dias) * 86400000 +
-        vencH * 3600000,
+      i0.getTime() - dias * 86400000 + vencH * 3600000,
     );
     if (e.tipo === "SV Pony") {
       if (!pony || fechaVence < pony) pony = fechaVence;

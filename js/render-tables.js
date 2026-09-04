@@ -343,7 +343,7 @@ function renderCatalog() {
   wrap.innerHTML = `<table><thead><tr>
       <th>Marca</th><th>Marcas (palabras clave)</th><th>Factor dilución</th><th>Vol. x cocimiento (HL)</th>
       <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th>
-      <th title="Cuánto puede esperar en el SV YA MADURO antes de dañarse, contado después de la maduración. 0 = sin vencimiento.">Vencimiento en SV (hh:mm:ss)</th><th></th>
+      <th title="Máximo TOTAL en el SV antes de dañarse, maduración incluida (contado desde que sale de cocina). 0 = sin vencimiento.">Vencimiento en SV (hh:mm:ss)</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
   wrap.querySelectorAll(".cat-input").forEach((inp) => {

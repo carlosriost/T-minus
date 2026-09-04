@@ -1184,21 +1184,24 @@ function sequenceWeek(
     // El tiempo de cocina (8:15, 8:50, 8:55, etc.) NO interviene en la separación
     // entre inicios.
     let actualFirst = new Date(earliestFeasible.getTime());
-    // Vencimiento (catálogo de mostos, "Vencimiento en SV"): un lote YA MADURO
-    // no puede quedar esperando en su SV más de tiempoVencimientoHoras antes de
-    // que le toque arrancar su envasado, o se daña (0 = sin control, p. ej.
-    // cerveza normal). "firstLatest" es la última hora permitida de este
-    // cocimiento (calculada desde el envasado con cero holgura); como todos los
-    // cocimientos del bloque comparten la misma separación entre inicios que
-    // "latestStarts", adelantar el primero hasta como mucho firstLatest − ese
-    // plazo basta para que TODO el bloque lo respete, aunque la cocina esté
-    // libre mucho antes.
+    // Vencimiento (catálogo de mostos, "Vencimiento en SV"): tiempoVencimientoHoras
+    // es el máximo TOTAL que un lote puede estar en su SV, maduración incluida
+    // (0 = sin control, p. ej. cerveza normal) — no un plazo aparte después de
+    // madurar. Como la maduración (tiempoMaduracionHoras) es fija, el margen
+    // real que se puede "adelantar" la cocina sin que se venza es
+    // vencimiento − maduración. "firstLatest" es la última hora permitida de
+    // este cocimiento (calculada desde el envasado con cero holgura); como
+    // todos los cocimientos del bloque comparten la misma separación entre
+    // inicios que "latestStarts", adelantar el primero hasta como mucho
+    // firstLatest − ese margen basta para que TODO el bloque lo respete,
+    // aunque la cocina esté libre mucho antes.
     const vencimientoHoras = Number(
       (catalogById[block.mostoId] || {}).tiempoVencimientoHoras,
     );
     if (vencimientoHoras > 0) {
+      const margenHoras = Math.max(0, vencimientoHoras - block.maduracionHoras);
       const pisoVencimiento = new Date(
-        firstLatest.getTime() - vencimientoHoras * 3600000,
+        firstLatest.getTime() - margenHoras * 3600000,
       );
       if (actualFirst.getTime() < pisoVencimiento.getTime()) {
         actualFirst = pisoVencimiento;
