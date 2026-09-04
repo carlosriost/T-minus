@@ -1530,20 +1530,50 @@ function sequenceWeek(
   const totalHL = blocks.reduce((a, b) => a + b.volumenEnvasar, 0);
   const ponyHL = ponyBlocks.reduce((a, b) => a + b.volumenEnvasar, 0);
   const cervezaHL = totalHL - ponyHL;
-  if (ponyHL > 23600) {
-    reglaWarnings.push({
-      ids: [6],
-      text: `Regla 6: volumen semanal de Pony ${ponyHL.toLocaleString("es-CO", { maximumFractionDigits: 0 })} hL supera 23.600 hL.`,
-    });
+
+  // Reglas 1 y 6: se miden POR SEMANA CALENDARIO (lunes a domingo), sobre el
+  // volumen de envasado PEDIDO esa semana — no sobre el total acumulado de
+  // todas las semanas que traiga el instructivo (puede traer varias hojas
+  // "Semana N" fusionadas). Cada bloque se ubica en la semana de su fecha de
+  // envasado (block.deadline = fechaEnvasadoMinima); los tramos de un mismo
+  // bloque de Pony ya comparten esa fecha, así que quedan en la misma semana.
+  function lunesDe(fecha) {
+    const d = new Date(
+      Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()),
+    );
+    const dow = d.getUTCDay(); // 0 = domingo
+    return addDays(d, dow === 0 ? -6 : 1 - dow);
   }
-  const escenarioCerveza = cervezaHL <= 66000 && ponyHL <= 15000;
-  const escenarioPony = ponyHL <= 23600 && cervezaHL <= 57400;
-  if (totalHL > 81000 || (!escenarioCerveza && !escenarioPony)) {
-    reglaWarnings.push({
-      ids: [1],
-      text: `Regla 1: volumen semanal total ${totalHL.toLocaleString("es-CO", { maximumFractionDigits: 0 })} hL no cabe en ninguno de los escenarios de aseo permitidos.`,
-    });
-  }
+  const semanas = {};
+  blocks.forEach((b) => {
+    const ref = b.deadline || (b.latestStarts && b.latestStarts[0]) || null;
+    const lunes = ref ? lunesDe(ref) : null;
+    const key = lunes ? lunes.getTime() : "sin-fecha";
+    if (!semanas[key]) semanas[key] = { lunes, ponyHL: 0, cervezaHL: 0, totalHL: 0 };
+    const s = semanas[key];
+    s.totalHL += b.volumenEnvasar;
+    if (b.mostoId === "pony") s.ponyHL += b.volumenEnvasar;
+    else s.cervezaHL += b.volumenEnvasar;
+  });
+  Object.values(semanas).forEach((s) => {
+    const semanaTxt = s.lunes
+      ? `semana del ${fmtDate(s.lunes)} (lun-dom)`
+      : "semana sin fecha de envasado";
+    if (s.ponyHL > 23600) {
+      reglaWarnings.push({
+        ids: [6],
+        text: `Regla 6: volumen de Pony en la ${semanaTxt} (${s.ponyHL.toLocaleString("es-CO", { maximumFractionDigits: 0 })} hL) supera 23.600 hL.`,
+      });
+    }
+    const escenarioCerveza = s.cervezaHL <= 66000 && s.ponyHL <= 15000;
+    const escenarioPony = s.ponyHL <= 23600 && s.cervezaHL <= 57400;
+    if (s.totalHL > 81000 || (!escenarioCerveza && !escenarioPony)) {
+      reglaWarnings.push({
+        ids: [1],
+        text: `Regla 1: volumen total en la ${semanaTxt} (${s.totalHL.toLocaleString("es-CO", { maximumFractionDigits: 0 })} hL) no cabe en ninguno de los escenarios de aseo permitidos.`,
+      });
+    }
+  });
   blocks.forEach((b) => {
     if (b.maduracionHoras > 96)
       reglaWarnings.push({
