@@ -568,7 +568,10 @@ function renderInventoryBalance(plan) {
     <table><thead><tr>
       <th>Equipo / tanque</th><th>Tipo</th><th>Marca (mosto)</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
     </tr></thead><tbody>${detailRows || `<tr><td colspan="9" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
-    <div style="margin-top:8px;"><button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button></div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button>
+      <button class="btn small" id="clearInventoryBtn" ${(INVENTORY_BALANCE || []).length ? "" : "disabled"} style="color:var(--danger);">🗑️ Borrar inventario</button>
+    </div>
   `;
 
   wrap.innerHTML = `
@@ -627,6 +630,25 @@ function renderInventoryBalance(plan) {
         hL: 0,
         vacio: false,
       });
+      saveInventoryBalance();
+      renderInventoryBalance(STATE && STATE.plan);
+      if (typeof renderTankCatalog === "function") renderTankCatalog();
+      if (typeof renderYeastConfig === "function") renderYeastConfig();
+      if (typeof recomputeFiltracion === "function") recomputeFiltracion();
+      recompute();
+    });
+  }
+  const clearBtn = document.getElementById("clearInventoryBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      if (!INVENTORY_BALANCE.length) return;
+      if (
+        !confirm(
+          `¿Borrar los ${INVENTORY_BALANCE.length} lote(s) de inventario (marcas y HL) cargados? Esta acción no se puede deshacer.`,
+        )
+      )
+        return;
+      INVENTORY_BALANCE.length = 0;
       saveInventoryBalance();
       renderInventoryBalance(STATE && STATE.plan);
       if (typeof renderTankCatalog === "function") renderTankCatalog();
