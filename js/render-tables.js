@@ -410,6 +410,17 @@ function renderInventoryBalance(plan) {
   }
 
   // ---- Resumen por mosto (se calcula sumando el detalle por lote de abajo) ----
+  // plan.results ya trae TODAS las semanas cargadas (si el instructivo trae
+  // varias hojas "Semana N" se fusionan en un solo plan, ver parseWorkbook),
+  // así que esta suma no es solo de "esta semana": cubre todo lo ingresado.
+  const weeksLoaded =
+    (STATE && STATE.parsed && STATE.parsed.weeks) || [];
+  const alcanceTxt =
+    weeksLoaded.length > 1
+      ? `${weeksLoaded.length} semanas cargadas: ${weeksLoaded[0].label} (${fmtDate(weeksLoaded[0].start)}) → ${weeksLoaded[weeksLoaded.length - 1].label} (${fmtDate(weeksLoaded[weeksLoaded.length - 1].start)})`
+      : weeksLoaded.length === 1
+        ? `${weeksLoaded[0].label} (${fmtDate(weeksLoaded[0].start)})`
+        : "";
   const disponibleByMosto = inventoryTotalsByMosto(MOSTO_CATALOG);
   const resumenRows = MOSTO_CATALOG.map((m) => {
     const disponible = disponibleByMosto[m.id] || 0;
@@ -424,8 +435,11 @@ function renderInventoryBalance(plan) {
       <td>${Math.round(sobrante).toLocaleString("es-CO")} HL</td>
     </tr>`;
   }).join("");
+  const alcanceHtml = alcanceTxt
+    ? `<div style="color:var(--muted); font-size:11.5px; margin-bottom:6px;">Balance de ${alcanceTxt} — la suma cubre TODO lo cargado, no solo una semana.</div>`
+    : "";
   const resumenHtml = resumenRows
-    ? `<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar esta semana</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
+    ? `${alcanceHtml}<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar (total cargado)</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
     : '<p class="empty-note">Agrega al menos un mosto en el Catálogo de mostos para poder registrar inventario.</p>';
 
   // ---- Detalle por lote: equipo, marca, días en el equipo y HL normalizados ----
