@@ -1259,6 +1259,23 @@ function sequenceWeek(
         });
       }
       yeastUsed.consumida = true;
+      // Este mismo bloque Light, una vez fermentado, se vuelve una cosecha
+      // futura disponible para OTROS bloques Light más adelante en la semana
+      // (o en semanas siguientes fusionadas en el mismo instructivo). Sin
+      // esto, solo el primer bloque Light podía programarse: el resto se
+      // bloqueaba aunque hubiera levadura propia en camino.
+      if (typeof YEAST_HARVEST_DAYS !== "undefined") {
+        yeastPool.push({
+          id: `auto_sched_${block.blockId}`,
+          sourceMostoId: "light",
+          fechaDisponible: new Date(
+            actualFirst.getTime() + YEAST_HARVEST_DAYS * 86400000,
+          ),
+          origen: `Cosecha propia · ${block.blockLabel}`,
+          consumida: false,
+          automatica: true,
+        });
+      }
     }
     block.yeastUsed = yeastUsed;
     block.shiftHours =
