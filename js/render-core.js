@@ -75,6 +75,7 @@ function recompute() {
     ASEO_DEFAULT_HORAS,
     ASEO_PERIODICO,
     getI0Date(),
+    TANK_CATALOG,
   );
   seq.tankAssignment = assignTanks(seq, plan, TANK_CATALOG, MOSTO_CATALOG);
   STATE.seq = seq;

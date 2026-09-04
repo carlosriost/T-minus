@@ -180,13 +180,28 @@ function computeCocimientoStarts(fechaEnvasadoMinima, numCocimientos, m) {
   return starts;
 }
 
-// No se pueden cocinar más de PONY_MAX_COCIMIENTOS_SEGUIDOS cargues (600 hL sin
-// normalizar cada uno) de Pony de corrido: tiene que haber un cambio real de
-// marca entre un tramo y el siguiente (ver el reparto de bloques y la regla de
-// selección en sequenceWeek). PONY_MIN_COCIMIENTOS es el mínimo por tramo del
-// acuerdo de servicio (Regla 4): un cocimiento suelto nunca queda solo.
-const PONY_MAX_COCIMIENTOS_SEGUIDOS = 4;
+// Cuántos cargues de Pony (600 hL sin normalizar c/u) caben cociendo de
+// corrido antes de necesitar un cambio real de marca: los limitan los SV Pony
+// físicos del catálogo de tanques (maduración exclusiva de Pony). Con 0 o sin
+// tanques definidos se usa PONY_MIN_COCIMIENTOS como piso de seguridad.
+// PONY_MIN_COCIMIENTOS es el mínimo por tramo del acuerdo de servicio (Regla 4):
+// un cocimiento suelto nunca queda solo.
 const PONY_MIN_COCIMIENTOS = 2;
+
+function ponyMaxCocimientosSeguidos(tankCatalog, volumenPorCocimiento) {
+  const capHL = (tankCatalog || [])
+    .filter((t) => t.tipo === "SV Pony" && t.disponible !== false)
+    .reduce((s, t) => s + (Number(t.capacidadHL) || 0), 0);
+  const vol = Number(volumenPorCocimiento) || 0;
+  if (capHL <= 0 || vol <= 0) return PONY_MIN_COCIMIENTOS;
+  return Math.max(PONY_MIN_COCIMIENTOS, Math.floor(capHL / vol));
+}
+
+// Pony se vence: no puede pasar más de PONY_VENCE_HORAS de almacenamiento
+// DESPUÉS de terminar su maduración (24 h) sin arrancar el envasado. Un tramo
+// no se puede cocinar más temprano de lo que permite ese plazo, aunque la
+// cocina esté libre antes.
+const PONY_VENCE_HORAS = 60;
 
 // Reparte n cocimientos en tramos de máximo "max" y mínimo "min" cada uno
 // (el último tramo nunca queda por debajo del mínimo: se le resta al
@@ -912,6 +927,7 @@ function sequenceWeek(
   aseoDefaultHoras,
   aseoPeriodico,
   i0FloorDate,
+  tankCatalog,
 ) {
   /*
      SECUENCIA OPERATIVA FLEXIBLE, SIN INTERCALAR MARCAS
@@ -1009,19 +1025,20 @@ function sequenceWeek(
       };
     });
 
-  // Ningún bloque de Pony puede tener más de PONY_MAX_COCIMIENTOS_SEGUIDOS
-  // cocimientos: se parte en varios bloques de a lo sumo ese tamaño, cada uno
-  // tratado como un bloque normal e independiente por el resto del algoritmo.
-  // La regla de selección de bloques (más abajo) es la que de verdad impide
-  // que dos tramos de Pony queden consecutivos sin un cambio real de marca.
+  // Ningún bloque de Pony puede tener más cocimientos seguidos de los que
+  // caben en los SV Pony disponibles: se parte en varios bloques de a lo sumo
+  // ese tamaño, cada uno tratado como un bloque normal e independiente por el
+  // resto del algoritmo. La regla de selección de bloques (más abajo) es la
+  // que de verdad impide que dos tramos de Pony queden consecutivos sin un
+  // cambio real de marca.
   blocks = blocks.flatMap((b) => {
-    if (b.mostoId !== "pony" || b.numCocimientos <= PONY_MAX_COCIMIENTOS_SEGUIDOS)
-      return [b];
-    const tramos = splitEnTramos(
-      b.numCocimientos,
-      PONY_MAX_COCIMIENTOS_SEGUIDOS,
-      PONY_MIN_COCIMIENTOS,
+    if (b.mostoId !== "pony") return [b];
+    const maxRun = ponyMaxCocimientosSeguidos(
+      tankCatalog,
+      b.volumenPorCocimiento,
     );
+    if (b.numCocimientos <= maxRun) return [b];
+    const tramos = splitEnTramos(b.numCocimientos, maxRun, PONY_MIN_COCIMIENTOS);
     let offset = 0;
     return tramos.map((size, idx) => {
       const share = size / b.numCocimientos;
@@ -1110,12 +1127,12 @@ function sequenceWeek(
     // calculadas. Si el siguiente bloque todavía no necesita comenzar, se adelanta
     // y se ejecuta inmediatamente cuando la cocina queda libre; el hueco se evita.
     //
-    // ÚNICA excepción: dos tramos de Pony (ya partidos de a lo sumo
-    // PONY_MAX_COCIMIENTOS_SEGUIDOS cocimientos, ver arriba) no pueden quedar
-    // consecutivos sin un cambio real de marca entre ellos. Si el candidato
-    // natural es Pony justo después de otro tramo de Pony, se adelanta el
-    // próximo bloque pendiente de OTRA marca (conservando su propio orden) y
-    // el tramo de Pony queda pendiente para la siguiente vuelta del bucle.
+    // ÚNICA excepción: dos tramos de Pony (ya partidos según la capacidad de
+    // SV Pony, ver arriba) no pueden quedar consecutivos sin un cambio real
+    // de marca entre ellos. Si el candidato natural es Pony justo después de
+    // otro tramo de Pony, se adelanta el próximo bloque pendiente de OTRA
+    // marca (conservando su propio orden) y el tramo de Pony queda pendiente
+    // para la siguiente vuelta del bucle.
     let chosenIdx;
     const remaining = [...pending].sort(
       (ia, ib) =>
@@ -1133,7 +1150,7 @@ function sequenceWeek(
       } else {
         reglaWarnings.push({
           ids: [4],
-          text: `Regla 4: el bloque de Pony "${blocks[chosenIdx].blockLabel}" quedó consecutivo a otro de Pony (máximo ${PONY_MAX_COCIMIENTOS_SEGUIDOS} cocimientos seguidos) porque no había ninguna otra marca pendiente para intercalar.`,
+          text: `Regla 4: el bloque de Pony "${blocks[chosenIdx].blockLabel}" quedó consecutivo a otro de Pony porque no había ninguna otra marca pendiente para intercalar.`,
         });
       }
     }
@@ -1173,6 +1190,21 @@ function sequenceWeek(
     // El tiempo de cocina (8:15, 8:50, 8:55, etc.) NO interviene en la separación
     // entre inicios.
     let actualFirst = new Date(earliestFeasible.getTime());
+    // Pony se vence: no puede quedar madurando más de PONY_VENCE_HORAS antes
+    // de que le toque arrancar su envasado. "firstLatest" es la última hora
+    // permitida de este cocimiento (calculada desde el envasado con cero
+    // holgura); como todos los cocimientos del bloque comparten la misma
+    // separación entre inicios que "latestStarts", adelantar el primero hasta
+    // como mucho firstLatest − 60 h basta para que TODO el tramo respete el
+    // límite, aunque la cocina esté libre mucho antes.
+    if (block.mostoId === "pony") {
+      const pisoVencimiento = new Date(
+        firstLatest.getTime() - PONY_VENCE_HORAS * 3600000,
+      );
+      if (actualFirst.getTime() < pisoVencimiento.getTime()) {
+        actualFirst = pisoVencimiento;
+      }
+    }
     // Restricción de levadura: Light solo puede arrancar con una cosecha Light.
     // Si existe una cosecha futura, el bloque se desplaza hasta esa fecha. Si no
     // existe ninguna, el bloque queda bloqueado y no entra a la secuencia física.
