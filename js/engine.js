@@ -181,39 +181,27 @@ function computeCocimientoStarts(fechaEnvasadoMinima, numCocimientos, m) {
 }
 
 // No se pueden cocinar más de PONY_MAX_COCIMIENTOS_SEGUIDOS cargues (600 hL sin
-// normalizar cada uno) de Pony de corrido: a partir de ahí la maduración en SV
-// Pony (exclusiva de Pony) no alcanza a liberar tanques al ritmo del cargue.
-// Entre un tramo de hasta 4 y el siguiente se deja pasar el tiempo de
-// maduración del mosto, que es el tiempo real de proceso que libera un SV Pony.
+// normalizar cada uno) de Pony de corrido: tiene que haber un cambio real de
+// marca entre un tramo y el siguiente (ver el reparto de bloques y la regla de
+// selección en sequenceWeek). PONY_MIN_COCIMIENTOS es el mínimo por tramo del
+// acuerdo de servicio (Regla 4): un cocimiento suelto nunca queda solo.
 const PONY_MAX_COCIMIENTOS_SEGUIDOS = 4;
+const PONY_MIN_COCIMIENTOS = 2;
 
-// Inicios de un bloque respetando el tiempo entre cargues; para Pony, además,
-// nunca más de PONY_MAX_COCIMIENTOS_SEGUIDOS inicios de corrido: cada tramo
-// nuevo espera el tiempo de maduración (tiempoMaduracionHoras) tras el último
-// inicio del tramo anterior, dando tiempo a que un SV Pony quede libre.
-function buildBlockStarts(mostoId, numCocimientos, actualFirst, gapHoras, catalogById) {
-  const gapMs = gapHoras * 3600000;
-  if (mostoId !== "pony" || numCocimientos <= PONY_MAX_COCIMIENTOS_SEGUIDOS) {
-    return Array.from(
-      { length: numCocimientos },
-      (_, i) => new Date(actualFirst.getTime() + i * gapMs),
-    );
+// Reparte n cocimientos en tramos de máximo "max" y mínimo "min" cada uno
+// (el último tramo nunca queda por debajo del mínimo: se le resta al
+// penúltimo lo que haga falta en vez de dejar un tramo suelto).
+function splitEnTramos(n, max, min) {
+  const out = [];
+  let remaining = n;
+  while (remaining > max) {
+    let take = max;
+    if (remaining - take < min) take = remaining - min;
+    out.push(take);
+    remaining -= take;
   }
-  const m = (catalogById && catalogById[mostoId]) || {};
-  const pausaMs = (Number(m.tiempoMaduracionHoras) || 0) * 3600000;
-  const starts = [];
-  let cursor = actualFirst.getTime();
-  let enTramo = 0;
-  for (let i = 0; i < numCocimientos; i++) {
-    if (enTramo >= PONY_MAX_COCIMIENTOS_SEGUIDOS) {
-      cursor += pausaMs;
-      enTramo = 0;
-    }
-    starts.push(new Date(cursor));
-    cursor += gapMs;
-    enTramo++;
-  }
-  return starts;
+  out.push(remaining);
+  return out;
 }
 
 function computeCocinaPlan(brands, catalog, inventoryBalance) {
@@ -1021,6 +1009,38 @@ function sequenceWeek(
       };
     });
 
+  // Ningún bloque de Pony puede tener más de PONY_MAX_COCIMIENTOS_SEGUIDOS
+  // cocimientos: se parte en varios bloques de a lo sumo ese tamaño, cada uno
+  // tratado como un bloque normal e independiente por el resto del algoritmo.
+  // La regla de selección de bloques (más abajo) es la que de verdad impide
+  // que dos tramos de Pony queden consecutivos sin un cambio real de marca.
+  blocks = blocks.flatMap((b) => {
+    if (b.mostoId !== "pony" || b.numCocimientos <= PONY_MAX_COCIMIENTOS_SEGUIDOS)
+      return [b];
+    const tramos = splitEnTramos(
+      b.numCocimientos,
+      PONY_MAX_COCIMIENTOS_SEGUIDOS,
+      PONY_MIN_COCIMIENTOS,
+    );
+    let offset = 0;
+    return tramos.map((size, idx) => {
+      const share = size / b.numCocimientos;
+      const chunkStarts = b.latestStarts.slice(offset, offset + size);
+      offset += size;
+      return {
+        ...b,
+        blockId: `${b.blockId}__t${idx}`,
+        sequenceOrder: b.sequenceOrder + idx / 1000,
+        blockLabel: `${b.blockLabel} (tramo ${idx + 1}/${tramos.length})`,
+        numCocimientos: size,
+        volumenEnvasar: b.volumenEnvasar * share,
+        volumenCocinar: b.volumenCocinar * share,
+        latestStarts: chunkStarts,
+        actualStarts: [],
+      };
+    });
+  });
+
   if (!blocks.length) {
     return {
       rows: [],
@@ -1089,12 +1109,34 @@ function sequenceWeek(
     // No se intercalan marcas ni se reordenan bloques para perseguir sus fechas
     // calculadas. Si el siguiente bloque todavía no necesita comenzar, se adelanta
     // y se ejecuta inmediatamente cuando la cocina queda libre; el hueco se evita.
+    //
+    // ÚNICA excepción: dos tramos de Pony (ya partidos de a lo sumo
+    // PONY_MAX_COCIMIENTOS_SEGUIDOS cocimientos, ver arriba) no pueden quedar
+    // consecutivos sin un cambio real de marca entre ellos. Si el candidato
+    // natural es Pony justo después de otro tramo de Pony, se adelanta el
+    // próximo bloque pendiente de OTRA marca (conservando su propio orden) y
+    // el tramo de Pony queda pendiente para la siguiente vuelta del bucle.
     let chosenIdx;
     const remaining = [...pending].sort(
       (ia, ib) =>
         blocks[ia].sequenceOrder - blocks[ib].sequenceOrder || ia - ib,
     );
     chosenIdx = remaining[0];
+    if (
+      prevBlock &&
+      prevBlock.mostoId === "pony" &&
+      blocks[chosenIdx].mostoId === "pony"
+    ) {
+      const alterno = remaining.find((idx) => blocks[idx].mostoId !== "pony");
+      if (alterno !== undefined) {
+        chosenIdx = alterno;
+      } else {
+        reglaWarnings.push({
+          ids: [4],
+          text: `Regla 4: el bloque de Pony "${blocks[chosenIdx].blockLabel}" quedó consecutivo a otro de Pony (máximo ${PONY_MAX_COCIMIENTOS_SEGUIDOS} cocimientos seguidos) porque no había ninguna otra marca pendiente para intercalar.`,
+        });
+      }
+    }
 
     const block = blocks[chosenIdx];
     pending.delete(chosenIdx);
@@ -1187,12 +1229,10 @@ function sequenceWeek(
     block.yeastUsed = yeastUsed;
     block.shiftHours =
       (actualFirst.getTime() - firstLatest.getTime()) / 3600000;
-    block.actualStarts = buildBlockStarts(
-      block.mostoId,
-      block.numCocimientos,
-      actualFirst,
-      block.gapHoras,
-      catalogById,
+    block.actualStarts = Array.from(
+      { length: block.numCocimientos },
+      (_, i) =>
+        new Date(actualFirst.getTime() + i * (block.gapHoras * 3600000)),
     );
 
     if (block.mostoId === "light") {
@@ -1241,9 +1281,7 @@ function sequenceWeek(
       });
     }
     // Validación: dentro de cada bloque la diferencia entre inicios nunca puede
-    // ser MENOR al tiempo entre cargues (sería físicamente imposible). Puede ser
-    // mayor solo en los tramos de Pony donde se inserta la pausa de maduración
-    // cada PONY_MAX_COCIMIENTOS_SEGUIDOS cargues (ver buildBlockStarts).
+    // ser MENOR al tiempo entre cargues (sería físicamente imposible).
     for (let i = 1; i < block.actualStarts.length; i++) {
       const deltaH =
         (block.actualStarts[i].getTime() -
