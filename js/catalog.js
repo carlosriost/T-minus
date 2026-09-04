@@ -10,6 +10,9 @@
 // Los tiempos se editan en formato hh:mm:ss (horas:minutos:segundos) y se guardan internamente en horas.
 // IMPORTANTE: "Light" va antes que "Estandar" en la lista para que "Águila Light" homologue a
 // Mosto Light y no quede capturada primero por la palabra clave genérica "aguila" de Estandar.
+// tiempoVencimientoHoras = cuánto puede esperar un lote, YA MADURO, en su SV
+// antes de dañarse (0 = sin vencimiento / no se controla). Se cuenta DESPUÉS
+// de tiempoMaduracionHoras, hasta que arranca el envasado de ese lote.
 let MOSTO_CATALOG = [
   {
     id: "light",
@@ -21,6 +24,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("168:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoVencimientoHoras: 0,
   },
   {
     id: "pilsen",
@@ -32,6 +36,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoVencimientoHoras: 0,
   },
   {
     id: "pony",
@@ -43,6 +48,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("0"),
     tiempoMaduracionHoras: parseHMS("24:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoVencimientoHoras: 60,
   },
   {
     id: "estandar",
@@ -54,6 +60,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoVencimientoHoras: 0,
   },
 ];
 
@@ -240,6 +247,47 @@ function inventoryOccupancyByEquipo() {
     }
   });
   return out;
+}
+
+// Próximo vencimiento de lo que YA está madurando/maduro en los SV, separado
+// en "pony" (SV Pony) y "cerveza" (SV normales, cualquier otro mosto). Usa
+// tiempoVencimientoHoras del catálogo (0 = ese mosto no controla vencimiento).
+// No cuenta los SV con levadura guardada (no son producto real). Devuelve
+// {pony: Date|null, cerveza: Date|null} con la fecha más próxima de cada uno.
+function proximoVencimientoSV(catalog) {
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const catById = {};
+  (catalog || []).forEach((m) => (catById[m.id] = m));
+  let pony = null;
+  let cerveza = null;
+  (INVENTORY_BALANCE || []).forEach((e) => {
+    if (!e || (e.tipo !== "SV" && e.tipo !== "SV Pony")) return;
+    if (esLevaduraEnMadurador(e)) return;
+    const hL = Number(e.hL) || 0;
+    if (hL <= 0 || e.vacio) return;
+    const m = catById[e.mostoId];
+    if (!m) return;
+    const vencH = Number(m.tiempoVencimientoHoras) || 0;
+    if (vencH <= 0) return;
+    const dias =
+      e.diasEnEquipo === "" || e.diasEnEquipo == null
+        ? 0
+        : Number(e.diasEnEquipo) || 0;
+    const maduracionDias = (Number(m.tiempoMaduracionHoras) || 0) / 24;
+    // Fecha en que termina (o terminó, si es negativo) la maduración de este
+    // lote, más el plazo de vencimiento propio del mosto.
+    const fechaVence = new Date(
+      i0.getTime() +
+        (maduracionDias - dias) * 86400000 +
+        vencH * 3600000,
+    );
+    if (e.tipo === "SV Pony") {
+      if (!pony || fechaVence < pony) pony = fechaVence;
+    } else {
+      if (!cerveza || fechaVence < cerveza) cerveza = fechaVence;
+    }
+  });
+  return { pony, cerveza };
 }
 
 // Índice del inventario "producto en proceso" por nombre de equipo normalizado

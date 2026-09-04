@@ -336,12 +336,14 @@ function renderCatalog() {
       <td><input type="text" class="cat-input cat-time" data-field="tiempoCocinaHoras" value="${formatHMS(m.tiempoCocinaHoras)}" placeholder="hh:mm:ss"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoFermentacionHoras" value="${formatHMS(m.tiempoFermentacionHoras)}" placeholder="hh:mm:ss"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoMaduracionHoras" value="${formatHMS(m.tiempoMaduracionHoras)}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoVencimientoHoras" value="${formatHMS(m.tiempoVencimientoHoras)}" placeholder="hh:mm:ss (0 = sin vencimiento)"></td>
       <td class="cat-remove"><button class="btn small" data-remove="${idx}" title="Quitar mosto">✕</button></td>
     </tr>`,
   ).join("");
   wrap.innerHTML = `<table><thead><tr>
       <th>Marca</th><th>Marcas (palabras clave)</th><th>Factor dilución</th><th>Vol. x cocimiento (HL)</th>
-      <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th><th></th>
+      <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th>
+      <th title="Cuánto puede esperar en el SV YA MADURO antes de dañarse, contado después de la maduración. 0 = sin vencimiento.">Vencimiento en SV (hh:mm:ss)</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
   wrap.querySelectorAll(".cat-input").forEach((inp) => {
@@ -382,6 +384,7 @@ document.getElementById("addMostoBtn").addEventListener("click", () => {
     tiempoFermentacionHoras: parseHMS("168:00:00"),
     tiempoMaduracionHoras: parseHMS("48:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoVencimientoHoras: 0,
   });
   renderCatalog();
   renderInventoryBalance(STATE && STATE.plan);

@@ -197,12 +197,6 @@ function ponyMaxCocimientosSeguidos(tankCatalog, volumenPorCocimiento) {
   return Math.max(PONY_MIN_COCIMIENTOS, Math.floor(capHL / vol));
 }
 
-// Pony se vence: no puede pasar más de PONY_VENCE_HORAS de almacenamiento
-// DESPUÉS de terminar su maduración (24 h) sin arrancar el envasado. Un tramo
-// no se puede cocinar más temprano de lo que permite ese plazo, aunque la
-// cocina esté libre antes.
-const PONY_VENCE_HORAS = 60;
-
 // Reparte n cocimientos en tramos de máximo "max" y mínimo "min" cada uno
 // (el último tramo nunca queda por debajo del mínimo: se le resta al
 // penúltimo lo que haga falta en vez de dejar un tramo suelto).
@@ -1190,16 +1184,21 @@ function sequenceWeek(
     // El tiempo de cocina (8:15, 8:50, 8:55, etc.) NO interviene en la separación
     // entre inicios.
     let actualFirst = new Date(earliestFeasible.getTime());
-    // Pony se vence: no puede quedar madurando más de PONY_VENCE_HORAS antes
-    // de que le toque arrancar su envasado. "firstLatest" es la última hora
-    // permitida de este cocimiento (calculada desde el envasado con cero
-    // holgura); como todos los cocimientos del bloque comparten la misma
-    // separación entre inicios que "latestStarts", adelantar el primero hasta
-    // como mucho firstLatest − 60 h basta para que TODO el tramo respete el
-    // límite, aunque la cocina esté libre mucho antes.
-    if (block.mostoId === "pony") {
+    // Vencimiento (catálogo de mostos, "Vencimiento en SV"): un lote YA MADURO
+    // no puede quedar esperando en su SV más de tiempoVencimientoHoras antes de
+    // que le toque arrancar su envasado, o se daña (0 = sin control, p. ej.
+    // cerveza normal). "firstLatest" es la última hora permitida de este
+    // cocimiento (calculada desde el envasado con cero holgura); como todos los
+    // cocimientos del bloque comparten la misma separación entre inicios que
+    // "latestStarts", adelantar el primero hasta como mucho firstLatest − ese
+    // plazo basta para que TODO el bloque lo respete, aunque la cocina esté
+    // libre mucho antes.
+    const vencimientoHoras = Number(
+      (catalogById[block.mostoId] || {}).tiempoVencimientoHoras,
+    );
+    if (vencimientoHoras > 0) {
       const pisoVencimiento = new Date(
-        firstLatest.getTime() - PONY_VENCE_HORAS * 3600000,
+        firstLatest.getTime() - vencimientoHoras * 3600000,
       );
       if (actualFirst.getTime() < pisoVencimiento.getTime()) {
         actualFirst = pisoVencimiento;
@@ -1261,11 +1260,30 @@ function sequenceWeek(
     block.yeastUsed = yeastUsed;
     block.shiftHours =
       (actualFirst.getTime() - firstLatest.getTime()) / 3600000;
-    block.actualStarts = Array.from(
-      { length: block.numCocimientos },
-      (_, i) =>
-        new Date(actualFirst.getTime() + i * (block.gapHoras * 3600000)),
-    );
+    // El aseo periódico es una demora REAL en el cronograma, no una etiqueta
+    // que solo aparece si por casualidad ya hay un hueco (con el tiempo entre
+    // cargues normal casi nunca lo hay: la cocina dura más que el cargue).
+    // globalCocCount ya cuenta los cocimientos de TODOS los bloques anteriores,
+    // así que "globalCocCount + i" es la posición global del cocimiento i de
+    // este bloque — el corte cae exactamente cada aseoPeriodicoCada cocimientos
+    // sin importar si cae dentro del bloque o justo al empezar uno nuevo.
+    block.actualStarts = [];
+    block.periodicPauseBefore = [];
+    {
+      let cursor = actualFirst.getTime();
+      for (let i = 0; i < block.numCocimientos; i++) {
+        const pos = globalCocCount + i;
+        const pausa =
+          aseoPeriodicoActivo &&
+          aseoPeriodicoCada > 0 &&
+          pos > 0 &&
+          pos % aseoPeriodicoCada === 0;
+        if (pausa) cursor += aseoPeriodicoHoras * 3600000;
+        block.periodicPauseBefore.push(pausa);
+        block.actualStarts.push(new Date(cursor));
+        cursor += block.gapHoras * 3600000;
+      }
+    }
 
     if (block.mostoId === "light") {
       yeastEvents.push({
@@ -1359,6 +1377,23 @@ function sequenceWeek(
     block.actualStarts.forEach((startDate, i) => {
       const start = new Date(startDate.getTime());
       const end = new Date(start.getTime() + block.cocinaHoras * 3600000);
+
+      // El aseo periódico ya quedó reservado como una demora real al construir
+      // block.actualStarts (ver arriba): aquí solo se refleja como fila.
+      if (block.periodicPauseBefore[i]) {
+        rows.push({
+          n: 0,
+          tipo: "aseo",
+          mostoId: null,
+          blockId: block.blockId,
+          nombre: `ASEO periódico (cada ${aseoPeriodicoCada} cocimientos)`,
+          start: new Date(start.getTime() - aseoPeriodicoHoras * 3600000),
+          end: new Date(start.getTime()),
+          definido: true,
+          periodico: true,
+        });
+      }
+
       const volXCoc = block.volumenPorCocimiento;
       const restante = Math.max(0, block.volumenCocinar - i * volXCoc);
       const cocVolumenHL = Math.min(volXCoc, restante);
@@ -1385,33 +1420,6 @@ function sequenceWeek(
         cocVolumenHL,
       });
       globalCocCount++;
-
-      if (
-        aseoPeriodicoActivo &&
-        i < block.actualStarts.length - 1 &&
-        globalCocCount % aseoPeriodicoCada === 0
-      ) {
-        const nextStart = block.actualStarts[i + 1];
-        const hueco = (nextStart.getTime() - end.getTime()) / 3600000;
-        if (hueco + 1e-9 >= aseoPeriodicoHoras) {
-          rows.push({
-            n: 0,
-            tipo: "aseo",
-            mostoId: null,
-            blockId: block.blockId,
-            nombre: `ASEO periódico (cada ${aseoPeriodicoCada} cocimientos)`,
-            start: new Date(nextStart.getTime() - aseoPeriodicoHoras * 3600000),
-            end: new Date(nextStart.getTime()),
-            definido: true,
-            periodico: true,
-          });
-        } else {
-          reglaWarnings.push({
-            ids: [1],
-            text: `Aseo periódico: no cabe entre los cocimientos ${globalCocCount} y ${globalCocCount + 1} sin alterar sus fechas internas; la secuencia se conserva.`,
-          });
-        }
-      }
     });
 
     scheduledBlocks.push(block);

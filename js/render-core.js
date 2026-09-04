@@ -119,12 +119,18 @@ function renderKPIs(plan, seq) {
   const sinTanque =
     seq && seq.tankAssignment ? seq.tankAssignment.sinTanque.length : 0;
   const yeastBlocked = seq && seq.yeastBlocked ? seq.yeastBlocked.length : 0;
-  const nextLightYeast =
-    seq && seq.yeastPool
-      ? seq.yeastPool
-          .filter((y) => y.sourceMostoId === "light" && !y.consumida)
-          .sort((a, b) => a.fechaDisponible - b.fechaDisponible)[0]
-      : null;
+  // Vencimiento de lo que ya está en los SV (Pony y cerveza), según el
+  // "Vencimiento en SV" configurado por mosto en el Catálogo de mostos.
+  const vencSV =
+    typeof proximoVencimientoSV === "function"
+      ? proximoVencimientoSV(MOSTO_CATALOG)
+      : { pony: null, cerveza: null };
+  const i0 = getI0Date() || new Date();
+  const vencItem = (fecha, label) => ({
+    n: fecha ? fmtDateTime(fecha) : "Sin vencimiento controlado",
+    l: label,
+    cls: !fecha ? "" : fecha.getTime() <= i0.getTime() ? "danger" : "warn",
+  });
   const items = [
     { n: plan.results.length, l: "Bloques de producción", cls: "" },
     {
@@ -132,13 +138,8 @@ function renderKPIs(plan, seq) {
       l: "Bloques Light bloqueados",
       cls: yeastBlocked ? "danger" : "ok",
     },
-    {
-      n: nextLightYeast
-        ? fmtDateTime(nextLightYeast.fechaDisponible)
-        : "No disponible",
-      l: "Próxima levadura Light",
-      cls: nextLightYeast ? "ok" : "warn",
-    },
+    vencItem(vencSV.pony, "Vencimiento SV Pony"),
+    vencItem(vencSV.cerveza, "Vencimiento SV cerveza"),
     {
       n: totalEnvasar.toLocaleString("es-CO", {
         maximumFractionDigits: 0,
