@@ -180,6 +180,42 @@ function computeCocimientoStarts(fechaEnvasadoMinima, numCocimientos, m) {
   return starts;
 }
 
+// No se pueden cocinar más de PONY_MAX_COCIMIENTOS_SEGUIDOS cargues (600 hL sin
+// normalizar cada uno) de Pony de corrido: a partir de ahí la maduración en SV
+// Pony (exclusiva de Pony) no alcanza a liberar tanques al ritmo del cargue.
+// Entre un tramo de hasta 4 y el siguiente se deja pasar el tiempo de
+// maduración del mosto, que es el tiempo real de proceso que libera un SV Pony.
+const PONY_MAX_COCIMIENTOS_SEGUIDOS = 4;
+
+// Inicios de un bloque respetando el tiempo entre cargues; para Pony, además,
+// nunca más de PONY_MAX_COCIMIENTOS_SEGUIDOS inicios de corrido: cada tramo
+// nuevo espera el tiempo de maduración (tiempoMaduracionHoras) tras el último
+// inicio del tramo anterior, dando tiempo a que un SV Pony quede libre.
+function buildBlockStarts(mostoId, numCocimientos, actualFirst, gapHoras, catalogById) {
+  const gapMs = gapHoras * 3600000;
+  if (mostoId !== "pony" || numCocimientos <= PONY_MAX_COCIMIENTOS_SEGUIDOS) {
+    return Array.from(
+      { length: numCocimientos },
+      (_, i) => new Date(actualFirst.getTime() + i * gapMs),
+    );
+  }
+  const m = (catalogById && catalogById[mostoId]) || {};
+  const pausaMs = (Number(m.tiempoMaduracionHoras) || 0) * 3600000;
+  const starts = [];
+  let cursor = actualFirst.getTime();
+  let enTramo = 0;
+  for (let i = 0; i < numCocimientos; i++) {
+    if (enTramo >= PONY_MAX_COCIMIENTOS_SEGUIDOS) {
+      cursor += pausaMs;
+      enTramo = 0;
+    }
+    starts.push(new Date(cursor));
+    cursor += gapMs;
+    enTramo++;
+  }
+  return starts;
+}
+
 function computeCocinaPlan(brands, catalog, inventoryBalance) {
   const sinHomologar = [];
   const results = [];
@@ -1151,10 +1187,12 @@ function sequenceWeek(
     block.yeastUsed = yeastUsed;
     block.shiftHours =
       (actualFirst.getTime() - firstLatest.getTime()) / 3600000;
-    block.actualStarts = Array.from(
-      { length: block.numCocimientos },
-      (_, i) =>
-        new Date(actualFirst.getTime() + i * (block.gapHoras * 3600000)),
+    block.actualStarts = buildBlockStarts(
+      block.mostoId,
+      block.numCocimientos,
+      actualFirst,
+      block.gapHoras,
+      catalogById,
     );
 
     if (block.mostoId === "light") {
@@ -1202,17 +1240,18 @@ function sequenceWeek(
           "Puede usar levaduras cosechadas de marcas no Light mezcladas entre sí o levadura Light.",
       });
     }
-    // Validación: dentro de cada bloque la diferencia entre inicios debe ser exactamente
-    // el tiempo entre cargues. Si no se cumple, detener el cálculo en lugar de mostrar una
-    // secuencia físicamente inconsistente.
+    // Validación: dentro de cada bloque la diferencia entre inicios nunca puede
+    // ser MENOR al tiempo entre cargues (sería físicamente imposible). Puede ser
+    // mayor solo en los tramos de Pony donde se inserta la pausa de maduración
+    // cada PONY_MAX_COCIMIENTOS_SEGUIDOS cargues (ver buildBlockStarts).
     for (let i = 1; i < block.actualStarts.length; i++) {
       const deltaH =
         (block.actualStarts[i].getTime() -
           block.actualStarts[i - 1].getTime()) /
         3600000;
-      if (Math.abs(deltaH - block.gapHoras) > 1e-9) {
+      if (deltaH - block.gapHoras < -1e-9) {
         throw new Error(
-          `Error de secuencia en ${block.nombre}: el cocimiento #${i + 1} no está separado ${block.gapHoras.toFixed(2)} h del anterior.`,
+          `Error de secuencia en ${block.nombre}: el cocimiento #${i + 1} no está separado al menos ${block.gapHoras.toFixed(2)} h del anterior.`,
         );
       }
     }
