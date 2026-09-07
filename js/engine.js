@@ -613,14 +613,17 @@ function resolveAseoMatrix(matrix, catalog) {
 }
 // Reglas fijas de aseo de cambio de marca (no dependen de la matriz):
 //   · misma marca → sin aseo.
+//   · saliendo de Pony → sin aseo hacia CUALQUIER cerveza (Estandar, Pilsen o
+//     Light): la Pony sale directa.
 //   · entrando a una cerveza normal (Estandar / Pilsen) → sin aseo. Esto cubre
-//     Estandar ↔ Pilsen, y también Pony → cerveza y Light → cerveza.
-// SOLO hay aseo cuando se ENTRA a Light o se ENTRA a Pony. La duración sale de
-// la matriz (Estandar→Light, Pilsen→Light, Estandar→Pony, Pilsen→Pony,
-// Light→Pony) o, si la combinación no está definida, del valor por defecto.
+//     Estandar ↔ Pilsen y Light → cerveza.
+// SOLO hay aseo cuando se ENTRA a Light o se ENTRA a Pony desde otra cerveza.
+// La duración sale de la matriz (Estandar→Light, Pilsen→Light, Estandar→Pony,
+// Pilsen→Pony, Light→Pony) o, si no está definida, del valor por defecto.
 function getAseoDuracion(fromMostoId, toMostoId, resolvedMatrix, defaultHoras) {
   const SIN_ASEO = { horas: 0, definido: true, sinAseo: true };
   if (fromMostoId && toMostoId && fromMostoId === toMostoId) return SIN_ASEO;
+  if (fromMostoId === "pony") return SIN_ASEO;
   if (toMostoId !== "light" && toMostoId !== "pony") return SIN_ASEO;
   let m = resolvedMatrix.find(
     (a) => a.origenId === fromMostoId && a.destinoId === toMostoId,
