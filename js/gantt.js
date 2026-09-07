@@ -110,8 +110,11 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     (min, b) => (b.start.getTime() < min ? b.start.getTime() : min),
     allBlocks[0].start.getTime(),
   );
-  const rangeStart =
-    firstStart < weekStart.getTime() ? new Date(firstStart) : weekStart;
+  // El eje arranca EXACTAMENTE cuando arranca la producción (que en el
+  // instructivo es la hora de la primera columna de la cuadrícula, p. ej.
+  // 22:00 del primer día rotulado). Así cada "celda de día" del Gantt coincide
+  // 1:1 con el bloque de día del Excel y no se ve corrido.
+  const rangeStart = new Date(firstStart);
   const totalHours = Math.max(
     24,
     Math.ceil((lastEnd - rangeStart.getTime()) / 3600000),
@@ -185,8 +188,14 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
           ? `${Math.round(vel).toLocaleString("es-CO")} hL/h` +
             (efi > 0 ? ` · ${Math.round(efi * 100)}% ef` : "")
           : "";
+      const hlBloque = Number(b.hectolitros) || 0;
+      const hlTxt =
+        b.type === "production" && hlBloque > 0
+          ? `${Math.round(hlBloque).toLocaleString("es-CO")} hL`
+          : "";
       const titleAttr = escapeHtml(
         `${b.name || b.codigo || ""} · ${fmtDateTime(b.start)} → ${fmtDateTime(b.end)} (${dur})` +
+          (hlTxt ? ` · ${hlTxt} a envasar` : "") +
           (velTxt
             ? ` · Velocidad ${Math.round(vel).toLocaleString("es-CO")} hL/h` +
               (efi > 0 ? ` · Eficiencia ${Math.round(efi * 100)}%` : "") +
@@ -198,7 +207,9 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
       if (b.type === "production") {
         const colors = colorForPackagingEvent(b);
         const showText = width >= 22;
-        const detalle = velTxt ? `${dur} · ${velTxt}` : dur;
+        // Dentro del bloque de color: marca + hL a envasar (y duración/velocidad
+        // si hay espacio).
+        const detalle = [hlTxt, velTxt || dur].filter(Boolean).join(" · ");
         blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${colors.bg}; color:${colors.fg};" title="${titleAttr}">${showText ? `<b style="color:${colors.fg};">${escapeHtml(b.name || b.codigo || "")}</b><span style="color:${colors.fg};">${detalle}</span>` : ""}</div>`;
       } else if (b.type === "changeover") {
         blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}"><b>🧽</b></div>`;
@@ -218,7 +229,32 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
         </div>`;
   }).join("");
 
+  // hL a envasar por marca (según los bloques de producción del instructivo).
+  const envasarPorMarca = {};
+  allBlocks.forEach((b) => {
+    if (b.type !== "production") return;
+    const hl = Number(b.hectolitros) || 0;
+    if (hl <= 0) return;
+    let etiqueta = null;
+    if (typeof matchMosto === "function" && typeof MOSTO_CATALOG !== "undefined") {
+      const mid = matchMosto(b.name || b.codigo || "", MOSTO_CATALOG);
+      const m = mid && MOSTO_CATALOG.find((x) => x.id === mid);
+      if (m) etiqueta = m.nombre;
+    }
+    etiqueta = etiqueta || b.name || b.codigo || "Sin marca";
+    envasarPorMarca[etiqueta] = (envasarPorMarca[etiqueta] || 0) + hl;
+  });
+  const nfHL = (x) => Math.round(x).toLocaleString("es-CO");
+  const totalEnvasarHL = Object.values(envasarPorMarca).reduce((a, v) => a + v, 0);
+  // El hL a envasar de cada bloque va DENTRO de su barra de color (ver arriba);
+  // aquí abajo solo queda el total de la semana.
+  const envasarHtml =
+    totalEnvasarHL > 0
+      ? `<div class="item"><span class="sw" style="background:transparent;"></span><b>TOTAL a envasar ${nfHL(totalEnvasarHL)} hL</b></div>`
+      : "";
+
   const legendItems =
+    envasarHtml +
     [
       ["Costeñita", "#7EAD50"], ["Águila", "#FFF536"],
       ["Águila Light", "#95DDD2"], ["Águila Light 1000", "#57B9E9"],
@@ -374,11 +410,39 @@ function renderGanttCocina(seq, weekStartRaw) {
     }
   });
 
-  const legendItems =
-    MOSTO_CATALOG.map(
-      (m) =>
-        `<div class="item"><span class="sw" style="background:${colorForMosto(m.id)}"></span>${escapeHtml(m.nombre)}</div>`,
-    ).join("") +
+  // hL a envasar por marca (de la programación de cocinas) + cuánto sale de
+  // inventario y cuánto hay que cocinar.
+  const planResults =
+    (typeof STATE !== "undefined" && STATE && STATE.plan && STATE.plan.results) ||
+    [];
+  const porMarca = {};
+  planResults.forEach((r) => {
+    const t =
+      porMarca[r.mostoId] ||
+      (porMarca[r.mostoId] = { envasar: 0, inv: 0, cocinar: 0, coc: 0 });
+    t.envasar += Number(r.volumenEnvasar) || 0;
+    t.inv += Number(r.inventarioUsadoHL) || 0;
+    t.cocinar += Number(r.volumenCocinar) || 0;
+    t.coc += Number(r.numCocimientos) || 0;
+  });
+  const nf = (x) => Math.round(x).toLocaleString("es-CO");
+  const legendItems = MOSTO_CATALOG.map((m) => {
+    const t = porMarca[m.id];
+    const vol = t
+      ? ` — <b>${nf(t.envasar)} hL a envasar</b>` +
+        (t.inv > 0 ? ` · ${nf(t.inv)} de inventario` : "") +
+        (t.cocinar > 1 ? ` · ${nf(t.cocinar)} a cocinar (${t.coc} coc.)` : "")
+      : "";
+    return `<div class="item"><span class="sw" style="background:${colorForMosto(m.id)}"></span>${escapeHtml(m.nombre)}${vol}</div>`;
+  }).join("");
+  const totalEnvasar = Object.values(porMarca).reduce(
+    (a, t) => a + t.envasar,
+    0,
+  );
+  const extraItems =
+    (totalEnvasar > 0
+      ? `<div class="item"><span class="sw" style="background:transparent;"></span><b>TOTAL ${nf(totalEnvasar)} hL a envasar</b></div>`
+      : "") +
     `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);"></span>Aseo (CIP)</div>` +
     `<div class="item"><span class="sw" style="background:var(--danger); outline:2px solid var(--danger);"></span>Excede fecha límite</div>`;
 
@@ -395,7 +459,7 @@ function renderGanttCocina(seq, weekStartRaw) {
         </div>
       </div>
     </div>
-    <div class="legend">${legendItems}</div>
+    <div class="legend">${legendItems}${extraItems}</div>
   `;
 }
 

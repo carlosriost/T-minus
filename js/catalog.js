@@ -10,10 +10,9 @@
 // Los tiempos se editan en formato hh:mm:ss (horas:minutos:segundos) y se guardan internamente en horas.
 // IMPORTANTE: "Light" va antes que "Estandar" en la lista para que "Águila Light" homologue a
 // Mosto Light y no quede capturada primero por la palabra clave genérica "aguila" de Estandar.
-// tiempoVencimientoHoras = tiempo MÁXIMO TOTAL que un lote puede estar en su
-// SV antes de dañarse (0 = sin vencimiento / no se controla), maduración
-// incluida: se cuenta desde que el lote entra al SV (fin de cocina), no desde
-// que termina de madurar.
+// tiempoMaxBBTHoras = tiempo MÁXIMO que un lote puede estar en el BBT (producto
+// terminado) antes de dañarse. Solo aplica a Pony (24 h); la cerveza no tiene
+// este problema (0 = sin límite). Reemplaza el antiguo "vencimiento en SV".
 let MOSTO_CATALOG = [
   {
     id: "light",
@@ -25,7 +24,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("168:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoVencimientoHoras: 0,
+    tiempoMaxBBTHoras: 0,
   },
   {
     id: "pilsen",
@@ -37,7 +36,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoVencimientoHoras: 0,
+    tiempoMaxBBTHoras: 0,
   },
   {
     id: "pony",
@@ -49,7 +48,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("0"),
     tiempoMaduracionHoras: parseHMS("24:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoVencimientoHoras: 60,
+    tiempoMaxBBTHoras: parseHMS("24:00:00"),
   },
   {
     id: "estandar",
@@ -61,7 +60,7 @@ let MOSTO_CATALOG = [
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoVencimientoHoras: 0,
+    tiempoMaxBBTHoras: 0,
   },
 ];
 
@@ -69,22 +68,14 @@ let MOSTO_CATALOG = [
 // "origen" y "destino" se homologan contra el catálogo de mostos igual que las marcas del Excel
 // (mismo matchMosto), así "Aguila" homologa a Estandar salvo que diga "Aguila Light".
 // Si una combinación no está definida, se usa ASEO_DEFAULT_HORAS (o el inverso, si existe).
-// Reglas fijas (no requieren fila en la matriz): no se programa aseo cuando origen y destino son
-// la misma marca, ni cuando el origen es Pony (ver getAseoDuracion).
+// Reglas fijas (ver getAseoDuracion), NO configurables aquí: no hay aseo entre la misma
+// marca, ni saliendo de Pony, ni saliendo de Light, ni entre cervezas normales
+// (Estandar ↔ Pilsen). Solo hay aseo al ENTRAR a Light o a Pony desde una cerveza
+// normal, así que estas son las únicas combinaciones que se consultan:
 let ASEO_MATRIX = [
   {
-    origen: "Pilsen",
-    destino: "Estandar",
-    duracionHoras: parseHMS("3:50:00"),
-  },
-  {
-    origen: "Light",
-    destino: "Estandar",
-    duracionHoras: parseHMS("3:50:00"),
-  },
-  {
     origen: "Estandar",
-    destino: "Pony",
+    destino: "Light",
     duracionHoras: parseHMS("4:40:00"),
   },
   {
@@ -93,13 +84,8 @@ let ASEO_MATRIX = [
     duracionHoras: parseHMS("4:40:00"),
   },
   {
-    origen: "Light",
-    destino: "Pony",
-    duracionHoras: parseHMS("4:40:00"),
-  },
-  {
     origen: "Estandar",
-    destino: "Light",
+    destino: "Pony",
     duracionHoras: parseHMS("4:40:00"),
   },
   {
@@ -114,7 +100,7 @@ let ASEO_DEFAULT_HORAS = parseHMS("3:50:00");
 // cocimientos consecutivos en la secuencia semanal, independientemente del mosto o de si hay
 // cambio de marca. Totalmente editable desde el panel "Aseo periódico (general)".
 let ASEO_PERIODICO = {
-  activo: false,
+  activo: true,
   duracionHoras: parseHMS("3:50:00"),
   cocimientosEntreAseos: 18,
 };
@@ -180,13 +166,25 @@ function inventoryTotalsByMosto(catalog) {
   return totals;
 }
 
-// Lotes de inventario por mosto CON su fecha real de disponibilidad (BBT: ya
-// listo / I0; FV: I0 + días de fermentación que le falten; SV: I0 + días de
-// maduración que le falten) — es lo que computeCocinaPlan() debe usar para
-// descontar demanda: un lote solo puede cubrir un envasado que ocurra EN O
-// DESPUÉS de su fecha de disponibilidad, nunca uno anterior. Ordenados por
-// fecha de disponibilidad (el que esté listo primero se consume primero).
-// Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
+// Lotes de inventario por mosto CON su fecha real en que estarán LISTOS PARA
+// ENVASAR (fin de todo el proceso, igual que la regla 1):
+//   · BBT           → ya listo (I0).
+//   · SV / SV Pony  → I0 + maduración que le falte.
+//   · FV            → I0 + fermentación que le falte + maduración COMPLETA (al
+//                     salir del fermentador todavía pasa por el madurador).
+// Un lote solo puede cubrir un envasado que ocurra EN O DESPUÉS de esa fecha.
+// Ordenados por fecha de disponibilidad (el que esté listo primero se consume
+// primero). Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
+// En cocina toda la Pony es el mismo Mosto Pony, pero el PRODUCTO TERMINADO en
+// BBT sí se separa en Pony Go y Pony HG (y no se cruzan al cubrir envasado).
+// Devuelve "go" o "hg" a partir del texto de la marca/SKU.
+function ponyVariante(texto) {
+  const n = normalizeText(texto || "");
+  if (/\bgo\b/.test(n) || /\bpmg\b/.test(n) || n.includes("go less sugar"))
+    return "go";
+  return "hg";
+}
+
 function inventoryBatchesByMosto(catalog) {
   const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
   const catById = {};
@@ -204,20 +202,33 @@ function inventoryBatchesByMosto(catalog) {
         e.diasEnEquipo === "" || e.diasEnEquipo == null
           ? 0
           : Number(e.diasEnEquipo) || 0;
-      const diasReq = m
-        ? (e.tipo === "FV"
-            ? Number(m.tiempoFermentacionHoras) || 0
-            : Number(m.tiempoMaduracionHoras) || 0) / 24
+      const fermentDias = m ? (Number(m.tiempoFermentacionHoras) || 0) / 24 : 0;
+      const maduracionDias = m
+        ? (Number(m.tiempoMaduracionHoras) || 0) / 24
         : 0;
-      const faltanDias = Math.max(0, diasReq - dias);
+      const faltanDias =
+        e.tipo === "FV"
+          ? Math.max(0, fermentDias - dias) + maduracionDias
+          : Math.max(0, maduracionDias - dias);
       listoEn = new Date(i0.getTime() + faltanDias * 86400000);
     }
     // BBT: producto terminado, disponible desde ya (listoEn = i0).
+    // Solo los BBT de Pony llevan variante (go / hg); el resto queda en null y
+    // cubre cualquier envasado de su mosto.
+    const variante =
+      e.mostoId === "pony" && e.tipo === "BBT"
+        ? ponyVariante(e.marcaTexto)
+        : null;
     if (!out[e.mostoId]) out[e.mostoId] = [];
-    out[e.mostoId].push({ hL, listoEn });
+    out[e.mostoId].push({ hL, listoEn, variante, esBBT: e.tipo === "BBT" });
   });
+  // Se consume primero lo que está listo antes; a igualdad de fecha, primero el
+  // BBT (producto terminado que hay que sacar del tanque) y luego el FV/SV.
   Object.keys(out).forEach((k) =>
-    out[k].sort((a, b) => a.listoEn - b.listoEn),
+    out[k].sort(
+      (a, b) =>
+        a.listoEn - b.listoEn || (b.esBBT ? 1 : 0) - (a.esBBT ? 1 : 0),
+    ),
   );
   return out;
 }
@@ -298,48 +309,33 @@ function inventoryOccupancyByEquipo() {
   return out;
 }
 
-// Próximo vencimiento de lo que YA está madurando/maduro en los SV, separado
-// en "pony" y "cerveza" (cualquier otro mosto). Usa tiempoVencimientoHoras
-// del catálogo (0 = ese mosto no controla vencimiento). Se agrupa por la
-// MARCA (mostoId), no por el tipo de equipo: un lote de mostoId "pony" es
-// Pony aunque su fila de inventario haya quedado cargada como "SV" en vez de
-// "SV Pony" (Pony solo madura en SV Pony — ver assignTanks/canSV — así que un
-// registro "SV" con mostoId pony es un lote Pony mal tipeado, no cerveza).
-// No cuenta los SV con levadura guardada (no son producto real). Devuelve
-// {pony: Date|null, cerveza: Date|null} con la fecha más próxima de cada uno.
-function proximoVencimientoSV(catalog) {
+// Fecha límite más próxima para envasar lo que YA está en BBT, según
+// tiempoMaxBBTHoras del catálogo. Solo Pony tiene límite (24 h en BBT); la
+// cerveza no. Para cada lote de BBT de Pony: fechaLímite = I0 + (máx − horas
+// que ya lleva en BBT). Si ya se pasó, la fecha cae en o antes de I0.
+// Devuelve {pony: Date|null, cerveza: Date|null} (cerveza siempre null).
+function proximoLimiteBBT(catalog) {
   const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
   const catById = {};
   (catalog || []).forEach((m) => (catById[m.id] = m));
   let pony = null;
-  let cerveza = null;
   (INVENTORY_BALANCE || []).forEach((e) => {
-    if (!e || (e.tipo !== "SV" && e.tipo !== "SV Pony")) return;
-    if (esLevaduraEnMadurador(e)) return;
+    if (!e || e.tipo !== "BBT") return;
     const hL = Number(e.hL) || 0;
     if (hL <= 0 || e.vacio) return;
     const m = catById[e.mostoId];
     if (!m) return;
-    const vencH = Number(m.tiempoVencimientoHoras) || 0;
-    if (vencH <= 0) return;
-    const dias =
-      e.diasEnEquipo === "" || e.diasEnEquipo == null
-        ? 0
-        : Number(e.diasEnEquipo) || 0;
-    // tiempoVencimientoHoras es el máximo TOTAL en el SV (maduración incluida),
-    // contado desde que el lote entró al equipo — no desde que terminó de
-    // madurar. "dias" ya son los que lleva adentro, así que la entrada al
-    // equipo fue hace "dias" días.
-    const fechaVence = new Date(
-      i0.getTime() - dias * 86400000 + vencH * 3600000,
+    const maxH = Number(m.tiempoMaxBBTHoras) || 0;
+    if (maxH <= 0) return;
+    const yaEnBBT = Number(e.almacenBBTHoras) || 0;
+    const fechaLimite = new Date(
+      i0.getTime() + (maxH - yaEnBBT) * 3600000,
     );
     if (e.mostoId === "pony") {
-      if (!pony || fechaVence < pony) pony = fechaVence;
-    } else {
-      if (!cerveza || fechaVence < cerveza) cerveza = fechaVence;
+      if (!pony || fechaLimite < pony) pony = fechaLimite;
     }
   });
-  return { pony, cerveza };
+  return { pony, cerveza: null };
 }
 
 // Índice del inventario "producto en proceso" por nombre de equipo normalizado

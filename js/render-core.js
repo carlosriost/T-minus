@@ -141,15 +141,15 @@ function renderKPIs(plan, seq) {
   const sinTanque =
     seq && seq.tankAssignment ? seq.tankAssignment.sinTanque.length : 0;
   const yeastBlocked = seq && seq.yeastBlocked ? seq.yeastBlocked.length : 0;
-  // Vencimiento de lo que ya está en los SV (Pony y cerveza), según el
-  // "Vencimiento en SV" configurado por mosto en el Catálogo de mostos.
-  const vencSV =
-    typeof proximoVencimientoSV === "function"
-      ? proximoVencimientoSV(MOSTO_CATALOG)
+  // Fecha límite para envasar lo que ya está en BBT, según "Máx. en BBT"
+  // del Catálogo de mostos. Solo Pony (24 h); la cerveza no tiene límite.
+  const limBBT =
+    typeof proximoLimiteBBT === "function"
+      ? proximoLimiteBBT(MOSTO_CATALOG)
       : { pony: null, cerveza: null };
   const i0 = getI0Date() || new Date();
   const vencItem = (fecha, label) => ({
-    n: fecha ? fmtDateTime(fecha) : "Sin vencimiento controlado",
+    n: fecha ? fmtDateTime(fecha) : "Sin límite en BBT",
     l: label,
     cls: !fecha ? "" : fecha.getTime() <= i0.getTime() ? "danger" : "warn",
   });
@@ -160,8 +160,7 @@ function renderKPIs(plan, seq) {
       l: "Bloques Light bloqueados",
       cls: yeastBlocked ? "danger" : "ok",
     },
-    vencItem(vencSV.pony, "Vencimiento SV Pony"),
-    vencItem(vencSV.cerveza, "Vencimiento SV cerveza"),
+    vencItem(limBBT.pony, "Límite BBT Pony (máx 24 h)"),
     {
       n: totalEnvasar.toLocaleString("es-CO", {
         maximumFractionDigits: 0,

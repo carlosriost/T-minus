@@ -191,39 +191,13 @@ function parseSuite360Workbook(workbook, sheetName) {
   }
   const firstTime =
     suiteHourParts(HOUR_ROW, FIRST_TIME_COL) || { h: 22, m: 0, s: 0 };
-  // El bloque rotulado con una fecha D representa la JORNADA de producción D.
-  // Cuando la cuadrícula arranca por la tarde/noche (>= 12 h) esa jornada
-  // empieza a esa hora del día ANTERIOR (p. ej. la jornada "lunes 31" va de
-  // domingo 30 22:00 a lunes 31 22:00). Si arranca en la mañana, empieza el
-  // mismo día rotulado.
-  const timelineStart = combine(
-    addDays(firstDay, firstTime.h >= 12 ? -1 : 0),
-    firstTime,
-  );
-
-  /* Catálogo operativo del mismo libro: velocidad nominal y eficiencia por línea/SKU. */
-  const speedCatalog = [];
-  const speedSheetName = workbook.SheetNames.find((n) => normalizeText(n) === "velocidad eficiencia");
-  if (speedSheetName) {
-    const sws = workbook.Sheets[speedSheetName];
-    const sa = XLSX.utils.sheet_to_json(sws, { header: 1, defval: null, raw: true });
-    let hr = sa.findIndex((r) => (r || []).some((v) => normalizeText(v) === "recurso"));
-    if (hr >= 0) {
-      for (let r = hr + 1; r < sa.length; r++) {
-        const row = sa[r] || [];
-        const resource = String(row[0] || "").trim();
-        const code = String(row[1] || "").trim();
-        const description = String(row[2] || "").trim();
-        const pack = Number(row[3]) || 0;
-        const cc = Number(row[4]) || 0;
-        const speed = Number(row[6]) || 0;
-        let efficiency = row[7];
-        if (typeof efficiency === "string") efficiency = Number(efficiency.replace("%", "").replace(",", ".")) / 100;
-        efficiency = Number(efficiency) || 0;
-        if (resource && description && speed > 0) speedCatalog.push({ resource, code, description, pack, cc, speed, efficiency });
-      }
-    }
-  }
+  // La primera columna de la cuadrícula es la hora `firstTime` del PRIMER día
+  // rotulado (fila 8), sin restarle ni sumarle días. P. ej. si la fila 8 dice
+  // "lunes 7 de septiembre" y la fila 10 arranca en 22:00, la cuadrícula
+  // empieza el lunes 7 a las 22:00 y avanza una hora por columna. (Antes se
+  // restaba un día cuando la hora era >= 12, lo que corría todo el plan un día
+  // hacia atrás respecto al Excel.)
+  const timelineStart = combine(firstDay, firstTime);
 
   function brandFamily(text) {
     const n = normalizeText(text);
@@ -236,18 +210,108 @@ function parseSuite360Workbook(workbook, sheetName) {
     return n;
   }
 
+  /* SKUs VÁLIDOS DE ESTA SEMANA — tabla "Línea | SKU | SAP | Eficiencia | ..."
+     que está DENTRO de la propia hoja "Semana N". Es la única lista autorizada:
+     la hoja "Velocidad Eficiencia" trae SKUs viejos que ya no existen (p. ej.
+     "Pony Malta Vital PET") y hacían aparecer marcas/eficiencias fantasma. */
+  const semanaSkus = [];
+  {
+    // Los encabezados de esta tabla ("Línea | SKU | SAP | Eficiencia | Formato |
+    // Referencia | ...") NO están en columnas contiguas: cada campo ocupa una
+    // celda combinada de varias columnas. Se localiza la fila que contiene A LA
+    // VEZ "línea" y "eficiencia", y luego cada campo por su columna literal.
+    const idxOf = (row, want, from) => {
+      for (let c = (from || 0); c < row.length; c++)
+        if (normalizeText(row[c]).trim() === want) return c;
+      return -1;
+    };
+    let hr = -1;
+    for (let r = 0; r < aoa.length && hr < 0; r++) {
+      const row = aoa[r] || [];
+      if (idxOf(row, "linea") >= 0 && idxOf(row, "eficiencia") >= 0) hr = r;
+    }
+    if (hr >= 0) {
+      const hrow = aoa[hr];
+      const cLinea = idxOf(hrow, "linea");
+      const cSku = idxOf(hrow, "sku", cLinea); // el SKU que está DESPUÉS de "Línea"
+      const cSap = idxOf(hrow, "sap", cLinea);
+      const cEfi = idxOf(hrow, "eficiencia");
+      const cFmt = idxOf(hrow, "formato", cLinea);
+      const cRef = idxOf(hrow, "referencia", cLinea);
+      for (let r = hr + 1; r < aoa.length; r++) {
+        const row = aoa[r] || [];
+        const name = row[cSku];
+        if (isBlank(name) || /^total$/i.test(String(name).trim())) break;
+        const tm = String(row[cLinea] || "").match(/tren\s*-?\s*(\d+)/i);
+        if (!tm) continue;
+        let efi = Number(row[cEfi]) || 0;
+        if (efi > 1.5) efi = efi / 100; // viene como porcentaje (90 = 90 %)
+        semanaSkus.push({
+          tren: tm[1],
+          name: String(name).trim(),
+          sap: String(row[cSap] == null ? "" : row[cSap]).trim(),
+          efficiency: efi,
+          cc: cFmt >= 0 ? Number(row[cFmt]) || 0 : 0,
+          pack: cRef >= 0 ? Number(row[cRef]) || 0 : 0,
+          family: brandFamily(name),
+        });
+      }
+    }
+  }
+
+  /* Velocidad nominal (hL/h) desde "Velocidad Eficiencia", indexada por código
+     SAP. SOLO se usa para poner la velocidad de un SKU que YA está en la lista
+     de la semana; nunca para introducir un SKU. */
+  const speedBySap = {};
+  const speedSheetName = workbook.SheetNames.find(
+    (n) => normalizeText(n) === "velocidad eficiencia",
+  );
+  if (speedSheetName) {
+    const sws = workbook.Sheets[speedSheetName];
+    const sa = XLSX.utils.sheet_to_json(sws, { header: 1, defval: null, raw: true });
+    let hr = sa.findIndex((r) => (r || []).some((v) => normalizeText(v) === "recurso"));
+    if (hr >= 0) {
+      for (let r = hr + 1; r < sa.length; r++) {
+        const row = sa[r] || [];
+        const code = String(row[1] == null ? "" : row[1]).trim();
+        const speed = Number(row[6]) || 0;
+        if (code && speed > 0 && speedBySap[code] == null) speedBySap[code] = speed;
+      }
+    }
+  }
+
   function identifySku(train, product, formatText) {
-    const fmt = String(formatText || "");
-    const nums = [...fmt.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => Number(m[1].replace(",", ".")));
-    const cc = nums[0] || 0;
-    const pack = nums[1] || 0;
-    const family = brandFamily(product);
-    const candidates = speedCatalog.filter((x) =>
-      normalizeText(x.resource) === normalizeText("TREN-" + train) &&
-      (!cc || x.cc === cc) && (!pack || x.pack === pack) &&
-      brandFamily(x.description) === family
-    );
-    return candidates[0] || null;
+    const pool = semanaSkus.filter((x) => x.tren === String(train));
+    if (!pool.length) return null;
+    const txt = normalizeText(product) + " " + normalizeText(formatText);
+    // 1) por código SAP contenido en el texto de la celda (p. ej. "A Light 22613").
+    let m = pool.find((x) => x.sap && txt.includes(normalizeText(x.sap)));
+    // 2) por familia de marca + tamaño (cc/pack) del texto de "PROGRAMA INICIAL".
+    if (!m) {
+      const fmt = String(formatText || "");
+      const nums = [...fmt.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((g) =>
+        Number(g[1].replace(",", ".")),
+      );
+      const cc = nums[0] || 0;
+      const pack = nums[1] || 0;
+      const fam = brandFamily(product);
+      m = pool.find(
+        (x) =>
+          x.family === fam &&
+          (!cc || x.cc === cc) &&
+          (!pack || x.pack === pack),
+      );
+      if (!m) m = pool.find((x) => x.family === fam);
+    }
+    if (!m) return null;
+    return {
+      code: m.sap,
+      description: m.name,
+      cc: m.cc,
+      pack: m.pack,
+      speed: speedBySap[m.sap] || 0,
+      efficiency: m.efficiency || 0,
+    };
   }
 
   function specialLabel(text) {

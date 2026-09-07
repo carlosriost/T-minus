@@ -336,14 +336,14 @@ function renderCatalog() {
       <td><input type="text" class="cat-input cat-time" data-field="tiempoCocinaHoras" value="${formatHMS(m.tiempoCocinaHoras)}" placeholder="hh:mm:ss"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoFermentacionHoras" value="${formatHMS(m.tiempoFermentacionHoras)}" placeholder="hh:mm:ss"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoMaduracionHoras" value="${formatHMS(m.tiempoMaduracionHoras)}" placeholder="hh:mm:ss"></td>
-      <td><input type="text" class="cat-input cat-time" data-field="tiempoVencimientoHoras" value="${formatHMS(m.tiempoVencimientoHoras)}" placeholder="hh:mm:ss (0 = sin vencimiento)"></td>
+      <td><input type="text" class="cat-input cat-time" data-field="tiempoMaxBBTHoras" value="${formatHMS(m.tiempoMaxBBTHoras)}" placeholder="hh:mm:ss (0 = sin límite)"></td>
       <td class="cat-remove"><button class="btn small" data-remove="${idx}" title="Quitar mosto">✕</button></td>
     </tr>`,
   ).join("");
   wrap.innerHTML = `<table><thead><tr>
       <th>Marca</th><th>Marcas (palabras clave)</th><th>Factor dilución</th><th>Vol. x cocimiento (HL)</th>
       <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th>
-      <th title="Máximo TOTAL en el SV antes de dañarse, maduración incluida (contado desde que sale de cocina). 0 = sin vencimiento.">Vencimiento en SV (hh:mm:ss)</th><th></th>
+      <th title="Tiempo máximo en el BBT (producto terminado) antes de dañarse. Solo Pony (24 h). 0 = sin límite.">Máx. en BBT (hh:mm:ss)</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
   wrap.querySelectorAll(".cat-input").forEach((inp) => {
@@ -384,7 +384,7 @@ document.getElementById("addMostoBtn").addEventListener("click", () => {
     tiempoFermentacionHoras: parseHMS("168:00:00"),
     tiempoMaduracionHoras: parseHMS("48:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoVencimientoHoras: 0,
+    tiempoMaxBBTHoras: 0,
   });
   renderCatalog();
   renderInventoryBalance(STATE && STATE.plan);
@@ -717,6 +717,10 @@ renderInventoryBalance(STATE && STATE.plan);
               ? ""
               : Math.max(0, Math.round(Number(p.diasEnEquipo) || 0)),
           hL: Math.max(0, Math.round(Number(p.hL) || 0)),
+          almacenBBTHoras:
+            p.tipo === "BBT" && p.almacenBBTHoras != null
+              ? Math.max(0, Number(p.almacenBBTHoras) || 0)
+              : null,
         }));
         saveInventoryBalance();
         renderInventoryBalance(STATE && STATE.plan);
@@ -1089,9 +1093,66 @@ aseoPeriodicoActivoInput.addEventListener("change", () => {
 });
 
 // ---- Botón "Refrescar análisis": vuelve a calcular todo con los valores editados actuales ----
+// Lee de vuelta TODOS los campos editables de los catálogos hacia el modelo en
+// memoria (sin depender de que haya saltado el evento "change" de cada input) y
+// recalcula. Así, aunque el usuario haya escrito en una celda y no haya salido
+// de ella, "Refrescar análisis" aplica de verdad lo que se ve en pantalla.
+function commitCatalogInputsFromDOM() {
+  const numOr = (v, d) => {
+    const n = Number(v);
+    return isFinite(n) ? n : d;
+  };
+  // tabla genérica: tr[data-idx] con .cat-input[data-field] → MODEL[idx][field]
+  const commitTable = (wrapId, model, fieldAttr) => {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap || !Array.isArray(model)) return;
+    wrap.querySelectorAll("tr[data-idx]").forEach((tr) => {
+      const idx = +tr.dataset.idx;
+      if (!model[idx]) return;
+      tr.querySelectorAll("[" + fieldAttr + "]").forEach((inp) => {
+        const field = inp.getAttribute(fieldAttr);
+        let val = inp.type === "checkbox" ? inp.checked : inp.value;
+        if (inp.classList.contains("cat-time")) val = parseHMS(inp.value);
+        else if (inp.type === "number")
+          val = inp.value === "" ? "" : numOr(inp.value, model[idx][field]);
+        model[idx][field] = val;
+      });
+    });
+  };
+  commitTable("catalogTableWrap", MOSTO_CATALOG, "data-field");
+  commitTable("aseoTableWrap", ASEO_MATRIX, "data-field");
+  if (typeof TANK_CATALOG !== "undefined")
+    commitTable("tankTableWrap", TANK_CATALOG, "data-field");
+  if (typeof INVENTORY_BALANCE !== "undefined") {
+    commitTable("balanceTableWrap", INVENTORY_BALANCE, "data-inv-field");
+    if (typeof saveInventoryBalance === "function") saveInventoryBalance();
+  }
+  // Inputs sueltos de aseos.
+  const aseoDef = document.getElementById("aseoDefaultInput");
+  if (aseoDef) ASEO_DEFAULT_HORAS = parseHMS(aseoDef.value);
+  const apT = document.getElementById("aseoPeriodicoTiempoInput");
+  const apN = document.getElementById("aseoPeriodicoCocimientosInput");
+  const apA = document.getElementById("aseoPeriodicoActivoInput");
+  if (apT) ASEO_PERIODICO.duracionHoras = parseHMS(apT.value);
+  if (apN)
+    ASEO_PERIODICO.cocimientosEntreAseos = Math.max(
+      1,
+      parseInt(apN.value, 10) || 1,
+    );
+  if (apA) ASEO_PERIODICO.activo = apA.checked;
+}
+
 document.getElementById("refreshAnalysisBtn").addEventListener("click", () => {
   const btn = document.getElementById("refreshAnalysisBtn");
   const original = btn.textContent;
+  const active = document.activeElement;
+  if (active && active !== btn && typeof active.blur === "function")
+    active.blur();
+  commitCatalogInputsFromDOM();
+  // Re-render de los catálogos para que muestren los valores ya normalizados.
+  if (typeof renderCatalog === "function") renderCatalog();
+  if (typeof renderAseoCatalog === "function") renderAseoCatalog();
+  if (typeof renderTankCatalog === "function") renderTankCatalog();
   recompute();
   btn.textContent = "✓ Análisis actualizado";
   setTimeout(() => {
