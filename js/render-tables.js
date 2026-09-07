@@ -343,7 +343,7 @@ function renderCatalog() {
   wrap.innerHTML = `<table><thead><tr>
       <th>Marca</th><th>Marcas (palabras clave)</th><th>Factor dilución</th><th>Vol. x cocimiento (HL)</th>
       <th>Cargues (hh:mm:ss)</th><th>Cocinas (hh:mm:ss)</th><th>Fermentación (hh:mm:ss)</th><th>Maduración (hh:mm:ss)</th>
-      <th title="Tiempo máximo en el BBT (producto terminado) antes de dañarse. Solo Pony (24 h). 0 = sin límite.">Máx. en BBT (hh:mm:ss)</th><th></th>
+      <th title="Tiempo máximo en el BBT (producto terminado) antes de dañarse. Solo Pony (48 h; la programación puede estirarlo hasta 72 h y lo marca en rojo). 0 = sin límite.">Máx. en BBT (hh:mm:ss)</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
   wrap.querySelectorAll(".cat-input").forEach((inp) => {
@@ -427,21 +427,23 @@ function renderInventoryBalance(plan) {
     const disponible = disponibleByMosto[m.id] || 0;
     const t = totalsByMosto[m.id] || { envasar: 0, cubierto: 0, cocinar: 0 };
     const sobrante = Math.max(0, disponible - t.cubierto);
-    // Puede sobrar inventario Y a la vez faltar por cocinar, sin contradicción:
-    // no es que "no cuadre la suma" — es que ese HL sobrante no alcanza a estar
-    // LISTO (fermentación/maduración) para ninguno de los envasados cargados
-    // que todavía lo necesitan; solo servirá para una demanda futura que aún
-    // no se ha cargado. Se explica con la fecha real del lote más próximo.
+    // Todo el inventario cuenta como disponible, esté o no listo ya para
+    // envasar. Si aun así sobra inventario Y falta por cocinar, es porque ese
+    // HL no puede cubrir la demanda que queda: en Pony, un lote de BBT de una
+    // variante (Go / HG) no sirve para la otra.
     let notaHtml = "";
     if (sobrante > 1 && t.cocinar > 1e-6) {
       const lotesSobrantes = (remainingBatches[m.id] || []).filter(
         (l) => l.hL > 1e-6,
       );
       if (lotesSobrantes.length) {
-        const masProximo = lotesSobrantes.reduce((a, b) =>
-          a.listoEn < b.listoEn ? a : b,
-        );
-        notaHtml = `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;">Hay ${Math.round(t.cocinar).toLocaleString("es-CO")} HL por cocinar Y a la vez ${Math.round(sobrante).toLocaleString("es-CO")} HL sobrantes: no se contradicen — parte del inventario (el lote sobrante más próximo, ${Math.round(masProximo.hL).toLocaleString("es-CO")} HL) no está listo hasta ${fmtDateTime(masProximo.listoEn)}, así que no alcanzó a cubrir un envasado anterior a esa fecha.</div>`;
+        const variantes = [
+          ...new Set(lotesSobrantes.map((l) => l.variante).filter(Boolean)),
+        ];
+        const motivo = variantes.length
+          ? `es de otra variante (${variantes.join(" / ").toUpperCase()}) y no cubre el envasado que falta`
+          : `no hay más envasado cargado que lo consuma`;
+        notaHtml = `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;">Hay ${Math.round(t.cocinar).toLocaleString("es-CO")} HL por cocinar Y a la vez ${Math.round(sobrante).toLocaleString("es-CO")} HL sobrantes: no se contradicen — ese inventario ${motivo}.</div>`;
       }
     }
     return `<tr>
@@ -838,23 +840,37 @@ function renderYeastConfig() {
     summary.innerHTML = proxLight
       ? `<div style="border:1px solid rgba(76,175,130,.35);background:rgba(76,175,130,.08);padding:10px 14px;border-radius:4px;color:var(--ok)"><b>✓ Habrá levadura Light.</b> Próxima disponibilidad: ${fmtDateTime(proxLight)}${lightManual.length ? "" : " (cosecha calculada)"}.</div>`
       : '<div style="border:1px solid rgba(237,28,43,.35);background:rgba(237,28,43,.08);padding:10px 14px;border-radius:4px;color:var(--danger)"><b>⚠ No hay levadura Light disponible ni cosechas Light previstas.</b> Los bloques Light no podrán programarse.</div>';
+  // Re-render + recálculo DIFERIDOS: si se reemplaza la tabla dentro del propio
+  // evento (change dispara al hacer blur del campo), el navegador lanza
+  // NotFoundError al setear innerHTML sobre un nodo que aún está en el blur, y
+  // el recompute() nunca corría → "no se actualiza al poner una levadura".
+  const aplicarCambioLevadura = () => {
+    saveYeastAvailability();
+    setTimeout(() => {
+      try {
+        recompute(); // recompute() ya re-renderiza la config de levadura
+      } catch (_) {}
+      try {
+        renderYeastConfig();
+      } catch (_) {}
+    }, 0);
+  };
   wrap.querySelectorAll("[data-yeast-field]").forEach((inp) =>
     inp.addEventListener("change", (e) => {
-      const idx = +e.target.closest("tr").dataset.yeastIdx;
+      const tr = e.target.closest("tr");
+      if (!tr) return;
+      const idx = +tr.dataset.yeastIdx;
       const field = e.target.dataset.yeastField;
+      if (!YEAST_AVAILABILITY[idx] || !field) return;
       YEAST_AVAILABILITY[idx][field] =
         field === "disponible" ? !!e.target.checked : e.target.value;
-      saveYeastAvailability();
-      renderYeastConfig();
-      recompute();
+      aplicarCambioLevadura();
     }),
   );
   wrap.querySelectorAll("[data-remove-yeast]").forEach((btn) =>
     btn.addEventListener("click", (e) => {
       YEAST_AVAILABILITY.splice(+e.currentTarget.dataset.removeYeast, 1);
-      saveYeastAvailability();
-      renderYeastConfig();
-      recompute();
+      aplicarCambioLevadura();
     }),
   );
 }
@@ -889,7 +905,7 @@ document.getElementById("addYeastBtn").addEventListener("click", () => {
   });
   saveYeastAvailability();
   renderYeastConfig();
-  recompute();
+  setTimeout(() => recompute(), 0);
 });
 renderYeastConfig();
 function renderTankCatalog() {
@@ -1121,6 +1137,22 @@ function commitCatalogInputsFromDOM() {
   };
   commitTable("catalogTableWrap", MOSTO_CATALOG, "data-field");
   commitTable("aseoTableWrap", ASEO_MATRIX, "data-field");
+  // Disponibilidad de levadura registrada a mano (tr[data-yeast-idx]).
+  if (typeof YEAST_AVAILABILITY !== "undefined") {
+    const yw = document.getElementById("yeastConfigWrap");
+    if (yw) {
+      yw.querySelectorAll("tr[data-yeast-idx]").forEach((tr) => {
+        const idx = +tr.dataset.yeastIdx;
+        if (!YEAST_AVAILABILITY[idx]) return;
+        tr.querySelectorAll("[data-yeast-field]").forEach((inp) => {
+          const field = inp.dataset.yeastField;
+          YEAST_AVAILABILITY[idx][field] =
+            inp.type === "checkbox" ? inp.checked : inp.value;
+        });
+      });
+      if (typeof saveYeastAvailability === "function") saveYeastAvailability();
+    }
+  }
   if (typeof TANK_CATALOG !== "undefined")
     commitTable("tankTableWrap", TANK_CATALOG, "data-field");
   if (typeof INVENTORY_BALANCE !== "undefined") {

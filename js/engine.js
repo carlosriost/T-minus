@@ -42,66 +42,117 @@ function buildBrandList(parsed, mergedByTrain) {
   (parsed.summary || []).forEach((s) => (summaryMap[s.codigo] = s));
 
   const brands = [];
-  let current = null;
-  let blockIndex = 0;
 
-  function flush() {
-    if (!current || !(current.volumen > 0)) return;
-    brands.push({
-      codigo: current.codigo,
-      name: current.name,
-      earliest: current.earliest,
-      end: current.end,
-      volumen: current.volumen,
-      train: current.train,
-      sequenceOrder: current.sequenceOrder,
-      blockLabel: `${current.name} · bloque ${blockIndex + 1}`,
-      marcas: current.marcas,
-    });
-    blockIndex++;
-    current = null;
+  // Volumen resuelto (con fallback al resumen) + mosto de cada evento.
+  const withVol = events
+    .map((e) => {
+      let volumen = e.volumen;
+      if (!(volumen > 0)) {
+        const summary = summaryMap[e.codigo];
+        volumen =
+          summary && summary.total && Number(summary.total.hlBBTs) > 0
+            ? Number(summary.total.hlBBTs)
+            : 0;
+      }
+      return { ...e, volumen, mostoId: matchMosto(e.name, MOSTO_CATALOG) };
+    })
+    .filter((e) => e.volumen > 0 && e.mostoId);
+
+  // El número de cocimientos lo fija el volumen (ver computeCocinaPlan); NO se
+  // infla partiendo la demanda en trozos. Por eso aquí se AGRUPA toda la demanda
+  // de un mismo mosto que solo viene separada por OTRO mosto:
+  //   · Stream cerveza: se agrupa por mostoId; la Pony intercalada es
+  //     transparente (no corta el bloque de cerveza). Poker → Pony → Águila,
+  //     todos "estandar", quedan en un solo bloque.
+  //   · Stream Pony: se agrupa por VARIANTE (Go / HG — distintas en BBT aunque
+  //     sea el mismo Mosto Pony); la cerveza intercalada es transparente.
+  // El "mínimo 2 / máximo 4" de Pony es una regla de SECUENCIA (corridas
+  // consecutivas), no de conteo: se aplica en sequenceWeek, no aquí.
+  const skuCorto = (nm) =>
+    String(nm || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const nombreMosto = (id) => {
+    const m = (MOSTO_CATALOG || []).find((x) => x.id === id);
+    return m ? m.nombre : id;
+  };
+  const grupoABrand = (g, streamKey) => {
+    const evs = g.events;
+    const vol = evs.reduce((a, e) => a + e.volumen, 0);
+    const earliest = evs.reduce(
+      (a, e) => (e.earliest && e.earliest < a ? new Date(e.earliest.getTime()) : a),
+      new Date(evs[0].earliest.getTime()),
+    );
+    const end = evs.reduce(
+      (a, e) => (e.end && (!a || e.end > a) ? new Date(e.end.getTime()) : a),
+      evs[0].end ? new Date(evs[0].end.getTime()) : null,
+    );
+    const seqOrder = Math.min(...evs.map((e) => e.sequenceOrder));
+    const marcasTxt = [...new Set(evs.map((e) => skuCorto(e.name)))];
+    return {
+      codigo: evs[0].codigo,
+      name: evs[0].name,
+      earliest,
+      end,
+      volumen: vol,
+      train: evs[0].train,
+      sequenceOrder: seqOrder,
+      _streamKey: streamKey,
+      _mostoNombre: nombreMosto(g.mostoId),
+      _marcasTxt: marcasTxt,
+      marcas: evs,
+    };
+  };
+
+  const grouped = [];
+
+  // --- Stream cerveza (mostoId !== "pony"); Pony transparente ---
+  {
+    let cur = null;
+    withVol
+      .filter((e) => e.mostoId !== "pony")
+      .forEach((e) => {
+        if (!cur || cur.mostoId !== e.mostoId) {
+          if (cur) grouped.push(grupoABrand(cur, "cerveza"));
+          cur = { mostoId: e.mostoId, events: [e] };
+        } else {
+          cur.events.push(e);
+        }
+      });
+    if (cur) grouped.push(grupoABrand(cur, "cerveza"));
   }
 
-  events.forEach((e) => {
-    let volumen = e.volumen;
-    if (!(volumen > 0)) {
-      const summary = summaryMap[e.codigo];
-      volumen =
-        summary && summary.total && Number(summary.total.hlBBTs) > 0
-          ? Number(summary.total.hlBBTs)
-          : 0;
-    }
-    if (!(volumen > 0)) return;
+  // --- Stream Pony (mostoId === "pony"); cerveza transparente, corta por variante ---
+  {
+    let cur = null;
+    let curVar = null;
+    withVol
+      .filter((e) => e.mostoId === "pony")
+      .forEach((e) => {
+        const v =
+          typeof ponyVariante === "function" ? ponyVariante(e.name) : "hg";
+        if (!cur || v !== curVar) {
+          if (cur) grouped.push(grupoABrand(cur, "pony"));
+          cur = { mostoId: "pony", events: [e] };
+          curVar = v;
+        } else {
+          cur.events.push(e);
+        }
+      });
+    if (cur) grouped.push(grupoABrand(cur, "pony"));
+  }
 
-    const mostoId = matchMosto(e.name, MOSTO_CATALOG);
-    const currentMostoId = current
-      ? matchMosto(current.name, MOSTO_CATALOG)
-      : null;
-
-    // Agrupar SOLO filas consecutivas del mismo mosto. Nunca juntar dos
-    // apariciones separadas de la misma marca.
-    if (!current || mostoId !== currentMostoId) {
-      flush();
-      current = {
-        codigo: e.codigo,
-        name: e.name,
-        earliest: new Date(e.earliest.getTime()),
-        end: e.end ? new Date(e.end.getTime()) : null,
-        volumen,
-        train: e.train,
-        sequenceOrder: e.sequenceOrder,
-        marcas: [e],
-      };
-    } else {
-      current.volumen += volumen;
-      if (e.earliest && e.earliest < current.earliest)
-        current.earliest = new Date(e.earliest.getTime());
-      if (e.end && (!current.end || e.end > current.end))
-        current.end = new Date(e.end.getTime());
-      current.marcas.push(e);
-    }
+  // Orden temporal final por primera fecha de envasado; se renumera el bloque.
+  grouped.sort(
+    (a, b) => a.earliest - b.earliest || a.sequenceOrder - b.sequenceOrder,
+  );
+  grouped.forEach((g, i) => {
+    g.sequenceOrder = i;
+    const extra =
+      g._marcasTxt.length > 1 ? ` (${g._marcasTxt.join(" + ")})` : "";
+    g.blockLabel = `${g._mostoNombre} · bloque ${i + 1}${extra}`;
+    brands.push(g);
   });
-  flush();
 
   if (!brands.length) {
     (parsed.summary || []).forEach((s, idx) => {
@@ -222,8 +273,8 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   // BBT ya listo, FV/SV según lo que les falte de fermentación/maduración). Se
   // va descontando en el orden en que aparecen los bloques del plan de
   // envasado, así que el inventario cubre primero el bloque más próximo de esa
-  // marca — pero SOLO con lotes que ya estarán listos para esa fecha; un FV que
-  // recién empezó a fermentar no puede cubrir un envasado de esta semana.
+  // marca. Cuenta TODO el inventario como disponible, aunque todavía no esté
+  // listo para envasar: estará listo pronto y se puede usar.
   const remainingBatches = {};
   Object.keys(inventoryBatches || {}).forEach((mostoId) => {
     remainingBatches[mostoId] = (inventoryBatches[mostoId] || []).map(
@@ -234,19 +285,19 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       }),
     );
   });
-  // Lotes ordenados por fecha de disponibilidad ascendente: al cortar en el
-  // primero que no alcanza a estar listo, ninguno de los siguientes tampoco
-  // (todos son iguales o más tardíos). `varianteDemanda` solo aplica a Pony:
-  // un lote de BBT de Pony Go no cubre un envasado de Pony HG (ni al revés);
-  // los lotes sin variante (FV/SV de Pony, o cualquier otra marca) cubren
-  // cualquier envasado de ese mosto.
+  // TODO el inventario cuenta como DISPONIBLE, esté o no listo ya para envasar:
+  // un FV que aún fermenta o un SV que aún madura igual va a estar listo pronto
+  // y se puede usar. No se descarta un lote por su fecha de disponibilidad; los
+  // lotes se toman en orden de disponibilidad (los que ya están listos primero).
+  // `varianteDemanda` solo aplica a Pony: un lote de BBT de Pony Go no cubre un
+  // envasado de Pony HG (ni al revés); los lotes sin variante (FV/SV de Pony, o
+  // cualquier otra marca) cubren cualquier envasado de ese mosto.
   function tomarDeInventario(mostoId, hastaFecha, necesario, varianteDemanda) {
     const lotes = remainingBatches[mostoId];
-    if (!lotes || !hastaFecha || necesario <= 1e-9) return 0;
+    if (!lotes || necesario <= 1e-9) return 0;
     let tomado = 0;
     for (const lote of lotes) {
       if (tomado >= necesario - 1e-9) break;
-      if (lote.listoEn.getTime() > hastaFecha.getTime()) break;
       if (
         lote.variante &&
         varianteDemanda &&
@@ -291,21 +342,26 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     );
     const volumenEnvasarPendiente = volumenEnvasar - cubiertoPorInventario;
 
-    const volumenCocinar = volumenEnvasarPendiente / factor;
+    // El número de cocimientos lo fija SOLO el volumen, con la fórmula:
+    //   numCocimientos = ceil( loQueHayQueCocinar / (factorDilución · volumenPorCocimiento) )
+    // donde "loQueHayQueCocinar" = volumen a envasar que NO cubre el inventario
+    // (volumenEnvasarPendiente). Un cocimiento rinde factorDilución · volXCoc hL
+    // de producto terminado (p.ej. Pony: 3,23 · 600 = 1.938 hL).
+    // No se infla: el "mínimo 2 / máximo 4" de Pony NO crea cocimientos que no
+    // existen — es una regla de SECUENCIA (corridas de 2 a 4 cocimientos
+    // SEGUIDOS) que se aplica al ordenar la semana en sequenceWeek.
     const volXCoc = Number(m.volumenPorCocimiento) || 1;
-    let numCocimientos =
-      volumenCocinar > 1e-9
-        ? Math.max(1, Math.ceil(volumenCocinar / volXCoc))
+    const rendimientoPorCocimiento = factor * volXCoc; // hL de producto por cocimiento
+    const numCocimientos =
+      volumenEnvasarPendiente > 1e-9
+        ? Math.max(
+            1,
+            Math.ceil(volumenEnvasarPendiente / rendimientoPorCocimiento),
+          )
         : 0;
-
-    // Regla 4 (acuerdo de servicio): los bloques de producción de Pony Malta deben
-    // contemplar como mínimo DOS cocimientos consecutivos, pero SIN dividir el
-    // volumen de cada cocimiento. El tamaño de cada cocimiento sigue siendo el que
-    // define el catálogo (volumen fijo por cocimiento), y solo se aumenta la cantidad
-    // de cocimientos para respetar la regla de mínimo.
-    if (mostoId === "pony" && numCocimientos > 0 && numCocimientos < 2) {
-      numCocimientos = 2;
-    }
+    // "Volumen a cocinar" en hL de mosto concentrado (lo que de verdad entra a
+    // la olla): pendiente / factor.
+    const volumenCocinar = volumenEnvasarPendiente / factor;
 
     let starts = [];
     if (b.earliest && numCocimientos > 0) {
@@ -314,6 +370,7 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
 
     results.push({
       mostoId,
+      variante: varianteDemanda,
       nombre: m.nombre,
       volumenEnvasar,
       volumenCocinar,
@@ -337,6 +394,88 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
 
   // Mantener el orden de bloques del plan de envasado. NO ordenar por start de cocina.
   results.sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+
+  // --- Reconciliación de cocimientos ---------------------------------------
+  // El número de cocimientos NO se infla partiendo la demanda: para cada mosto
+  // (y para Pony, cada variante Go / HG por separado — distintas en BBT) el
+  // total es exactamente ceil( Σ volumenCocinar / volumenPorCocimiento ). Ese
+  // total se reparte entre los bloques del grupo de forma ACUMULADA, así que
+  // Σ block.numCocimientos == total del mosto y ningún bloque redondea por su
+  // cuenta. Lo que cambia entre bloques es solo el reparto y la secuencia, no
+  // la cantidad total.
+  const grpCoc = {};
+  results.forEach((r) => {
+    if (!(r.volumenCocinar > 1e-9)) return;
+    const key = r.mostoId + (r.variante ? "|" + r.variante : "");
+    (grpCoc[key] = grpCoc[key] || []).push(r);
+  });
+  Object.values(grpCoc).forEach((rs) => {
+    const m = catalog.find((x) => x.id === rs[0].mostoId) || {};
+    const vpc = Number(m.volumenPorCocimiento) || 1;
+    let cumVol = 0;
+    let cumCoc = 0;
+    rs.forEach((r) => {
+      cumVol += r.volumenCocinar;
+      const totalHasta = Math.max(1, Math.ceil(cumVol / vpc - 1e-9));
+      r.numCocimientos = Math.max(0, totalHasta - cumCoc);
+      cumCoc = totalHasta;
+      r.starts =
+        r.fechaEnvasadoMinima && r.numCocimientos > 0
+          ? computeCocimientoStarts(r.fechaEnvasadoMinima, r.numCocimientos, m)
+          : [];
+      r.cubiertoTotalPorInventario =
+        r.numCocimientos === 0 && (r.inventarioUsadoHL || 0) > 0;
+    });
+  });
+
+  // --- No dejar un cocimiento SOLO ---------------------------------------------
+  // Un bloque que queda con 1 solo cocimiento no se programa aislado: se fusiona
+  // con el bloque hermano (mismo mosto y, en Pony, misma variante) más cercano
+  // en fecha de envasado, para que salgan juntos en la secuencia. El número
+  // total de cocimientos del grupo no cambia.
+  Object.values(grpCoc).forEach((rs) => {
+    if (rs.length < 2) return;
+    const m = catalog.find((x) => x.id === rs[0].mostoId) || {};
+    for (let i = rs.length - 1; i >= 0; i--) {
+      const src = rs[i];
+      if (src.__merged || src.numCocimientos > 1) continue;
+      let tgt = null;
+      let bd = Infinity;
+      rs.forEach((o) => {
+        if (o === src || o.__merged || o.numCocimientos === 0) return;
+        const d = Math.abs(
+          (o.fechaEnvasadoMinima ? o.fechaEnvasadoMinima.getTime() : 0) -
+            (src.fechaEnvasadoMinima ? src.fechaEnvasadoMinima.getTime() : 0),
+        );
+        if (d < bd) {
+          bd = d;
+          tgt = o;
+        }
+      });
+      if (!tgt) continue;
+      tgt.numCocimientos += src.numCocimientos;
+      tgt.volumenCocinar += src.volumenCocinar;
+      tgt.volumenEnvasar += src.volumenEnvasar;
+      tgt.inventarioUsadoHL =
+        (tgt.inventarioUsadoHL || 0) + (src.inventarioUsadoHL || 0);
+      // Se conserva la fecha de envasado del bloque DESTINO (el grande): el
+      // cocimiento suelto se cuece con esa tanda. No se adelanta todo el bloque
+      // a la fecha del trocito; si esos pocos hL se necesitaran antes, el
+      // chequeo de fecha límite lo marca en rojo.
+      tgt.marcas = (tgt.marcas || []).concat(src.marcas || []);
+      tgt.starts = tgt.fechaEnvasadoMinima
+        ? computeCocimientoStarts(
+            tgt.fechaEnvasadoMinima,
+            tgt.numCocimientos,
+            m,
+          )
+        : [];
+      src.__merged = true;
+    }
+  });
+  for (let i = results.length - 1; i >= 0; i--)
+    if (results[i].__merged) results.splice(i, 1);
+
   // Lo que sobró de cada lote (no se usó porque no había demanda a tiempo para
   // consumirlo, o porque estará listo después de la última fecha cargada) —
   // se expone para poder explicar el "inventario sobrante" del Balance: no es
@@ -474,21 +613,14 @@ function resolveAseoMatrix(matrix, catalog) {
 }
 // Reglas fijas de aseo de cambio de marca (no dependen de la matriz):
 //   · misma marca → sin aseo.
-//   · saliendo de Pony → sin aseo (sale directo a SV Pony).
-//   · saliendo de Light → sin aseo hacia cualquier otra marca.
-//   · entre cervezas normales (Estandar ↔ Pilsen) → sin aseo.
-// SOLO hay aseo cuando se ENTRA a Light o se ENTRA a Pony (desde una cerveza
-// normal). Es decir, las únicas transiciones con aseo son:
-//   Estandar→Light, Pilsen→Light, Estandar→Pony, Pilsen→Pony.
-// La duración de esas sale de la matriz (homologada) o del valor por defecto.
+//   · entrando a una cerveza normal (Estandar / Pilsen) → sin aseo. Esto cubre
+//     Estandar ↔ Pilsen, y también Pony → cerveza y Light → cerveza.
+// SOLO hay aseo cuando se ENTRA a Light o se ENTRA a Pony. La duración sale de
+// la matriz (Estandar→Light, Pilsen→Light, Estandar→Pony, Pilsen→Pony,
+// Light→Pony) o, si la combinación no está definida, del valor por defecto.
 function getAseoDuracion(fromMostoId, toMostoId, resolvedMatrix, defaultHoras) {
   const SIN_ASEO = { horas: 0, definido: true, sinAseo: true };
   if (fromMostoId && toMostoId && fromMostoId === toMostoId) return SIN_ASEO;
-  if (fromMostoId === "pony") return SIN_ASEO;
-  if (fromMostoId === "light") return SIN_ASEO;
-  const esCervezaNormal = (id) => id === "estandar" || id === "pilsen";
-  if (esCervezaNormal(fromMostoId) && esCervezaNormal(toMostoId))
-    return SIN_ASEO;
   if (toMostoId !== "light" && toMostoId !== "pony") return SIN_ASEO;
   let m = resolvedMatrix.find(
     (a) => a.origenId === fromMostoId && a.destinoId === toMostoId,
@@ -997,6 +1129,25 @@ function sequenceWeek(
   (catalog || []).forEach((m) => (catalogById[m.id] = m));
   const HORA = 3600000;
   const DIA = 86400000;
+  // "No te alejes tanto": la cerveza normal (Estándar / Pilsen) no se cuece más
+  // de 7 días antes de su inicio ideal. Así no se adelanta a fin de mes dejando
+  // un hueco largo hasta que arranca Pony; el tiempo muerto queda ANTES del
+  // cronograma. Pony tiene su propio tope (máx. en BBT) y Light lo controla
+  // la disponibilidad de levadura (el tope NO aplica a Light: si el usuario
+  // registra una levadura Light a mano, el bloque Light debe poder adelantarse).
+  // La cerveza casi no se adelanta a su inicio ideal (2 días de holgura para
+  // absorber la cocina ocupada). Si se adelanta más, se cuece TODA antes de que
+  // se abra la ventana de Pony y luego no queda con qué INTERCALAR: se irían
+  // 25 Pony seguidas. Con esta holgura corta, la cerveza cae dentro de la
+  // ventana de Pony y sirve de separador.
+  const MAX_ADELANTO_CERVEZA = 2 * DIA;
+  const aplicaTopeAdelanto = (id) => id === "estandar" || id === "pilsen";
+  // Pony: el máximo REAL en BBT es tiempoMaxBBTHoras (48 h). La programación
+  // puede estirarlo hasta 72 h como tope absoluto; entre el máximo y las 72 h el
+  // bloque sale en ROJO para que el equipo lo revise. Nunca más de 72 h.
+  const PONY_BBT_TOLERANCIA_HORAS = 72;
+  const topeBBTHoras = (b) =>
+    Math.max(Number(b.maxBBTHoras) || 0, PONY_BBT_TOLERANCIA_HORAS);
   const reglaWarnings = [];
   const capacityWarnings = [];
   const yeastEvents = [];
@@ -1083,6 +1234,52 @@ function sequenceWeek(
     });
   });
 
+  // --- Separadores: NUNCA más de 4 Pony seguidas -----------------------------
+  // Entre dos corridas de Pony tiene que ir SIEMPRE otra marca (aunque medien
+  // días). El patrón real es: corrida LARGA de cerveza → aseo → 2-4 Pony →
+  // corrida larga de cerveza → aseo → 2-4 Pony … La cerveza NO se pica en
+  // trocitos: solo se parte cuando de verdad faltan separadores, y nunca en
+  // trozos de menos de MIN_CORRIDA_CERVEZA cocimientos.
+  const MIN_CORRIDA_CERVEZA = 5;
+  {
+    const partirBloque = (b, partes) => {
+      const tam = splitEnTramos(
+        b.numCocimientos,
+        Math.ceil(b.numCocimientos / partes),
+        MIN_CORRIDA_CERVEZA,
+      );
+      let off = 0;
+      return tam.map((size, k) => {
+        const share = size / b.numCocimientos;
+        const slice = b.idealStarts.slice(off, off + size);
+        off += size;
+        return {
+          ...b,
+          blockId: `${b.blockId}__c${k}`,
+          blockLabel: `${b.blockLabel} (parte ${k + 1}/${tam.length})`,
+          numCocimientos: size,
+          volumenEnvasar: b.volumenEnvasar * share,
+          volumenCocinar: b.volumenCocinar * share,
+          idealStarts: slice,
+        };
+      });
+    };
+    let guard = 0;
+    while (guard++ < 20) {
+      const nPony = blocks.filter((b) => b.mostoId === "pony").length;
+      const noPony = blocks.filter((b) => b.mostoId !== "pony");
+      const faltan = Math.max(0, nPony - 1 - noPony.length);
+      if (faltan <= 0) break;
+      // El bloque de otra marca más grande que aún dé DOS corridas largas.
+      const candidato = noPony
+        .filter((b) => b.numCocimientos >= 2 * MIN_CORRIDA_CERVEZA)
+        .sort((a, b) => b.numCocimientos - a.numCocimientos)[0];
+      if (!candidato) break;
+      const i = blocks.indexOf(candidato);
+      blocks.splice(i, 1, ...partirBloque(candidato, 2));
+    }
+  }
+
   // --- R5: orden por FECHA DE ENVASADO ascendente ---
   // No por inicio ideal de cocina: si se ordenara por eso, TODA la cerveza
   // (tubería larga: fermentación + maduración) iría antes que TODA la Pony
@@ -1119,7 +1316,10 @@ function sequenceWeek(
   let prevMostoId = null;
   let finUltimoPony = null; // fin de cocina de la última corrida de Pony
   let globalCoc = 0; // cocimientos acumulados, para el aseo periódico
+  let aseoPeriodicoDeferido = false; // aseo periódico pospuesto (no dejar 1 solo)
+  let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
   const HORA24 = 24 * HORA; // "día de por medio" de Pony
+  const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
   const pending = blocks.slice();
 
   while (pending.length) {
@@ -1137,6 +1337,11 @@ function sequenceWeek(
     // BBT y el "día de por medio". Sirve para no dejar la cocina parada.
     const arranqueDe = (b) => {
       let t = prevMostoId ? libreCadencia : b.idealStarts[0].getTime();
+      if (aplicaTopeAdelanto(b.mostoId))
+        t = Math.max(
+          t,
+          b.idealStarts[0].getTime() - MAX_ADELANTO_CERVEZA,
+        );
       if (prevMostoId && prevMostoId !== b.mostoId) {
         const info = getAseoDuracion(
           prevMostoId,
@@ -1155,37 +1360,87 @@ function sequenceWeek(
         t = Math.max(t, y.fechaDisponible.getTime());
       }
       if (b.mostoId === "pony") {
+        // Tope absoluto de 72 h en BBT: nunca se cuece antes de eso.
         if (b.maxBBTHoras > 0)
           t = Math.max(
             t,
-            b.idealStarts[0].getTime() - b.maxBBTHoras * HORA,
+            b.idealStarts[0].getTime() - topeBBTHoras(b) * HORA,
           );
         if (finUltimoPony) t = Math.max(t, finUltimoPony.getTime() + HORA24);
       }
       return t;
     };
-    // Un bloque "hace esperar" a la cocina si su arranque real cae más de 1 h
-    // después de que la cocina queda libre.
-    const haceEsperar = (b) => arranqueDe(b) > libreCadencia + HORA;
-    const esCerveza = (b) => b.mostoId !== "pony" && b.mostoId !== "light";
-
-    // Candidato por inicio ideal = el primero de la cola. Si ese hace esperar
-    // (Pony por día de por medio / máx BBT, o Light por levadura), se ADELANTA
-    // una cerveza que pueda arrancar ya para llenar el hueco. Si no hay
-    // cerveza, se adelanta cualquier bloque que pueda arrancar ya.
+    // Selección: el bloque que pueda ARRANCAR ANTES (menor arranqueDe, que ya
+    // incluye su inicio ideal, aseos, levadura Light, máx. BBT y día de por
+    // medio de Pony). Así la cocina nunca queda parada teniendo trabajo listo:
+    // si una corrida de Pony todavía no puede (BBT / día de por medio) pero hay
+    // cerveza cuyo inicio ideal ya llegó, entra la cerveza.
     let idx = 0;
-    if (haceEsperar(pending[0])) {
-      let c = pending.findIndex((b) => esCerveza(b) && !haceEsperar(b));
-      if (c < 0) c = pending.findIndex((b) => !haceEsperar(b));
-      if (c >= 0) idx = c;
+    let best = arranqueDe(pending[0]);
+    for (let i = 1; i < pending.length; i++) {
+      const a = arranqueDe(pending[i]);
+      if (a < best - 1000) {
+        best = a;
+        idx = i;
+      }
     }
-    // R4: tras una corrida de Pony va SIEMPRE otra marca. Si el candidato es
-    // Pony, se adelanta cualquier otra marca que pueda arrancar ya.
+    // Corrida de Pony (hasta 4) SIEMPRE que se venga un aseo / cambio de marca,
+    // para repartirlas por la semana y NO dejarlas todas al final. Se aplica
+    // cuando el bloque anterior no es Pony y hay una corrida de Pony que ya
+    // puede arrancar dentro de su ventana de BBT sin parar la cocina.
+    if (prevMostoId !== "pony") {
+      let pIdx = -1;
+      let pBest = Infinity;
+      for (let i = 0; i < pending.length; i++) {
+        if (pending[i].mostoId !== "pony") continue;
+        const a = arranqueDe(pending[i]);
+        if (a < pBest) {
+          pBest = a;
+          pIdx = i;
+        }
+      }
+      // Tras una corrida de cerveza entra Pony si su ventana de BBT ya está
+      // abierta (o casi). Si todavía no lo está, sigue la cerveza: dos corridas
+      // de cerveza seguidas son válidas — lo que NUNCA se permite es más de 4
+      // Pony seguidas. Así la Pony se reparte sin retrasar la cerveza que sí
+      // tiene que salir temprano.
+      // RESERVA DE SEPARADORES: si ya quedan tantos (o menos) bloques de otra
+      // marca como separaciones harán falta entre las corridas de Pony que
+      // faltan, no se gastan seguidos: se alterna aunque haya que esperar a la
+      // ventana de Pony. Es lo que evita que la cerveza se acabe y la Pony
+      // quede apelotonada al final.
+      const ponyPend = pending.filter((b) => b.mostoId === "pony").length;
+      const noPonyPend = pending.length - ponyPend;
+      const escasezSeparadores = noPonyPend <= Math.max(0, ponyPend - 1);
+      if (
+        pIdx >= 0 &&
+        (escasezSeparadores ||
+          pBest <= Math.max(best, libreCadencia) + 12 * HORA)
+      ) {
+        idx = pIdx;
+        best = pBest;
+      }
+    }
+    // R4 (DURA): JAMÁS más de 4 cocimientos de Pony seguidos — ni aunque medien
+    // días entre corridas. Tras una corrida de Pony va SIEMPRE otra marca: si
+    // el elegido es Pony y el anterior también, se mete la marca (no Pony) que
+    // pueda arrancar más pronto, cueste lo que cueste. Solo se permite otra
+    // corrida de Pony si ya no queda NINGÚN bloque de otra marca.
     if (prevMostoId === "pony" && pending[idx].mostoId === "pony") {
-      const alt = pending.findIndex(
-        (b) => b.mostoId !== "pony" && !haceEsperar(b),
-      );
-      if (alt >= 0) idx = alt;
+      let c = -1;
+      let cbest = Infinity;
+      pending.forEach((b, i) => {
+        if (b.mostoId === "pony") return;
+        const a = arranqueDe(b);
+        if (a < cbest) {
+          cbest = a;
+          c = i;
+        }
+      });
+      if (c >= 0) {
+        idx = c;
+        best = cbest;
+      }
     }
     const block = pending.splice(idx, 1)[0];
     const idealFirst = block.idealStarts[0];
@@ -1225,6 +1480,7 @@ function sequenceWeek(
     // cocinar el bloque anterior.
     let aseoRow = null;
     let earliestFeasible = null;
+    let esAperturaPony = false;
     if (prevMostoId && prevMostoId !== block.mostoId) {
       const info = getAseoDuracion(
         prevMostoId,
@@ -1255,17 +1511,56 @@ function sequenceWeek(
       earliestFeasible = cursorCadencia
         ? new Date(cursorCadencia.getTime())
         : null;
+    } else if (!prevMostoId && block.mostoId === "pony") {
+      // APERTURA: aseo + primera corrida de Pony ANTES DE TODO — incluso antes
+      // de la pre-carga de cerveza y aunque el lote se pase del máx. en BBT
+      // (se marcará en rojo). Se ancla justo antes del inicio ideal más
+      // temprano de cualquier bloque, para que la cerveza siga a Pony sin
+      // adelantarse ella.
+      const hrs = Number(aseoDefaultHoras) || 0;
+      const idealMasTemprano = Math.min(
+        ...blocks.map((b) => b.idealStarts[0].getTime()),
+      );
+      const duracionCorrida =
+        Math.max(0, block.numCocimientos - 1) * block.gapHoras * HORA +
+        block.cocinaHoras * HORA;
+      let ponyStart = idealMasTemprano - duracionCorrida;
+      // Tope absoluto de 72 h en BBT: la apertura tampoco puede saltárselo.
+      if (block.maxBBTHoras > 0)
+        ponyStart = Math.max(
+          ponyStart,
+          idealFirst.getTime() - topeBBTHoras(block) * HORA,
+        );
+      esAperturaPony = true;
+      if (hrs > 0) {
+        aseoRow = {
+          n: 0,
+          tipo: "aseo",
+          mostoId: null,
+          blockId: block.blockId,
+          nombre: "ASEO inicial (apertura)",
+          start: new Date(ponyStart - hrs * HORA),
+          end: new Date(ponyStart),
+          definido: true,
+        };
+      }
+      earliestFeasible = new Date(ponyStart);
     }
 
-    // R5: la cocina NO se deja parada. Cada bloque arranca EN CUANTO la cadena
-    // queda libre (fin de cadencia del bloque anterior, o fin de su aseo), sin
-    // esperar a su inicio ideal — así se aprovechan todos los días. El primer
-    // bloque de la secuencia (sin nada antes) arranca en su inicio ideal.
-    // Único tope: un bloque Light no puede arrancar antes de que su levadura
-    // Light esté disponible.
+    // R5: cada bloque arranca cuando la cadena queda libre (fin de cadencia del
+    // bloque anterior, o fin de su aseo) PERO nunca antes de su inicio ideal
+    // (envasado − cocina − ferm − madur). Así la cerveza no se adelanta semanas
+    // y ocupa los días que le tocan. Si la cocina sigue ocupada pasado el inicio
+    // ideal, el bloque se corre y va en rojo. Topes extra: levadura Light.
     let actualFirst = earliestFeasible
       ? new Date(earliestFeasible.getTime())
       : new Date(idealFirst.getTime());
+    // "No te alejes tanto": cerveza normal, como mucho 7 días antes del ideal.
+    if (
+      aplicaTopeAdelanto(block.mostoId) &&
+      actualFirst.getTime() < idealFirst.getTime() - MAX_ADELANTO_CERVEZA
+    )
+      actualFirst = new Date(idealFirst.getTime() - MAX_ADELANTO_CERVEZA);
     if (
       yeastUsed &&
       yeastUsed.fechaDisponible.getTime() > actualFirst.getTime()
@@ -1274,12 +1569,12 @@ function sequenceWeek(
 
     // Pony: dos pisos adicionales sobre el arranque.
     if (block.mostoId === "pony") {
-      // (a) Máx. en BBT: no se puede cocinar TAN temprano que el lote termine
-      //     de madurar y quede en el BBT más de `maxBBTHoras`. El inicio ideal
-      //     asume 0 h en BBT; el más temprano posible es maxBBTHoras antes.
+      // (a) Tope absoluto en BBT (72 h): no se puede cocinar TAN temprano que
+      //     el lote quede en el BBT más de eso. Entre el máx. del catálogo
+      //     (48 h) y las 72 h se permite, pero el bloque sale en rojo.
       if (block.maxBBTHoras > 0) {
         const pisoBBT = new Date(
-          idealFirst.getTime() - block.maxBBTHoras * HORA,
+          idealFirst.getTime() - topeBBTHoras(block) * HORA,
         );
         if (actualFirst.getTime() < pisoBBT.getTime())
           actualFirst = new Date(pisoBBT.getTime());
@@ -1292,6 +1587,38 @@ function sequenceWeek(
         if (actualFirst.getTime() < pisoDia.getTime())
           actualFirst = new Date(pisoDia.getTime());
       }
+    }
+
+    // Aviso de exceso en BBT: si una corrida de Pony (típicamente la de
+    // apertura) se cuece tan pronto que el lote quedará en el BBT más de
+    // `maxBBTHoras`, se marca en rojo para que el equipo lo resuelva.
+    if (
+      block.mostoId === "pony" &&
+      block.maxBBTHoras > 0 &&
+      actualFirst.getTime() < idealFirst.getTime() - block.maxBBTHoras * HORA
+    ) {
+      const horasEnBBT =
+        block.maxBBTHoras +
+        (idealFirst.getTime() -
+          block.maxBBTHoras * HORA -
+          actualFirst.getTime()) /
+          HORA;
+      capacityWarnings.push({
+        tipo: "bbt",
+        mostoId: "pony",
+        nombre: block.nombre,
+        tren: block.tren,
+        blockLabel: block.blockLabel,
+        blockStart: new Date(actualFirst.getTime()),
+        blockEnd: block.fechaEnvasado,
+        deadline: block.fechaEnvasado,
+        retrasoHoras: horasEnBBT,
+        detalle: `Esta corrida de Pony se cuece muy pronto: el lote quedará ~${Math.round(
+          horasEnBBT,
+        )} h en el BBT (máx. ${Math.round(
+          block.maxBBTHoras,
+        )} h). Programado así por la regla "Pony al principio"; revisar.`,
+      });
     }
 
     if (aseoRow) {
@@ -1315,7 +1642,14 @@ function sequenceWeek(
       0,
       (actualFirst.getTime() - idealFirst.getTime()) / HORA,
     );
-    const viola = shiftHoras > 0.05;
+    // Excede el máx. en BBT si se cuece MÁS DE 1 h antes de
+    // (envasado − proceso − maxBBT) — típicamente la corrida de apertura.
+    const excedeBBT =
+      block.mostoId === "pony" &&
+      block.maxBBTHoras > 0 &&
+      actualFirst.getTime() <
+        idealFirst.getTime() - block.maxBBTHoras * HORA - HORA;
+    const viola = shiftHoras > 0.05 || excedeBBT;
     const rowStartIdx = rows.length;
 
     // Aseo programado (periódico): cada aseoPeriodicoCada cocimientos, contando
@@ -1360,9 +1694,20 @@ function sequenceWeek(
       if (
         aseoPeriodicoActivo &&
         aseoPeriodicoHoras > 0 &&
-        globalCoc % aseoPeriodicoCada === 0 &&
-        i < block.numCocimientos - 1
+        globalCoc % aseoPeriodicoCada === 0
+      )
+        aseoPeriodicoDeferido = true;
+      if (
+        aseoPeriodicoActivo &&
+        aseoPeriodicoHoras > 0 &&
+        aseoPeriodicoDeferido &&
+        // No dejar un cocimiento SOLO ni antes ni después del aseo: se inserta
+        // solo si en ESTE bloque ya se hizo ≥1 cocimiento y aún quedan ≥2; si
+        // no, se pospone al siguiente punto válido.
+        i >= 1 &&
+        i < block.numCocimientos - 2
       ) {
+        aseoPeriodicoDeferido = false;
         offsetMs += aseoPeriodicoHoras * HORA;
         const nextStart = new Date(
           actualFirst.getTime() + (i + 1) * block.gapHoras * HORA + offsetMs,
@@ -1381,7 +1726,7 @@ function sequenceWeek(
       }
     }
 
-    if (viola) {
+    if (viola && shiftHoras > 0.05) {
       capacityWarnings.push({
         tipo: "deadline",
         mostoId: block.mostoId,
@@ -1432,24 +1777,68 @@ function sequenceWeek(
     // cocimiento.
     cursorCadencia = new Date(lastCocStart + block.gapHoras * HORA);
     cursorLibre = new Date(lastCocStart + block.cocinaHoras * HORA);
-    if (block.mostoId === "pony") finUltimoPony = new Date(cursorLibre.getTime());
+    if (block.mostoId === "pony") {
+      finUltimoPony = new Date(cursorLibre.getTime());
+      ponyIniciado = true;
+    }
     prevMostoId = block.mostoId;
   }
 
-  // "Bloque" = corrida de la MISMA marca de seguido en la línea de tiempo real,
-  // sin importar de cuántos bloques del plan venga ni si el volumen se completó
-  // al 100%. Corta el bloque CUALQUIER aseo (de cambio de marca O periódico) y
-  // también un cambio de marca. El inicio/fin se mira contra la fila anterior /
-  // siguiente de la secuencia, sea cocimiento o aseo.
+
+  // "Bloque" = corrida de cocimientos SEGUIDOS que pertenecen a la misma
+  // demanda de envasado (mismo blockId de la programación). Corta el bloque:
+  //   · cualquier aseo (de cambio de marca O periódico),
+  //   · un cambio de mosto,
+  //   · un cambio de blockId — otra demanda de envasado, u otra CORRIDA de la
+  //     misma marca (Pony va en corridas de 2-4; entre corridas hay "día de por
+  //     medio", así que nunca son 18 cocimientos seguidos aunque no haya aseo).
+  // El inicio/fin se mira contra la fila anterior / siguiente de la secuencia.
   rows.forEach((r, i) => {
     if (r.tipo !== "cocimiento") return;
     const prev = rows[i - 1];
     const next = rows[i + 1];
     r.blockStart =
-      !prev || prev.tipo === "aseo" || prev.mostoId !== r.mostoId;
+      !prev ||
+      prev.tipo === "aseo" ||
+      prev.mostoId !== r.mostoId ||
+      prev.blockId !== r.blockId;
     r.blockEnd =
-      !next || next.tipo === "aseo" || next.mostoId !== r.mostoId;
+      !next ||
+      next.tipo === "aseo" ||
+      next.mostoId !== r.mostoId ||
+      next.blockId !== r.blockId;
   });
+
+  // Control DURO: nunca más de 4 cocimientos de Pony seguidos, aunque medien
+  // días o aseos. Si aun así quedan rachas más largas es porque ya no había
+  // NINGÚN bloque de otra marca con qué separarlas (toda la cerveza tiene que
+  // cocerse antes por su tubería de 12 días). Se marca en rojo y se avisa.
+  {
+    const cocs = rows.filter((r) => r.tipo === "cocimiento");
+    let racha = [];
+    const cerrarRacha = () => {
+      if (racha.length > PONY_MAX) {
+        racha.forEach((r) => (r.violaDeadline = true));
+        capacityWarnings.push({
+          tipo: "ponyseguidas",
+          mostoId: "pony",
+          nombre: racha[0].nombre,
+          blockLabel: racha[0].blockLabel,
+          blockStart: racha[0].start,
+          blockEnd: racha[racha.length - 1].end,
+          deadline: null,
+          retrasoHoras: racha.length,
+          detalle: `${racha.length} cocimientos de Pony seguidos (máximo 4). No queda ningún bloque de otra marca con qué separarlos: toda la cerveza debe cocerse antes por su tiempo de proceso. Hay que traer cerveza de la semana siguiente o mover envasados de Pony.`,
+        });
+      }
+      racha = [];
+    };
+    cocs.forEach((r) => {
+      if (r.mostoId === "pony") racha.push(r);
+      else cerrarRacha();
+    });
+    cerrarRacha();
+  }
 
   const totalHL = blocks.reduce((a, b) => a + (Number(b.volumenEnvasar) || 0), 0);
   const ponyHL = blocks
@@ -1461,7 +1850,9 @@ function sequenceWeek(
     reglaWarnings,
     capacityWarnings,
     recomendaciones: {
-      iniciaConPony: rows.length > 0 && rows[0].mostoId === "pony",
+      // La secuencia abre con Pony (después de un aseo), antes de todo.
+      iniciaConPony:
+        (rows.find((r) => r.tipo === "cocimiento") || {}).mostoId === "pony",
       ponyJuntoAseo: null,
     },
     resumen: { totalHL, ponyHL, cervezaHL: totalHL - ponyHL },

@@ -11,8 +11,11 @@
 // IMPORTANTE: "Light" va antes que "Estandar" en la lista para que "Águila Light" homologue a
 // Mosto Light y no quede capturada primero por la palabra clave genérica "aguila" de Estandar.
 // tiempoMaxBBTHoras = tiempo MÁXIMO que un lote puede estar en el BBT (producto
-// terminado) antes de dañarse. Solo aplica a Pony (24 h); la cerveza no tiene
+// terminado) antes de dañarse. Solo aplica a Pony (48 h); la cerveza no tiene
 // este problema (0 = sin límite). Reemplaza el antiguo "vencimiento en SV".
+// La programación puede estirarlo hasta PONY_BBT_TOLERANCIA_HORAS (72 h) como
+// máximo absoluto: entre 48 h y 72 h el bloque sale en rojo para que el equipo
+// lo revise; más allá de 72 h no se programa.
 let MOSTO_CATALOG = [
   {
     id: "light",
@@ -46,9 +49,9 @@ let MOSTO_CATALOG = [
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:15:00"),
     tiempoFermentacionHoras: parseHMS("0"),
-    tiempoMaduracionHoras: parseHMS("24:00:00"),
+    tiempoMaduracionHoras: parseHMS("48:00:00"),
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoMaxBBTHoras: parseHMS("24:00:00"),
+    tiempoMaxBBTHoras: parseHMS("48:00:00"),
   },
   {
     id: "estandar",
@@ -90,6 +93,11 @@ let ASEO_MATRIX = [
   },
   {
     origen: "Pilsen",
+    destino: "Pony",
+    duracionHoras: parseHMS("4:40:00"),
+  },
+  {
+    origen: "Light",
     destino: "Pony",
     duracionHoras: parseHMS("4:40:00"),
   },
@@ -310,7 +318,7 @@ function inventoryOccupancyByEquipo() {
 }
 
 // Fecha límite más próxima para envasar lo que YA está en BBT, según
-// tiempoMaxBBTHoras del catálogo. Solo Pony tiene límite (24 h en BBT); la
+// tiempoMaxBBTHoras del catálogo. Solo Pony tiene límite (48 h en BBT); la
 // cerveza no. Para cada lote de BBT de Pony: fechaLímite = I0 + (máx − horas
 // que ya lleva en BBT). Si ya se pasó, la fecha cae en o antes de I0.
 // Devuelve {pony: Date|null, cerveza: Date|null} (cerveza siempre null).

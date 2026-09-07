@@ -114,7 +114,14 @@ function recompute() {
   renderInventoryBalance(plan);
   renderYeastStatus(seq);
   // Las cosechas previstas de levadura dependen del plan y del inventario.
-  if (typeof renderYeastConfig === "function") renderYeastConfig();
+  // try/catch: si el recompute se dispara desde el propio evento de edición de
+  // una fila de levadura, el navegador puede rechazar el innerHTML sobre un
+  // nodo que aún está en su blur (NotFoundError) — no debe abortar el recompute.
+  if (typeof renderYeastConfig === "function") {
+    try {
+      renderYeastConfig();
+    } catch (_) {}
+  }
   // El Gantt de filtración usa la velocidad de las líneas del instructivo para
   // el desalojo de BBTs: recalcularlo cuando cambie el análisis de envasado.
   if (typeof recomputeFiltracion === "function") recomputeFiltracion();
@@ -142,7 +149,7 @@ function renderKPIs(plan, seq) {
     seq && seq.tankAssignment ? seq.tankAssignment.sinTanque.length : 0;
   const yeastBlocked = seq && seq.yeastBlocked ? seq.yeastBlocked.length : 0;
   // Fecha límite para envasar lo que ya está en BBT, según "Máx. en BBT"
-  // del Catálogo de mostos. Solo Pony (24 h); la cerveza no tiene límite.
+  // del Catálogo de mostos. Solo Pony (48 h); la cerveza no tiene límite.
   const limBBT =
     typeof proximoLimiteBBT === "function"
       ? proximoLimiteBBT(MOSTO_CATALOG)
@@ -160,7 +167,7 @@ function renderKPIs(plan, seq) {
       l: "Bloques Light bloqueados",
       cls: yeastBlocked ? "danger" : "ok",
     },
-    vencItem(limBBT.pony, "Límite BBT Pony (máx 24 h)"),
+    vencItem(limBBT.pony, "Límite BBT Pony (máx 48 h)"),
     {
       n: totalEnvasar.toLocaleString("es-CO", {
         maximumFractionDigits: 0,
