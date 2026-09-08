@@ -707,6 +707,30 @@
         outline: 2px solid var(--danger);
         outline-offset: -2px;
       }
+      /* Banda del Gantt de filtración: misma altura que las del Gantt de
+         envasado. Lleva marca, mosto y detalle, así que el texto va apretado
+         en interlineado pero sin encimarse. */
+      .block.fil-block {
+        padding: 4px 8px;
+        justify-content: center;
+        gap: 1px;
+      }
+      .block.fil-block b {
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.15;
+      }
+      .block.fil-block span {
+        font-size: 10px;
+        line-height: 1.15;
+        opacity: 0.92;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .block:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 10px var(--shadow);
