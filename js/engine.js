@@ -1582,7 +1582,6 @@ function sequenceWeek(
     // cocinar el bloque anterior.
     let aseoRow = null;
     let earliestFeasible = null;
-    let esAperturaPony = false;
     if (prevMostoId && prevMostoId !== block.mostoId) {
       const info = getAseoDuracion(
         prevMostoId,
@@ -1614,12 +1613,13 @@ function sequenceWeek(
         ? new Date(cursorCadencia.getTime())
         : null;
     } else if (!prevMostoId && esMostoPony(block.mostoId)) {
-      // APERTURA: aseo + primera corrida de Pony ANTES DE TODO — incluso antes
+      // APERTURA: la primera corrida de Pony va ANTES DE TODO — incluso antes
       // de la pre-carga de cerveza y aunque el lote se pase del máx. en BBT
       // (se marcará en rojo). Se ancla justo antes del inicio ideal más
       // temprano de cualquier bloque, para que la cerveza siga a Pony sin
       // adelantarse ella.
-      const hrs = Number(aseoDefaultHoras) || 0;
+      // NO lleva aseo: la cocina viene de lo que estuviera haciendo antes del
+      // horizonte cargado, y ese CIP no es del plan de esta semana.
       const idealMasTemprano = Math.min(
         ...blocks.map((b) => b.idealStarts[0].getTime()),
       );
@@ -1633,19 +1633,6 @@ function sequenceWeek(
           ponyStart,
           idealFirst.getTime() - topeBBTHoras(block) * HORA,
         );
-      esAperturaPony = true;
-      if (hrs > 0) {
-        aseoRow = {
-          n: 0,
-          tipo: "aseo",
-          mostoId: null,
-          blockId: block.blockId,
-          nombre: "ASEO inicial (apertura)",
-          start: new Date(ponyStart - hrs * HORA),
-          end: new Date(ponyStart),
-          definido: true,
-        };
-      }
       earliestFeasible = new Date(ponyStart);
     }
 
