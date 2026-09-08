@@ -11,8 +11,37 @@ const GANTT_PX_PER_HOUR = 16;
 // duran 1-3 h y a 16 px/h quedarían en 20-50 px, ilegibles. Lo fija
 // renderGanttFiltracion (ver anchoBandaMinimo).
 let FIL_PX_PER_HOUR = GANTT_PX_PER_HOUR;
-// Ancho mínimo que debe tener la banda más corta para que quepan marca y mosto.
-const FIL_ANCHO_BANDA_MIN = 118;
+// Relleno horizontal de la banda (padding + un pelo de holgura).
+const FIL_BANDA_PADDING = 18;
+
+// Ancho en píxeles que ocupa un texto con una fuente dada. Se usa para que la
+// banda mida lo MÍNIMO que deja leer sus letras, en vez de un ancho fijo a ojo.
+function medirTextoPx(txt, font) {
+  if (!txt) return 0;
+  const c =
+    medirTextoPx._canvas ||
+    (medirTextoPx._canvas = document.createElement("canvas"));
+  const ctx = c.getContext("2d");
+  ctx.font = font;
+  return ctx.measureText(String(txt)).width;
+}
+// Mismas fuentes que .block.fil-block b / span en la hoja de estilos.
+const FIL_FUENTE_MARCA = '700 12px system-ui, -apple-system, sans-serif';
+const FIL_FUENTE_MOSTO = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+
+// Ancho mínimo que necesita la banda de un tramo para que se lea su texto.
+// `detalle` es opcional: los hL, el flujo y la duración solo se pintan si el
+// tramo da para ello, así la escala la fija lo esencial (marca y mosto) y las
+// bandas no se alargan de más.
+function anchoMinimoBanda(marca, mostoNombre, detalle) {
+  return (
+    Math.max(
+      medirTextoPx(marca, FIL_FUENTE_MARCA),
+      medirTextoPx(mostoNombre, FIL_FUENTE_MOSTO),
+      medirTextoPx(detalle || "", FIL_FUENTE_MOSTO),
+    ) + FIL_BANDA_PADDING
+  );
+}
 const TRAIN_EVENT_COLORS = {
   changeover: "#6f63e6",
   idle: "#3226e8",
@@ -892,18 +921,21 @@ function renderGanttFiltracion(plan) {
 
   const segments = plan.segments;
 
-  // Escala: se estira lo necesario para que la banda de filtración MÁS CORTA
-  // llegue al ancho mínimo legible. Nunca por debajo de la escala del Gantt de
-  // envasado, y con tope para que la semana no se vuelva un rollo infinito.
+  // Escala: la MÍNIMA con la que TODAS las bandas alcanzan a mostrar su texto.
+  // Se mira tramo por tramo cuánto ancho pide el suyo (marca y mosto medidos de
+  // verdad, no un ancho a ojo) y se toma el que más exige. Así ninguna banda
+  // queda más larga de lo que necesita para leerse.
   {
-    const durs = segments
-      .filter((s) => s.tipo === "fil" && s.durH > 0)
-      .map((s) => s.durH);
-    const minDur = durs.length ? Math.min(...durs) : 1;
-    FIL_PX_PER_HOUR = Math.max(
-      GANTT_PX_PER_HOUR,
-      Math.min(160, Math.ceil(FIL_ANCHO_BANDA_MIN / minDur)),
-    );
+    let px = GANTT_PX_PER_HOUR;
+    segments.forEach((s) => {
+      if (s.tipo !== "fil" || !(s.durH > 0)) return;
+      const mid = matchMosto(s.marca, MOSTO_CATALOG);
+      const mNom = mid
+        ? (MOSTO_CATALOG.find((mm) => mm.id === mid) || {}).nombre || ""
+        : "";
+      px = Math.max(px, anchoMinimoBanda(s.marca, mNom) / s.durH);
+    });
+    FIL_PX_PER_HOUR = Math.min(140, Math.ceil(px));
   }
 
   const rangeStart = new Date(
@@ -957,9 +989,11 @@ function renderGanttFiltracion(plan) {
         ? (MOSTO_CATALOG.find((mm) => mm.id === mostoId) || {}).nombre || ""
         : "";
       const ciclo = seg.cicloNum > 0 ? ` · ciclo ${seg.cicloNum}` : "";
-      const detalle = `${Math.round(seg.hl).toLocaleString("es-CO")} HL · ${Math.round(
+      // Compacto para que quepa en la banda sin obligar a alargarla: se le
+      // quitan los ceros a la izquierda a la duración (003:20 → 3:20).
+      const detalle = `${Math.round(seg.hl).toLocaleString("es-CO")} hL · ${Math.round(
         seg.flujo,
-      ).toLocaleString("es-CO")} hL/h · ${dur}`;
+      ).toLocaleString("es-CO")} hL/h · ${String(dur).replace(/^0+(?=\d)/, "")}`;
       const titleAttr = escapeHtml(
         `${seg.marca}${mostoNombre ? ` (Mosto ${mostoNombre})` : ""}${ciclo} · ${fmtDateTime(
           seg.start,
@@ -968,22 +1002,24 @@ function renderGanttFiltracion(plan) {
         ).toLocaleString("es-CO")} HL a ${Math.round(seg.flujo).toLocaleString("es-CO")} hL/h`,
       );
       const col = colorForFiltracion(seg.marca, colorCache);
-      // La escala se ajustó para que quepan marca y mosto; si aún así la banda
-      // es corta, se va recortando y el detalle queda en el tooltip.
+      // Dentro de la banda: marca, mosto y los valores (hL a diluir, flujo y
+      // duración). El detalle solo se pinta si el tramo da el ancho — si no,
+      // la banda tendría que alargarse solo por ese renglón; queda en el
+      // tooltip. La escala la fija marca+mosto (ver más arriba).
+      const conDetalle = anchoMinimoBanda(seg.marca, mostoNombre, detalle);
+      const soloMarcaMosto = anchoMinimoBanda(seg.marca, mostoNombre);
+      const linea = (t, estilo) =>
+        `<span style="color:${col.fg};${estilo || ""}">${escapeHtml(t)}</span>`;
       let interior = "";
-      if (width >= FIL_ANCHO_BANDA_MIN) {
+      if (width >= conDetalle - 1) {
         interior =
           `<b style="color:${col.fg};">${escapeHtml(seg.marca)}</b>` +
-          (mostoNombre
-            ? `<span style="color:${col.fg};">Mosto ${escapeHtml(mostoNombre)}</span>`
-            : "") +
-          `<span style="color:${col.fg};">${detalle}</span>`;
-      } else if (width >= 62) {
+          (mostoNombre ? linea(mostoNombre) : "") +
+          linea(detalle);
+      } else if (width >= soloMarcaMosto - 1) {
         interior =
           `<b style="color:${col.fg};">${escapeHtml(seg.marca)}</b>` +
-          (mostoNombre
-            ? `<span style="color:${col.fg};">${escapeHtml(mostoNombre)}</span>`
-            : "");
+          (mostoNombre ? linea(mostoNombre) : "");
       } else if (width >= 24) {
         interior = `<b style="color:${col.fg};">${escapeHtml(seg.marca)}</b>`;
       }
