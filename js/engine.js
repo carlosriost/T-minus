@@ -9,18 +9,60 @@ function buildBrandList(parsed, mergedByTrain) {
   // mosto/marca pertenecen al mismo bloque de cocina y se deben programar
   // juntas. Si la misma marca reaparece después de otra marca, se crea un
   // bloque nuevo y puede ejecutarse más tarde.
+  // El I0 es el CORTE: marca desde qué hora se mira lo que falta por envasar.
+  // Todo lo que ya terminó de envasarse antes del I0 no es demanda pendiente y
+  // no genera cocimientos. Si una corrida está a medias en el I0, solo cuenta la
+  // parte que le queda (prorrateada por tiempo).
+  const i0 = typeof getI0Date === "function" ? getI0Date() : null;
+  const i0Ms = i0 ? i0.getTime() : null;
+  const envasadoOmitido = []; // lo que quedó fuera por ser anterior al I0
+
   const events = [];
   let order = 0;
   TRAINS.forEach((t) => {
     (mergedByTrain[t] || [])
       .filter((b) => b.type === "production" && b.codigo)
       .forEach((b) => {
+        const ini = new Date(b.start.getTime());
+        const fin = b.end ? new Date(b.end.getTime()) : null;
+        let volumen = Number(b.hectolitros) || 0;
+        let earliest = ini;
+        if (i0Ms != null) {
+          const finMs = fin ? fin.getTime() : ini.getTime();
+          if (finMs <= i0Ms) {
+            // Ya se envasó por completo antes del I0.
+            if (volumen > 0)
+              envasadoOmitido.push({
+                name: b.name || b.codigo,
+                volumen,
+                fin: fin || ini,
+                train: t,
+              });
+            return;
+          }
+          if (ini.getTime() < i0Ms && fin && fin > ini) {
+            // Corrida a medias en el I0: se cuenta solo lo que falta.
+            const total = finMs - ini.getTime();
+            const restante = finMs - i0Ms;
+            const yaEnvasado = volumen * (1 - restante / total);
+            if (yaEnvasado > 0)
+              envasadoOmitido.push({
+                name: b.name || b.codigo,
+                volumen: yaEnvasado,
+                fin: new Date(i0Ms),
+                train: t,
+                parcial: true,
+              });
+            volumen = volumen * (restante / total);
+            earliest = new Date(i0Ms);
+          }
+        }
         events.push({
           codigo: b.codigo,
           name: b.name || b.codigo,
-          earliest: new Date(b.start.getTime()),
-          end: b.end ? new Date(b.end.getTime()) : null,
-          volumen: Number(b.hectolitros) || 0,
+          earliest,
+          end: fin,
+          volumen,
           train: t,
           sequenceOrder: order++,
         });
@@ -171,6 +213,9 @@ function buildBrandList(parsed, mergedByTrain) {
       });
     });
   }
+  // Lo que el I0 dejó fuera (ya envasado), para poder mostrarlo.
+  brands.envasadoOmitido = envasadoOmitido;
+  brands.i0Corte = i0 || null;
   return brands;
 }
 

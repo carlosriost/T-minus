@@ -68,6 +68,21 @@ function render(parsed) {
     if (sinReconocer.length) {
       html += `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${sinReconocer.length} hoja(s) con nombre "Semana N" NO se pudieron leer (no traen "Turnos en línea" en el formato esperado) y quedaron FUERA de la programación: ${sinReconocer.map(escapeHtml).join(", ")}. Revísalas.</div>`;
     }
+    // El I0 corta la demanda: lo envasado antes de esa hora ya no es pendiente.
+    const omitido = (brands && brands.envasadoOmitido) || [];
+    if (omitido.length) {
+      const totalOmitido = omitido.reduce((s, e) => s + (e.volumen || 0), 0);
+      const parciales = omitido.filter((e) => e.parcial).length;
+      html += `<div style="border:1px solid rgba(243,154,45,.35); background:rgba(243,154,45,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--warn); font-size:12.5px;">ℹ️ Corte en el I0 (${fmtDateTime(i0)}): ${Math.round(
+        totalOmitido,
+      ).toLocaleString(
+        "es-CO",
+      )} HL de ${omitido.length} corrida(s) ya se habían envasado antes de esa hora y NO cuentan como pendiente${
+        parciales
+          ? ` (${parciales} corrida(s) estaban a medias: solo se cuenta lo que faltaba)`
+          : ""
+      }.</div>`;
+    }
     weeksAlertEl.innerHTML = html;
   }
 

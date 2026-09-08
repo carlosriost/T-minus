@@ -572,7 +572,26 @@ function renderInventoryBalance(plan) {
         <td><select class="cat-input" data-inv-field="tipo" style="width:70px;">${TIPOS.map(
           (t) => `<option value="${t}" ${t === tipo ? "selected" : ""}>${t}</option>`,
         ).join("")}</select></td>
-        <td><select class="cat-input" data-inv-field="mostoId" title="${escapeHtml(entry.marcaTexto || "")}">${mostoOpts}</select></td>
+        <td>${
+          tipo === "BBT"
+            ? // Un BBT es producto TERMINADO: se muestra la MARCA tal cual
+              // (Costeñita, Pony Go, Pilsen…), porque solo puede envasarse en
+              // la línea de esa marca. Debajo, a qué mosto homologa.
+              `<input type="text" class="cat-input" data-inv-field="marcaTexto" value="${escapeHtml(
+                entry.marcaTexto || "",
+              )}" placeholder="ej: Costeñita / Pony Go" style="width:130px;">
+               <div style="color:var(--muted); font-size:10.5px; margin-top:2px;">${
+                 entry.mostoId
+                   ? escapeHtml(
+                       (
+                         MOSTO_CATALOG.find((mm) => mm.id === entry.mostoId) ||
+                         {}
+                       ).nombre || entry.mostoId,
+                     )
+                   : '<span style="color:var(--danger);">sin homologar</span>'
+               }</div>`
+            : `<select class="cat-input" data-inv-field="mostoId" title="${escapeHtml(entry.marcaTexto || "")}">${mostoOpts}</select>`
+        }</td>
         <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias)}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
         <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
         <td style="color:var(--muted);">${liberaHtml}</td>
@@ -586,7 +605,7 @@ function renderInventoryBalance(plan) {
   const detailHtml = `
     <datalist id="tankEquipoListInv">${tankNames.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
     <table><thead><tr>
-      <th>Equipo / tanque</th><th>Tipo</th><th>Marca (mosto)</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
+      <th>Equipo / tanque</th><th>Tipo</th><th title="En BBT es la marca terminada (solo sirve para esa línea); en FV/SV es el mosto, que sirve para cualquier marca de ese mosto.">Marca / mosto</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
     </tr></thead><tbody>${detailRows || `<tr><td colspan="9" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
     <div style="margin-top:8px; display:flex; gap:8px;">
       <button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button>
@@ -614,6 +633,12 @@ function renderInventoryBalance(plan) {
       if (field === "hL" || field === "diasEnEquipo") {
         // dejó de estar vacío si le ponen producto/días manualmente
         INVENTORY_BALANCE[idx].vacio = false;
+      }
+      if (field === "marcaTexto") {
+        // En un BBT la marca manda: se rehomologa el mosto a partir de ella.
+        INVENTORY_BALANCE[idx].mostoId =
+          matchMosto(val, MOSTO_CATALOG) || "";
+        INVENTORY_BALANCE[idx].vacio = !String(val || "").trim();
       }
       saveInventoryBalance();
       // El tipo, el mosto y los hL/días cambian las columnas derivadas
