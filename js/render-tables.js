@@ -510,6 +510,20 @@ function renderInventoryBalance(plan) {
         typeof esLevaduraEnMadurador === "function" &&
         esLevaduraEnMadurador(entry);
 
+      // BBT: el tiempo se cuenta en HORAS de almacenamiento (columna "TIEMPO DE
+      // ALMACENAMIENTO" de la hoja BBTs) contra el máximo en BBT del catálogo
+      // (48 h en Pony; la cerveza no tiene límite).
+      const mostoDeLote = MOSTO_CATALOG.find((mm) => mm.id === entry.mostoId);
+      const maxBBTh = Number(mostoDeLote && mostoDeLote.tiempoMaxBBTHoras) || 0;
+      const horasBBT =
+        entry.almacenBBTHoras === "" || entry.almacenBBTHoras == null
+          ? null
+          : Math.max(0, Number(entry.almacenBBTHoras) || 0);
+      const restanBBT =
+        tipo === "BBT" && maxBBTh > 0 && horasBBT != null
+          ? maxBBTh - horasBBT
+          : null;
+
       // Estado
       let estadoHtml = '<span class="tag warn">Sin datos</span>';
       if (esLevadura) {
@@ -517,7 +531,18 @@ function renderInventoryBalance(plan) {
       } else if (disponibleAhora) {
         estadoHtml = '<span class="tag ok">Disponible</span>';
       } else if (tipo === "BBT") {
-        estadoHtml = '<span class="tag ok">Listo · producto terminado</span>';
+        if (restanBBT == null) {
+          estadoHtml =
+            maxBBTh > 0
+              ? '<span class="tag warn">Sin tiempo de almacenamiento</span>'
+              : '<span class="tag ok">Listo · producto terminado</span>';
+        } else if (restanBBT <= 0) {
+          estadoHtml = `<span class="tag danger">Vencido en BBT · ${Math.round(horasBBT)} h de ${Math.round(maxBBTh)} h</span>`;
+        } else if (restanBBT <= 12) {
+          estadoHtml = `<span class="tag warn">Por vencer · quedan ${Math.round(restanBBT)} h</span>`;
+        } else {
+          estadoHtml = `<span class="tag ok">Listo · quedan ${Math.round(restanBBT)} h</span>`;
+        }
       } else if (dias != null && diasReq != null) {
         if (dias >= diasReq) {
           const listoTxt =
@@ -542,7 +567,17 @@ function renderInventoryBalance(plan) {
       } else if (disponibleAhora) {
         liberaHtml = '<span class="tag ok">Libre ahora</span>';
       } else if (tipo === "BBT") {
-        liberaHtml = '<span class="tag ok">Listo para envase</span>';
+        if (restanBBT == null) {
+          liberaHtml = '<span class="tag ok">Listo para envase</span>';
+        } else {
+          // Hora tope para envasarlo antes de pasarse del máximo en BBT.
+          const base = getI0Date() || new Date();
+          const tope = new Date(base.getTime() + restanBBT * 3600000);
+          liberaHtml =
+            restanBBT <= 0
+              ? `<span style="color:var(--danger);">Debió envasarse ${fmtDateTime(tope)}</span>`
+              : `Envasar antes de ${fmtDateTime(tope)}`;
+        }
       } else if (dias != null && diasReq != null) {
         const faltanD = Math.max(0, diasReq - dias);
         if (faltanD <= 0) {
@@ -592,8 +627,24 @@ function renderInventoryBalance(plan) {
                }</div>`
             : `<select class="cat-input" data-inv-field="mostoId" title="${escapeHtml(entry.marcaTexto || "")}">${mostoOpts}</select>`
         }</td>
-        <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias)}" placeholder="días" ${tipo === "BBT" ? "disabled" : ""}></td>
-        <td style="color:var(--muted);">${diasReq != null ? diasReq.toFixed(1) + " d" : "—"}</td>
+        <td>${
+          tipo === "BBT"
+            ? // En BBT el tiempo va en HORAS de almacenamiento, no en días.
+              `<input type="number" min="0" step="1" class="cat-input" data-inv-field="almacenBBTHoras" value="${
+                horasBBT == null ? "" : Math.round(horasBBT)
+              }" placeholder="horas" title="Horas que el lote lleva en el BBT (columna TIEMPO DE ALMACENAMIENTO)" style="width:80px;">
+               <span style="color:var(--muted); font-size:10.5px;"> h</span>`
+            : `<input type="number" min="0" step="1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias)}" placeholder="días">`
+        }</td>
+        <td style="color:var(--muted);">${
+          tipo === "BBT"
+            ? maxBBTh > 0
+              ? `máx. ${Math.round(maxBBTh)} h en BBT`
+              : "sin límite"
+            : diasReq != null
+              ? diasReq.toFixed(1) + " d"
+              : "—"
+        }</td>
         <td style="color:var(--muted);">${liberaHtml}</td>
         <td><input type="number" min="0" step="1" class="cat-input" data-inv-field="hL" value="${hLnum}"></td>
         <td>${estadoHtml}</td>
@@ -605,7 +656,7 @@ function renderInventoryBalance(plan) {
   const detailHtml = `
     <datalist id="tankEquipoListInv">${tankNames.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
     <table><thead><tr>
-      <th>Equipo / tanque</th><th>Tipo</th><th title="En BBT es la marca terminada (solo sirve para esa línea); en FV/SV es el mosto, que sirve para cualquier marca de ese mosto.">Marca / mosto</th><th>Días en el equipo</th><th>Días de maduración/fermentación</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
+      <th>Equipo / tanque</th><th>Tipo</th><th title="En BBT es la marca terminada (solo sirve para esa línea); en FV/SV es el mosto, que sirve para cualquier marca de ese mosto.">Marca / mosto</th><th title="En BBT son las HORAS de almacenamiento; en FV/SV son los días transcurridos de fermentación/maduración.">Tiempo en el equipo</th><th title="En BBT, el máximo de horas que puede estar el producto terminado; en FV/SV, los días totales de fermentación/maduración.">Límite / tiempo requerido</th><th>Se libera</th><th>HL (normalizados)</th><th>Estado</th><th></th>
     </tr></thead><tbody>${detailRows || `<tr><td colspan="9" class="empty-note">Sin lotes de inventario registrados.</td></tr>`}</tbody></table>
     <div style="margin-top:8px; display:flex; gap:8px;">
       <button class="btn small" id="addInventoryEntryBtn">+ Agregar lote de inventario</button>
@@ -624,8 +675,9 @@ function renderInventoryBalance(plan) {
       const idx = +e.target.closest("tr").dataset.invIdx;
       const field = e.target.dataset.invField;
       let val = e.target.value;
-      if (field === "diasEnEquipo") {
+      if (field === "diasEnEquipo" || field === "almacenBBTHoras") {
         val = val === "" ? "" : Math.max(0, Math.round(parseFloat(val) || 0));
+        if (field === "almacenBBTHoras" && val === "") val = null;
       } else if (field === "hL") {
         val = Math.max(0, Math.round(parseFloat(val) || 0));
       }
