@@ -193,6 +193,26 @@ function ponyVariante(texto) {
   return "hg";
 }
 
+// ¿El producto de un BBT sirve para envasar esta marca del plan?
+// El BBT trae la marca terminada tal cual la escribe la planta ("COSTEÑITA",
+// "PILSEN", "PONY GO") y el plan de envasado trae el SKU completo
+// ("Costeñita R 175cc X 38"). Coincide si todas las palabras significativas de
+// la marca del BBT aparecen en el nombre del SKU. En Pony manda la variante
+// (Go / HG), porque "PONY GO" no aparece literal en "PONY MALTA GO LESS SUGAR".
+function marcaBBTSirvePara(marcaBBT, nombreEnvasado, mostoId) {
+  const bbt = normalizeText(marcaBBT || "");
+  const sku = normalizeText(nombreEnvasado || "");
+  if (!bbt) return true; // sin marca registrada, no se restringe
+  if (mostoId === "pony") {
+    if (typeof ponyVariante !== "function") return true;
+    return ponyVariante(marcaBBT) === ponyVariante(nombreEnvasado);
+  }
+  if (!sku) return true;
+  const palabras = bbt.split(/\s+/).filter((w) => w.length > 2);
+  if (!palabras.length) return true;
+  return palabras.every((w) => sku.includes(w));
+}
+
 function inventoryBatchesByMosto(catalog) {
   const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
   const catById = {};
@@ -228,7 +248,17 @@ function inventoryBatchesByMosto(catalog) {
         ? ponyVariante(e.marcaTexto)
         : null;
     if (!out[e.mostoId]) out[e.mostoId] = [];
-    out[e.mostoId].push({ hL, listoEn, variante, esBBT: e.tipo === "BBT" });
+    out[e.mostoId].push({
+      hL,
+      listoEn,
+      variante,
+      esBBT: e.tipo === "BBT",
+      // Marca del lote. En BBT es producto TERMINADO de una marca concreta
+      // (Costeñita, Pilsen, Pony Go…) y solo sirve para envasar esa marca. En
+      // FV/SV todavía es mosto sin marca definida: cubre cualquiera del mosto.
+      marcaTexto: e.tipo === "BBT" ? e.marcaTexto || "" : "",
+      equipo: e.equipo || "",
+    });
   });
   // Se consume primero lo que está listo antes; a igualdad de fecha, primero el
   // BBT (producto terminado que hay que sacar del tanque) y luego el FV/SV.

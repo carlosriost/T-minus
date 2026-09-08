@@ -881,10 +881,16 @@ function parseProductoEnProceso(workbook) {
       ) {
         out.push({
           equipo: bbt.trim(),
+          // PRODUCTO es la MARCA terminada (COSTEÑITA, PILSEN, PONY GO…), no el
+          // mosto: un BBT solo puede envasar esa marca.
           marcaTexto: prod.trim(),
           vacio: false,
           tipo: "BBT",
           diasEnEquipo: null,
+          // Col. D "TIEMPO DE ALMACENAMIENTO": horas que el lote lleva ya en el
+          // BBT. Solo viene diligenciada para Pony y sirve para saber cuál se
+          // acerca a su máximo de 48 h.
+          almacenBBTHoras: row[3] == null ? null : num(row[3]),
           hL: Math.round(num(row[2])),
         });
       }

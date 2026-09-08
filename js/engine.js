@@ -282,6 +282,9 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
         hL: lote.hL,
         listoEn: lote.listoEn,
         variante: lote.variante || null,
+        esBBT: !!lote.esBBT,
+        marcaTexto: lote.marcaTexto || "",
+        equipo: lote.equipo || "",
       }),
     );
   });
@@ -289,24 +292,34 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   // un FV que aún fermenta o un SV que aún madura igual va a estar listo pronto
   // y se puede usar. No se descarta un lote por su fecha de disponibilidad; los
   // lotes se toman en orden de disponibilidad (los que ya están listos primero).
-  // `varianteDemanda` solo aplica a Pony: un lote de BBT de Pony Go no cubre un
-  // envasado de Pony HG (ni al revés); los lotes sin variante (FV/SV de Pony, o
-  // cualquier otra marca) cubren cualquier envasado de ese mosto.
-  function tomarDeInventario(mostoId, hastaFecha, necesario, varianteDemanda) {
+  //
+  // Un lote de BBT es producto TERMINADO de una marca concreta: solo se puede
+  // asignar a la línea que envasa ESA marca (el BBT de Costeñita no cubre un
+  // envasado de Poker aunque los dos sean Mosto Estandar). Los FV/SV todavía no
+  // tienen marca definida y cubren cualquier envasado de su mosto.
+  function tomarDeInventario(mostoId, necesario, nombreEnvasado, asignaciones) {
     const lotes = remainingBatches[mostoId];
     if (!lotes || necesario <= 1e-9) return 0;
     let tomado = 0;
     for (const lote of lotes) {
       if (tomado >= necesario - 1e-9) break;
+      if (lote.hL <= 1e-9) continue;
       if (
-        lote.variante &&
-        varianteDemanda &&
-        lote.variante !== varianteDemanda
+        lote.esBBT &&
+        !marcaBBTSirvePara(lote.marcaTexto, nombreEnvasado, mostoId)
       )
         continue;
       const take = Math.min(lote.hL, necesario - tomado);
       lote.hL -= take;
       tomado += take;
+      if (asignaciones && take > 1e-9)
+        asignaciones.push({
+          equipo: lote.equipo,
+          tipo: lote.esBBT ? "BBT" : "FV/SV",
+          marcaLote: lote.marcaTexto,
+          marcaEnvasado: nombreEnvasado,
+          hL: take,
+        });
     }
     return tomado;
   }
@@ -326,20 +339,32 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     if (!(volumenEnvasar > 0)) return;
     const factor = Number(m.factorDilucion) || 1;
 
-    // El inventario disponible se descuenta del volumen que hay que COCINAR, no del
-    // volumen a envasar: el compromiso de envasado no cambia, solo cuánto de eso sale
-    // de un cocimiento nuevo vs. de cerveza que ya está lista en inventario. Solo se
-    // toman lotes que estarán listos EN O ANTES de la fecha de envasado de este bloque.
+    // El inventario disponible se descuenta del volumen que hay que COCINAR, no
+    // del volumen a envasar: el compromiso de envasado no cambia, solo cuánto de
+    // eso sale de un cocimiento nuevo vs. de lo que ya está en inventario.
+    // Se descuenta MARCA POR MARCA (no en bloque): un bloque puede juntar varios
+    // SKU del mismo mosto, y un BBT terminado de Costeñita solo puede asignarse
+    // a la línea que envasa Costeñita.
     const varianteDemanda =
       mostoId === "pony" && typeof ponyVariante === "function"
         ? ponyVariante(b.name)
         : null;
-    const cubiertoPorInventario = tomarDeInventario(
-      mostoId,
-      b.earliest || null,
-      volumenEnvasar,
-      varianteDemanda,
-    );
+    const asignacionesInv = [];
+    const eventos =
+      Array.isArray(b.marcas) && b.marcas.length
+        ? b.marcas
+        : [{ name: b.name, volumen: volumenEnvasar }];
+    let cubiertoPorInventario = 0;
+    eventos.forEach((ev) => {
+      const vol = Number(ev.volumen) || 0;
+      if (!(vol > 0)) return;
+      cubiertoPorInventario += tomarDeInventario(
+        mostoId,
+        vol,
+        ev.name || b.name,
+        asignacionesInv,
+      );
+    });
     const volumenEnvasarPendiente = volumenEnvasar - cubiertoPorInventario;
 
     // El número de cocimientos lo fija SOLO el volumen, con la fórmula:
@@ -387,6 +412,8 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       blockLabel: b.blockLabel || `${m.nombre} · bloque ${blockIndex + 1}`,
       marcas: [b],
       inventarioUsadoHL: cubiertoPorInventario,
+      // Qué tanque cubrió qué marca del plan (para poder auditarlo).
+      asignacionesInventario: asignacionesInv,
       cubiertoTotalPorInventario:
         numCocimientos === 0 && cubiertoPorInventario > 0,
     });
@@ -463,6 +490,9 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       // a la fecha del trocito; si esos pocos hL se necesitaran antes, el
       // chequeo de fecha límite lo marca en rojo.
       tgt.marcas = (tgt.marcas || []).concat(src.marcas || []);
+      tgt.asignacionesInventario = (tgt.asignacionesInventario || []).concat(
+        src.asignacionesInventario || [],
+      );
       tgt.starts = tgt.fechaEnvasadoMinima
         ? computeCocimientoStarts(
             tgt.fechaEnvasadoMinima,
