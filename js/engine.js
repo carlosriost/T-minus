@@ -1418,7 +1418,13 @@ function sequenceWeek(
   // obligó antes de tiempo: se avisan, no se esconden.
   const aseosCortos = [];
   let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
-  const HORA24 = 24 * HORA; // "día de por medio" de Pony
+  // Cocimientos de Pony SEGUIDOS que llevamos en la corrida actual (GO y HG
+  // cuentan juntas). Se usa para LLENAR la corrida hasta PONY_MAX antes de
+  // cambiar de marca: cada entrada a Pony cuesta un CIP, así que dos corridas
+  // de 2 gastan el doble de aseos que una de 4. Vuelve a 0 con cualquier
+  // bloque que no sea Pony.
+  let ponySeguidas = 0;
+  const HORA24 = 24 * HORA; // "día de por medio" entre CORRIDAS de Pony
   const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
   const pending = blocks.slice();
 
@@ -1466,7 +1472,11 @@ function sequenceWeek(
             t,
             b.idealStarts[0].getTime() - topeBBTHoras(b) * HORA,
           );
-        if (finUltimoPony) t = Math.max(t, finUltimoPony.getTime() + HORA24);
+        // "Día de por medio": aplica entre CORRIDAS, no dentro de una. Si
+        // venimos cociendo Pony y la corrida todavía no llega a PONY_MAX, se
+        // sigue de largo: partirla ahí obligaría a otro CIP para volver.
+        if (finUltimoPony && !esMostoPony(prevMostoId))
+          t = Math.max(t, finUltimoPony.getTime() + HORA24);
       }
       return t;
     };
@@ -1521,14 +1531,42 @@ function sequenceWeek(
         best = pBest;
       }
     }
+    // LLENAR LA CORRIDA DE PONY hasta PONY_MAX antes de soltarla. Volver a
+    // entrar a Pony cuesta un CIP; quedarse cuesta cero, porque entre Pony y
+    // Pony (GO o HG, da igual) no hay aseo. Dos corridas de 2 gastan dos aseos
+    // donde una de 4 gasta uno, y cada aseo que se ahorra alarga el tramo de
+    // cocimientos seguidos. Solo se encadena lo que quepa en lo que falta para
+    // PONY_MAX; si no cabe nada, la regla dura de abajo cambia de marca.
+    if (esMostoPony(prevMostoId) && ponySeguidas < PONY_MAX) {
+      const cupo = PONY_MAX - ponySeguidas;
+      let fIdx = -1;
+      let fBest = Infinity;
+      pending.forEach((b, i) => {
+        if (!esMostoPony(b.mostoId) || b.numCocimientos > cupo) return;
+        const a = arranqueDe(b);
+        if (a < fBest) {
+          fBest = a;
+          fIdx = i;
+        }
+      });
+      // Solo se encadena si esa Pony puede arrancar YA. Si su ventana de BBT
+      // todavía no se abre, esperar para completar la corrida dejaría la cocina
+      // parada y atrasaría la cerveza: sale más caro que el CIP que se ahorra.
+      if (fIdx >= 0 && fBest <= Math.max(best, libreCadencia) + 12 * HORA) {
+        idx = fIdx;
+        best = fBest;
+      }
+    }
     // R4 (DURA): JAMÁS más de 4 cocimientos de Pony seguidos — ni aunque medien
-    // días entre corridas, y contando Pony GO y Pony (HG) JUNTAS: cuatro de GO
-    // seguidas de cuatro de HG son ocho Pony seguidas, y eso no se permite.
-    // Tras una corrida de Pony va SIEMPRE otra marca: si
-    // el elegido es Pony y el anterior también, se mete la marca (no Pony) que
-    // pueda arrancar más pronto, cueste lo que cueste. Solo se permite otra
-    // corrida de Pony si ya no queda NINGÚN bloque de otra marca.
-    if (esMostoPony(prevMostoId) && esMostoPony(pending[idx].mostoId)) {
+    // días entre corridas, y contando Pony GO y Pony (HG) JUNTAS. Si el elegido
+    // es Pony y con él la corrida se pasaría de PONY_MAX, se mete la marca (no
+    // Pony) que pueda arrancar más pronto, cueste lo que cueste. Solo se
+    // permite pasarse si ya no queda NINGÚN bloque de otra marca.
+    if (
+      esMostoPony(prevMostoId) &&
+      esMostoPony(pending[idx].mostoId) &&
+      ponySeguidas + pending[idx].numCocimientos > PONY_MAX
+    ) {
       let c = -1;
       let cbest = Infinity;
       pending.forEach((b, i) => {
@@ -1875,6 +1913,13 @@ function sequenceWeek(
     if (esMostoPony(block.mostoId)) {
       finUltimoPony = new Date(cursorLibre.getTime());
       ponyIniciado = true;
+      // La corrida sigue viva mientras no entre otra marca: GO detrás de HG (o
+      // al revés) es la misma corrida, sin aseo en medio.
+      ponySeguidas = esMostoPony(prevMostoId)
+        ? ponySeguidas + block.numCocimientos
+        : block.numCocimientos;
+    } else {
+      ponySeguidas = 0;
     }
     prevMostoId = block.mostoId;
   }

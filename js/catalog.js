@@ -49,7 +49,10 @@ let MOSTO_CATALOG = [
     id: "pony_go",
     nombre: "Pony GO",
     palabras: "pony go, pony malta go, less sugar, pmg",
-    factorDilucion: 3.23,
+    // La GO se diluye mucho más que la HG: 5,23 contra 3,23. Un cocimiento
+    // rinde 3.138 hL de producto terminado en vez de 1.938, así que cubre el
+    // mismo volumen a envasar con bastantes menos cocimientos.
+    factorDilucion: 5.23,
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:15:00"),
     tiempoFermentacionHoras: parseHMS("0"),
