@@ -120,13 +120,20 @@ let ASEO_MATRIX = [
 ];
 let ASEO_DEFAULT_HORAS = parseHMS("3:50:00");
 
-// Aseo periódico (general): un aseo (CIP) adicional que se inserta automáticamente cada N
-// cocimientos consecutivos en la secuencia semanal, independientemente del mosto o de si hay
-// cambio de marca. Totalmente editable desde el panel "Aseo periódico (general)".
+// Aseo periódico (general): entre un aseo y el siguiente deben ir de 16 a 20
+// cocimientos. La cuenta se reinicia con CUALQUIER aseo —de cambio de marca, de
+// apertura o periódico—, no solo con el periódico: un CIP es un CIP. Por eso el
+// aseo periódico solo entra cuando la cuenta llega al MÁXIMO sin que haya
+// aparecido un cambio de marca que ya lo resuelva; si el cambio de marca cae
+// dentro de la ventana, ese aseo hace las veces del periódico y no se duplica.
+// Un aseo que caiga por debajo del mínimo (porque la marca cambia antes) se
+// avisa en Conflictos de capacidad: es un incumplimiento que el motor no puede
+// evitar, no algo que deba esconder.
 let ASEO_PERIODICO = {
   activo: true,
   duracionHoras: parseHMS("3:50:00"),
-  cocimientosEntreAseos: 18,
+  cocimientosMin: 16,
+  cocimientosMax: 20,
 };
 
 // Balance Semanal: inventario de cerveza YA DISPONIBLE para esta semana, registrado POR LOTE

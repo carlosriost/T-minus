@@ -1387,9 +1387,17 @@ function sequenceWeek(
   const aseoPeriodicoActivo = !!(aseoPeriodico && aseoPeriodico.activo);
   const aseoPeriodicoHoras =
     Number(aseoPeriodico && aseoPeriodico.duracionHoras) || 0;
-  const aseoPeriodicoCada = Math.max(
+  // Ventana de 16 a 20 cocimientos entre aseos. La cuenta la reinicia CUALQUIER
+  // aseo, no solo el periódico: si un cambio de marca cae dentro de la ventana,
+  // ese CIP ya cumple y no se programa otro encima.
+  const aseoPeriodicoMin = Math.max(
     1,
-    parseInt(aseoPeriodico && aseoPeriodico.cocimientosEntreAseos, 10) || 1,
+    parseInt(aseoPeriodico && aseoPeriodico.cocimientosMin, 10) || 1,
+  );
+  const aseoPeriodicoMax = Math.max(
+    aseoPeriodicoMin,
+    parseInt(aseoPeriodico && aseoPeriodico.cocimientosMax, 10) ||
+      aseoPeriodicoMin,
   );
 
   const rows = [];
@@ -1403,8 +1411,12 @@ function sequenceWeek(
   let cursorLibre = null; // cocina totalmente libre (fin del último cocimiento)
   let prevMostoId = null;
   let finUltimoPony = null; // fin de cocina de la última corrida de Pony
-  let globalCoc = 0; // cocimientos acumulados, para el aseo periódico
-  let aseoPeriodicoDeferido = false; // aseo periódico pospuesto (no dejar 1 solo)
+  // Cocimientos hechos DESDE EL ÚLTIMO ASEO (de cambio de marca, de apertura o
+  // periódico). Es lo que se compara contra la ventana de 16-20.
+  let cocDesdeAseo = 0;
+  // Aseos que quedaron por debajo del mínimo porque el cambio de marca los
+  // obligó antes de tiempo: se avisan, no se esconden.
+  const aseosCortos = [];
   let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
   const HORA24 = 24 * HORA; // "día de por medio" de Pony
   const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
@@ -1714,6 +1726,15 @@ function sequenceWeek(
     if (aseoRow) {
       aseoRow.n = ++n;
       rows.push(aseoRow);
+      // Un aseo es un aseo: reinicia la cuenta de la ventana de 16-20. Si el
+      // cambio de marca lo obligó antes del mínimo, queda registrado.
+      if (cocDesdeAseo > 0 && cocDesdeAseo < aseoPeriodicoMin)
+        aseosCortos.push({
+          cocimientos: cocDesdeAseo,
+          nombre: aseoRow.nombre,
+          start: aseoRow.start,
+        });
+      cocDesdeAseo = 0;
     }
 
     // Un bloque Light programado se vuelve cosecha de levadura Light a futuro.
@@ -1742,7 +1763,7 @@ function sequenceWeek(
     const viola = shiftHoras > 0.05 || excedeBBT;
     const rowStartIdx = rows.length;
 
-    // Aseo programado (periódico): cada aseoPeriodicoCada cocimientos, contando
+    // Aseo programado (periódico): al llegar al máximo de la ventana, contando
     // TODOS los bloques, se mete un CIP que corre el resto de la secuencia.
     let offsetMs = 0;
     let lastCocStart = actualFirst.getTime();
@@ -1780,24 +1801,21 @@ function sequenceWeek(
           ? Math.min(block.volumenPorCocimiento, restante)
           : 0,
       });
-      globalCoc++;
+      cocDesdeAseo++;
+      // El aseo periódico solo entra al llegar al MÁXIMO de la ventana. Por
+      // debajo de eso se espera: puede que el siguiente cambio de marca traiga
+      // su propio CIP dentro de la ventana y no haga falta este.
       if (
         aseoPeriodicoActivo &&
         aseoPeriodicoHoras > 0 &&
-        globalCoc % aseoPeriodicoCada === 0
-      )
-        aseoPeriodicoDeferido = true;
-      if (
-        aseoPeriodicoActivo &&
-        aseoPeriodicoHoras > 0 &&
-        aseoPeriodicoDeferido &&
+        cocDesdeAseo >= aseoPeriodicoMax &&
         // No dejar un cocimiento SOLO ni antes ni después del aseo: se inserta
         // solo si en ESTE bloque ya se hizo ≥1 cocimiento y aún quedan ≥2; si
         // no, se pospone al siguiente punto válido.
         i >= 1 &&
         i < block.numCocimientos - 2
       ) {
-        aseoPeriodicoDeferido = false;
+        cocDesdeAseo = 0;
         offsetMs += aseoPeriodicoHoras * HORA;
         const nextStart = new Date(
           actualFirst.getTime() + (i + 1) * block.gapHoras * HORA + offsetMs,
@@ -1807,7 +1825,7 @@ function sequenceWeek(
           tipo: "aseo",
           mostoId: null,
           blockId: block.blockId,
-          nombre: `ASEO programado (cada ${aseoPeriodicoCada} cocimientos)`,
+          nombre: `ASEO programado (${aseoPeriodicoMax} cocimientos desde el aseo anterior)`,
           start: new Date(nextStart.getTime() - aseoPeriodicoHoras * HORA),
           end: nextStart,
           definido: true,
@@ -1928,6 +1946,31 @@ function sequenceWeek(
       else cerrarRacha();
     });
     cerrarRacha();
+  }
+
+  // Ventana de 16-20 cocimientos entre aseos. Los aseos periódicos ya respetan
+  // el máximo por construcción; los que se quedan cortos son los de CAMBIO DE
+  // MARCA, que no se pueden posponer: entrar a Pony o a Light exige CIP. Si con
+  // los volúmenes de la semana las marcas cambian cada pocos cocimientos, la
+  // ventana no se puede cumplir y hay que decirlo, no taparlo.
+  if (aseosCortos.length) {
+    const menor = aseosCortos.reduce(
+      (a, x) => Math.min(a, x.cocimientos),
+      Infinity,
+    );
+    capacityWarnings.push({
+      tipo: "aseocorto",
+      mostoId: null,
+      nombre: "Aseos",
+      blockLabel: `${aseosCortos.length} aseo(s) por debajo del mínimo`,
+      blockStart: aseosCortos[0].start,
+      blockEnd: aseosCortos[aseosCortos.length - 1].start,
+      deadline: null,
+      retrasoHoras: aseosCortos.length,
+      detalle: `${aseosCortos.length} de los aseos quedaron con menos de ${aseoPeriodicoMin} cocimientos desde el aseo anterior (el más corto, con ${menor}). Son aseos de CAMBIO DE MARCA y no se pueden posponer: entrar a Pony o a Light siempre exige un CIP. Con estas corridas —Pony va máximo de 4 en 4— las marcas cambian cada pocos cocimientos, así que la ventana de ${aseoPeriodicoMin} a ${aseoPeriodicoMax} no se puede cumplir sin juntar más volumen por marca. Detalle: ${aseosCortos
+        .map((x) => `${x.cocimientos} coc → ${x.nombre}`)
+        .join("; ")}.`,
+    });
   }
 
   const totalHL = blocks.reduce((a, b) => a + (Number(b.volumenEnvasar) || 0), 0);

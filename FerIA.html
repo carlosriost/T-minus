@@ -287,7 +287,10 @@
             <div class="tab-panel hidden" id="tab-aseo-periodico">
               <div class="tab-panel-body">
                 <p class="tab-panel-sub">
-                  Aseo (CIP) adicional cada cierto número de cocimientos.
+                  Entre un aseo y el siguiente deben ir de 16 a 20 cocimientos.
+                  La cuenta se reinicia con cualquier aseo, también con los de
+                  cambio de marca: si uno de esos cae dentro de la ventana, hace
+                  las veces del periódico y no se programa otro.
                 </p>
                 <div
                   style="
@@ -311,14 +314,27 @@
                   </div>
                   <div>
                     <label class="field" style="margin-bottom: 6px; display: block"
-                      >N° de cocimientos para este aseo</label
+                      >Mínimo de cocimientos entre aseos</label
                     >
                     <input
                       type="number"
                       min="1"
                       step="1"
                       class="cat-input"
-                      id="aseoPeriodicoCocimientosInput"
+                      id="aseoPeriodicoMinInput"
+                      style="width: 110px"
+                    />
+                  </div>
+                  <div>
+                    <label class="field" style="margin-bottom: 6px; display: block"
+                      >Máximo de cocimientos entre aseos</label
+                    >
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      class="cat-input"
+                      id="aseoPeriodicoMaxInput"
                       style="width: 110px"
                     />
                   </div>

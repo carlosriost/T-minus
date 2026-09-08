@@ -54,7 +54,9 @@ function renderConflictos(seq) {
         ? "Conflicto de fecha límite"
         : esAseo
           ? "Conflicto de aseo"
-          : "Conflicto de secuencia";
+          : w.tipo === "aseocorto"
+            ? "Ventana de cocimientos entre aseos"
+            : "Conflicto de secuencia";
       const detalle = formatCapacityWarning(w);
       return `<tr style="background:${bg}22;">
       <td style="border-left:4px solid var(--danger); color:var(--text); font-family:var(--sans);"><b>${escapeHtml(w.nombre)}</b><span style="display:block;color:var(--muted);font-size:10px;">${titulo}</span></td>
@@ -1156,15 +1158,15 @@ renderAseoCatalog();
 const aseoPeriodicoTiempoInput = document.getElementById(
   "aseoPeriodicoTiempoInput",
 );
-const aseoPeriodicoCocimientosInput = document.getElementById(
-  "aseoPeriodicoCocimientosInput",
-);
+const aseoPeriodicoMinInput = document.getElementById("aseoPeriodicoMinInput");
+const aseoPeriodicoMaxInput = document.getElementById("aseoPeriodicoMaxInput");
 const aseoPeriodicoActivoInput = document.getElementById(
   "aseoPeriodicoActivoInput",
 );
 
 aseoPeriodicoTiempoInput.value = formatHMS(ASEO_PERIODICO.duracionHoras);
-aseoPeriodicoCocimientosInput.value = ASEO_PERIODICO.cocimientosEntreAseos;
+aseoPeriodicoMinInput.value = ASEO_PERIODICO.cocimientosMin;
+aseoPeriodicoMaxInput.value = ASEO_PERIODICO.cocimientosMax;
 aseoPeriodicoActivoInput.checked = ASEO_PERIODICO.activo;
 
 aseoPeriodicoTiempoInput.addEventListener("change", () => {
@@ -1172,12 +1174,31 @@ aseoPeriodicoTiempoInput.addEventListener("change", () => {
   aseoPeriodicoTiempoInput.value = formatHMS(ASEO_PERIODICO.duracionHoras);
   recompute();
 });
-aseoPeriodicoCocimientosInput.addEventListener("change", () => {
-  ASEO_PERIODICO.cocimientosEntreAseos = Math.max(
+// El máximo nunca puede quedar por debajo del mínimo: si se baja, arrastra al otro.
+aseoPeriodicoMinInput.addEventListener("change", () => {
+  ASEO_PERIODICO.cocimientosMin = Math.max(
     1,
-    parseInt(aseoPeriodicoCocimientosInput.value) || 1,
+    parseInt(aseoPeriodicoMinInput.value) || 1,
   );
-  aseoPeriodicoCocimientosInput.value = ASEO_PERIODICO.cocimientosEntreAseos;
+  ASEO_PERIODICO.cocimientosMax = Math.max(
+    ASEO_PERIODICO.cocimientosMin,
+    ASEO_PERIODICO.cocimientosMax,
+  );
+  aseoPeriodicoMinInput.value = ASEO_PERIODICO.cocimientosMin;
+  aseoPeriodicoMaxInput.value = ASEO_PERIODICO.cocimientosMax;
+  recompute();
+});
+aseoPeriodicoMaxInput.addEventListener("change", () => {
+  ASEO_PERIODICO.cocimientosMax = Math.max(
+    1,
+    parseInt(aseoPeriodicoMaxInput.value) || 1,
+  );
+  ASEO_PERIODICO.cocimientosMin = Math.min(
+    ASEO_PERIODICO.cocimientosMin,
+    ASEO_PERIODICO.cocimientosMax,
+  );
+  aseoPeriodicoMinInput.value = ASEO_PERIODICO.cocimientosMin;
+  aseoPeriodicoMaxInput.value = ASEO_PERIODICO.cocimientosMax;
   recompute();
 });
 aseoPeriodicoActivoInput.addEventListener("change", () => {
@@ -1240,13 +1261,16 @@ function commitCatalogInputsFromDOM() {
   const aseoDef = document.getElementById("aseoDefaultInput");
   if (aseoDef) ASEO_DEFAULT_HORAS = parseHMS(aseoDef.value);
   const apT = document.getElementById("aseoPeriodicoTiempoInput");
-  const apN = document.getElementById("aseoPeriodicoCocimientosInput");
+  const apMin = document.getElementById("aseoPeriodicoMinInput");
+  const apMax = document.getElementById("aseoPeriodicoMaxInput");
   const apA = document.getElementById("aseoPeriodicoActivoInput");
   if (apT) ASEO_PERIODICO.duracionHoras = parseHMS(apT.value);
-  if (apN)
-    ASEO_PERIODICO.cocimientosEntreAseos = Math.max(
-      1,
-      parseInt(apN.value, 10) || 1,
+  if (apMin)
+    ASEO_PERIODICO.cocimientosMin = Math.max(1, parseInt(apMin.value, 10) || 1);
+  if (apMax)
+    ASEO_PERIODICO.cocimientosMax = Math.max(
+      ASEO_PERIODICO.cocimientosMin,
+      parseInt(apMax.value, 10) || 1,
     );
   if (apA) ASEO_PERIODICO.activo = apA.checked;
 }
