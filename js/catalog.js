@@ -48,7 +48,7 @@ let MOSTO_CATALOG = [
   {
     id: "pony_go",
     nombre: "Pony GO",
-    palabras: "pony go, pony malta go, go less sugar, pmg",
+    palabras: "pony go, pony malta go, less sugar, pmg",
     factorDilucion: 3.23,
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:15:00"),
@@ -214,7 +214,10 @@ function esMostoPony(mostoId) {
 // SUGAR"), así que no basta con buscar la palabra.
 function ponyVariante(texto) {
   const n = normalizeText(texto || "");
-  if (/\bgo\b/.test(n) || /\bpmg\b/.test(n) || n.includes("go less sugar"))
+  // "Less sugar" ES la Pony GO, se escriba completo ("PONY MALTA GO LESS SUGAR
+  // PET 2000CC X6") o corto ("PONY MALTA LESS SUGAR PET 1000CC X15"): en el
+  // instructivo aparecen las dos formas para el mismo producto.
+  if (/\bgo\b/.test(n) || /\bpmg\b/.test(n) || n.includes("less sugar"))
     return "go";
   return "hg";
 }
