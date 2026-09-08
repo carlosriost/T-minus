@@ -41,6 +41,22 @@ let MOSTO_CATALOG = [
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
     tiempoMaxBBTHoras: 0,
   },
+  // Pony GO y Pony (HG) son MOSTOS DISTINTOS: se cocinan aparte, maduran aparte
+  // y su inventario no se cruza. Va ANTES que "Pony" en la lista porque la
+  // homologación toma el primer mosto que coincide y "PONY MALTA GO LESS SUGAR"
+  // también contiene la palabra "pony".
+  {
+    id: "pony_go",
+    nombre: "Pony GO",
+    palabras: "pony go, pony malta go, go less sugar, pmg",
+    factorDilucion: 3.23,
+    volumenPorCocimiento: 600,
+    tiempoCocinaHoras: parseHMS("8:15:00"),
+    tiempoFermentacionHoras: parseHMS("0"),
+    tiempoMaduracionHoras: parseHMS("48:00:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoMaxBBTHoras: parseHMS("48:00:00"),
+  },
   {
     id: "pony",
     nombre: "Pony",
@@ -183,9 +199,19 @@ function inventoryTotalsByMosto(catalog) {
 // Un lote solo puede cubrir un envasado que ocurra EN O DESPUÉS de esa fecha.
 // Ordenados por fecha de disponibilidad (el que esté listo primero se consume
 // primero). Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
-// En cocina toda la Pony es el mismo Mosto Pony, pero el PRODUCTO TERMINADO en
-// BBT sí se separa en Pony Go y Pony HG (y no se cruzan al cubrir envasado).
-// Devuelve "go" o "hg" a partir del texto de la marca/SKU.
+// Pony GO y Pony (HG) son mostos distintos, pero comparten TODAS las reglas de
+// familia: no fermentan (van de cocina directo a un SV Pony), tienen límite de
+// 48 h en BBT, exigen aseo al entrar desde una cerveza y nunca se cuecen más de
+// 4 seguidas (contando las dos juntas). Esta es la prueba de "es de la familia
+// Pony"; para distinguir GO de HG se compara el mostoId.
+function esMostoPony(mostoId) {
+  return mostoId === "pony" || mostoId === "pony_go";
+}
+
+// Devuelve "go" o "hg" a partir del texto de la marca/SKU. Es la regla que
+// decide a cuál de los dos mostos Pony homologa una marca (ver matchMosto): el
+// nombre "Pony GO" no siempre aparece literal en el SKU ("PONY MALTA GO LESS
+// SUGAR"), así que no basta con buscar la palabra.
 function ponyVariante(texto) {
   const n = normalizeText(texto || "");
   if (/\bgo\b/.test(n) || /\bpmg\b/.test(n) || n.includes("go less sugar"))
@@ -198,12 +224,14 @@ function ponyVariante(texto) {
 // "PILSEN", "PONY GO") y el plan de envasado trae el SKU completo
 // ("Costeñita R 175cc X 38"). Coincide si todas las palabras significativas de
 // la marca del BBT aparecen en el nombre del SKU. En Pony manda la variante
-// (Go / HG), porque "PONY GO" no aparece literal en "PONY MALTA GO LESS SUGAR".
+// (Go / HG), porque "PONY GO" no aparece literal en "PONY MALTA GO LESS SUGAR";
+// como además Pony GO y Pony (HG) son mostos distintos, el lote y el envasado ya
+// llegan aquí separados por mosto y esta comprobación solo confirma la variante.
 function marcaBBTSirvePara(marcaBBT, nombreEnvasado, mostoId) {
   const bbt = normalizeText(marcaBBT || "");
   const sku = normalizeText(nombreEnvasado || "");
   if (!bbt) return true; // sin marca registrada, no se restringe
-  if (mostoId === "pony") {
+  if (esMostoPony(mostoId)) {
     if (typeof ponyVariante !== "function") return true;
     return ponyVariante(marcaBBT) === ponyVariante(nombreEnvasado);
   }
@@ -244,7 +272,7 @@ function inventoryBatchesByMosto(catalog) {
     // Solo los BBT de Pony llevan variante (go / hg); el resto queda en null y
     // cubre cualquier envasado de su mosto.
     const variante =
-      e.mostoId === "pony" && e.tipo === "BBT"
+      esMostoPony(e.mostoId) && e.tipo === "BBT"
         ? ponyVariante(e.marcaTexto)
         : null;
     if (!out[e.mostoId]) out[e.mostoId] = [];
@@ -369,7 +397,7 @@ function proximoLimiteBBT(catalog) {
     const fechaLimite = new Date(
       i0.getTime() + (maxH - yaEnBBT) * 3600000,
     );
-    if (e.mostoId === "pony") {
+    if (esMostoPony(e.mostoId)) {
       if (!pony || fechaLimite < pony) pony = fechaLimite;
     }
   });

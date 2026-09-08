@@ -233,6 +233,9 @@ const MOSTO_COLORS = {
   light: "#8fd6a8",
   pilsen: "#8fbfe0",
   pony: "#f2b6c6",
+  // Pony GO va en un rosa más oscuro: es otro mosto y no debe confundirse con
+  // la Pony HG en el Gantt de cocina ni en la leyenda.
+  pony_go: "#d98fae",
   estandar: "#e0d18f",
 };
 function colorForMosto(mostoId) {
