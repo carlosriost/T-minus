@@ -41,29 +41,15 @@ let MOSTO_CATALOG = [
     tiempoEntreCarguesHoras: parseHMS("2:50:00"),
     tiempoMaxBBTHoras: 0,
   },
-  // Pony GO y Pony (HG) son MOSTOS DISTINTOS: se cocinan aparte, maduran aparte
-  // y su inventario no se cruza. Va ANTES que "Pony" en la lista porque la
-  // homologación toma el primer mosto que coincide y "PONY MALTA GO LESS SUGAR"
-  // también contiene la palabra "pony".
-  {
-    id: "pony_go",
-    nombre: "Pony GO",
-    palabras: "pony go, pony malta go, less sugar, pmg",
-    // La GO se diluye mucho más que la HG: 5,23 contra 3,23. Un cocimiento
-    // rinde 3.138 hL de producto terminado en vez de 1.938, así que cubre el
-    // mismo volumen a envasar con bastantes menos cocimientos.
-    factorDilucion: 5.23,
-    volumenPorCocimiento: 600,
-    tiempoCocinaHoras: parseHMS("8:15:00"),
-    tiempoFermentacionHoras: parseHMS("0"),
-    tiempoMaduracionHoras: parseHMS("48:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
-    tiempoMaxBBTHoras: parseHMS("48:00:00"),
-  },
+  // Pony GO y Pony HG son EL MISMO MOSTO: se cuecen juntas, van al mismo
+  // fermentador y al mismo madurador, y comparten todos estos parámetros. Se
+  // separan más adelante, ya como producto terminado en el BBT, y ahí sí un BBT
+  // de GO no sirve para envasar HG ni al revés (ver ponyVariante y
+  // marcaBBTSirvePara). Por eso hay una sola fila de Pony en el catálogo.
   {
     id: "pony",
     nombre: "Pony",
-    palabras: "pony",
+    palabras: "pony, pmg",
     factorDilucion: 3.23,
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:15:00"),
@@ -209,19 +195,20 @@ function inventoryTotalsByMosto(catalog) {
 // Un lote solo puede cubrir un envasado que ocurra EN O DESPUÉS de esa fecha.
 // Ordenados por fecha de disponibilidad (el que esté listo primero se consume
 // primero). Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
-// Pony GO y Pony (HG) son mostos distintos, pero comparten TODAS las reglas de
-// familia: no fermentan (van de cocina directo a un SV Pony), tienen límite de
-// 48 h en BBT, exigen aseo al entrar desde una cerveza y nunca se cuecen más de
-// 4 seguidas (contando las dos juntas). Esta es la prueba de "es de la familia
-// Pony"; para distinguir GO de HG se compara el mostoId.
+// Reglas propias del Mosto Pony: no fermenta (va de cocina directo a un SV
+// Pony), tiene límite de 48 h en BBT, exige aseo al entrar desde una cerveza y
+// nunca se cuecen más de 5 seguidas. Se consulta por todo el motor con este
+// nombre y no comparando contra "pony" a mano, para que quede claro cuándo una
+// decisión es por ser Pony y no por ser un mosto cualquiera.
 function esMostoPony(mostoId) {
-  return mostoId === "pony" || mostoId === "pony_go";
+  return mostoId === "pony";
 }
 
-// Devuelve "go" o "hg" a partir del texto de la marca/SKU. Es la regla que
-// decide a cuál de los dos mostos Pony homologa una marca (ver matchMosto): el
-// nombre "Pony GO" no siempre aparece literal en el SKU ("PONY MALTA GO LESS
-// SUGAR"), así que no basta con buscar la palabra.
+// Devuelve "go" o "hg" a partir del texto de la marca/SKU. GO y HG son el mismo
+// mosto y se cuecen juntas; esto separa el PRODUCTO TERMINADO en BBT, que sí es
+// distinto: un BBT de GO no sirve para envasar HG ni al revés. El nombre "Pony
+// GO" no siempre aparece literal en el SKU ("PONY MALTA GO LESS SUGAR"), así
+// que no basta con buscar la palabra.
 function ponyVariante(texto) {
   const n = normalizeText(texto || "");
   // "Less sugar" ES la Pony GO, se escriba completo ("PONY MALTA GO LESS SUGAR

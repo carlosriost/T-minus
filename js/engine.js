@@ -106,8 +106,8 @@ function buildBrandList(parsed, mergedByTrain) {
   //   · Stream cerveza: se agrupa por mostoId; la Pony intercalada es
   //     transparente (no corta el bloque de cerveza). Poker → Pony → Águila,
   //     todos "estandar", quedan en un solo bloque.
-  //   · Stream Pony: se agrupa por mostoId, que ya separa Pony GO de Pony (HG)
-  //     porque son mostos distintos; la cerveza intercalada es transparente.
+  //   · Stream Pony: GO y HG son el mismo mosto y se cuecen juntas, así que
+  //     entran al mismo bloque; la cerveza intercalada es transparente.
   // El "mínimo 2 / máximo 4" de Pony es una regla de SECUENCIA (corridas
   // consecutivas), no de conteo: se aplica en sequenceWeek, no aquí.
   const skuCorto = (nm) =>
@@ -167,7 +167,7 @@ function buildBrandList(parsed, mergedByTrain) {
     withVol.filter((e) => !esMostoPony(e.mostoId)),
     "cerveza",
   );
-  // --- Stream Pony, GO y HG por separado (cerveza transparente) ---
+  // --- Stream Pony, GO y HG juntas: mismo mosto (cerveza transparente) ---
   agruparStream(
     withVol.filter((e) => esMostoPony(e.mostoId)),
     "pony",
@@ -213,14 +213,6 @@ function buildBrandList(parsed, mergedByTrain) {
    ========================================================================= */
 function matchMosto(brandName, catalog) {
   const n = normalizeText(brandName);
-  // Pony GO y Pony (HG) son mostos distintos, pero "Pony GO" casi nunca aparece
-  // literal en el SKU ("PONY MALTA GO LESS SUGAR PET 2000CC X6"), así que
-  // buscarlo por palabra suelta no sirve. Para cualquier texto que hable de Pony
-  // manda ponyVariante, la misma regla que usa el inventario de BBT.
-  if (/\bpony\b/.test(n) && typeof ponyVariante === "function") {
-    const id = ponyVariante(n) === "go" ? "pony_go" : "pony";
-    if ((catalog || []).some((m) => m.id === id)) return id;
-  }
   for (const m of catalog) {
     // El nombre propio del mosto (p.ej. "Estandar") también debe reconocerse, además de sus
     // palabras clave de homologación (p.ej. "costeñita, aguila, poker") — si no, un aseo definido
@@ -393,14 +385,6 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     // Se descuenta MARCA POR MARCA (no en bloque): un bloque puede juntar varios
     // SKU del mismo mosto, y un BBT terminado de Costeñita solo puede asignarse
     // a la línea que envasa Costeñita.
-    // Etiqueta informativa (Go / HG). Ya no separa nada por sí sola —de eso se
-    // encarga el mostoId, que en Pony distingue GO de HG—, pero se conserva para
-    // poder explicar en el Balance por qué un lote sobrante no cubre la demanda.
-    const varianteDemanda = esMostoPony(mostoId)
-      ? mostoId === "pony_go"
-        ? "go"
-        : "hg"
-      : null;
     const asignacionesInv = [];
     const eventos =
       Array.isArray(b.marcas) && b.marcas.length
@@ -425,7 +409,7 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     // (volumenEnvasarPendiente). Un cocimiento rinde factorDilución · volXCoc hL
     // de producto terminado (p.ej. Pony: 3,23 · 600 = 1.938 hL).
     // No se infla: el "mínimo 2 / máximo 4" de Pony NO crea cocimientos que no
-    // existen — es una regla de SECUENCIA (corridas de 2 a 4 cocimientos
+    // existen — es una regla de SECUENCIA (corridas de 2 a 5 cocimientos
     // SEGUIDOS) que se aplica al ordenar la semana en sequenceWeek.
     const volXCoc = Number(m.volumenPorCocimiento) || 1;
     const rendimientoPorCocimiento = factor * volXCoc; // hL de producto por cocimiento
@@ -447,7 +431,6 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
 
     results.push({
       mostoId,
-      variante: varianteDemanda,
       nombre: m.nombre,
       volumenEnvasar,
       volumenCocinar,
@@ -475,18 +458,17 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   results.sort((a, b) => a.sequenceOrder - b.sequenceOrder);
 
   // --- Reconciliación de cocimientos ---------------------------------------
-  // El número de cocimientos NO se infla partiendo la demanda: para cada mosto
-  // —y Pony GO y Pony (HG) son dos mostos, así que cuentan por separado— el
+  // El número de cocimientos NO se infla partiendo la demanda: por MOSTO el
   // total es exactamente ceil( Σ volumenCocinar / volumenPorCocimiento ). Ese
   // total se reparte entre los bloques del grupo de forma ACUMULADA, así que
   // Σ block.numCocimientos == total del mosto y ningún bloque redondea por su
   // cuenta. Lo que cambia entre bloques es solo el reparto y la secuencia, no
-  // la cantidad total.
+  // la cantidad total. La Pony cuenta de una sola vez, GO y HG juntas: es el
+  // mismo mosto y sale del mismo cocimiento; se separan al diluir hacia el BBT.
   const grpCoc = {};
   results.forEach((r) => {
     if (!(r.volumenCocinar > 1e-9)) return;
-    const key = r.mostoId + (r.variante ? "|" + r.variante : "");
-    (grpCoc[key] = grpCoc[key] || []).push(r);
+    (grpCoc[r.mostoId] = grpCoc[r.mostoId] || []).push(r);
   });
   Object.values(grpCoc).forEach((rs) => {
     const m = catalog.find((x) => x.id === rs[0].mostoId) || {};
@@ -515,7 +497,7 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   //   · Cerveza (Estandar, Pilsen, Light): corto = menos de MIN_CORRIDA_CERVEZA.
   //     Las Estandar cercanas terminan así en un solo bloque largo en vez de
   //     salir picadas en varias corridas.
-  //   · Pony: corto = un solo cocimiento. Sus corridas son de 2 a 4 por regla,
+  //   · Pony: corto = un solo cocimiento. Sus corridas son de 2 a 5 por regla,
   //     así que aquí solo se evita el cocimiento suelto.
   Object.values(grpCoc).forEach((rs) => {
     if (rs.length < 2) return;
@@ -713,19 +695,14 @@ function getAseoDuracion(fromMostoId, toMostoId, resolvedMatrix, defaultHoras) {
   if (fromMostoId && toMostoId && fromMostoId === toMostoId) return SIN_ASEO;
   if (esMostoPony(fromMostoId)) return SIN_ASEO;
   if (toMostoId !== "light" && !esMostoPony(toMostoId)) return SIN_ASEO;
-  // Búsqueda en la matriz: primero la combinación exacta y, si no está, la
-  // combinación tratando Pony GO y Pony (HG) como una sola "Pony" — así una fila
-  // "Estandar → Pony" cubre las dos sin tener que duplicarla, pero si el usuario
-  // define una fila propia para Pony GO, esa manda.
-  const canon = (id) => (esMostoPony(id) ? "pony" : id);
-  const buscar = (f, t, k) => {
-    let m = resolvedMatrix.find((a) => k(a.origenId) === f && k(a.destinoId) === t);
-    if (!m) m = resolvedMatrix.find((a) => k(a.origenId) === t && k(a.destinoId) === f);
-    return m;
-  };
-  const m =
-    buscar(fromMostoId, toMostoId, (x) => x) ||
-    buscar(canon(fromMostoId), canon(toMostoId), canon);
+  // Se busca la combinación en la matriz y, si no está, la inversa.
+  let m = resolvedMatrix.find(
+    (a) => a.origenId === fromMostoId && a.destinoId === toMostoId,
+  );
+  if (!m)
+    m = resolvedMatrix.find(
+      (a) => a.origenId === toMostoId && a.destinoId === fromMostoId,
+    );
   if (m) return { horas: Number(m.duracionHoras) || 0, definido: true };
   return { horas: Number(defaultHoras) || 0, definido: false };
 }
@@ -1218,7 +1195,7 @@ function sequenceWeek(
   //       envasado) NO se cocina; eso tambien lo resuelve computeCocinaPlan.
   //   R3  Un bloque Light solo se programa si hay levadura Light disponible; si
   //       la levadura llega mas tarde, el bloque se corre hasta esa fecha.
-  //   R4  Pony se cuece en corridas de 2 a 4 cocimientos; una corrida termina
+  //   R4  Pony se cuece en corridas de 2 a 5 cocimientos; una corrida termina
   //       cuando empieza otra marca (nunca dos corridas de Pony seguidas).
   //   R5  El cronograma es una linea de tiempo continua: los bloques se
   //       ordenan por su inicio ideal y se colocan uno tras otro; cada bloque
@@ -1308,8 +1285,8 @@ function sequenceWeek(
       };
     });
 
-  // --- R4: partir Pony en corridas de 2 a 4 cocimientos ---
-  const PONY_MAX = 4;
+  // --- R4: partir Pony en corridas de 2 a 5 cocimientos ---
+  const PONY_MAX = 5;
   blocks = blocks.flatMap((b) => {
     if (!esMostoPony(b.mostoId) || b.numCocimientos <= PONY_MAX) return [b];
     const tramos = splitEnTramos(
@@ -1334,10 +1311,10 @@ function sequenceWeek(
     });
   });
 
-  // --- Separadores: NUNCA más de 4 Pony seguidas -----------------------------
+  // --- Separadores: NUNCA más de 5 Pony seguidas -----------------------------
   // Entre dos corridas de Pony tiene que ir SIEMPRE otra marca (aunque medien
-  // días). El patrón real es: corrida LARGA de cerveza → aseo → 2-4 Pony →
-  // corrida larga de cerveza → aseo → 2-4 Pony … La cerveza NO se pica en
+  // días). El patrón real es: corrida LARGA de cerveza → aseo → 2-5 Pony →
+  // corrida larga de cerveza → aseo → 2-5 Pony … La cerveza NO se pica en
   // trocitos: solo se parte cuando de verdad faltan separadores, y nunca en
   // trozos de menos de MIN_CORRIDA_CERVEZA cocimientos.
   // Cuando ni partiendo por 14 alcanzan los separadores, se baja el piso a este
@@ -1452,11 +1429,10 @@ function sequenceWeek(
   // obligó antes de tiempo: se avisan, no se esconden.
   const aseosCortos = [];
   let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
-  // Cocimientos de Pony SEGUIDOS que llevamos en la corrida actual (GO y HG
-  // cuentan juntas). Se usa para LLENAR la corrida hasta PONY_MAX antes de
-  // cambiar de marca: cada entrada a Pony cuesta un CIP, así que dos corridas
-  // de 2 gastan el doble de aseos que una de 4. Vuelve a 0 con cualquier
-  // bloque que no sea Pony.
+  // Cocimientos de Pony SEGUIDOS que llevamos en la corrida actual. Se usa para
+  // LLENAR la corrida hasta PONY_MAX antes de cambiar de marca: cada entrada a
+  // Pony cuesta un CIP, así que dos corridas de 2 gastan el doble de aseos que
+  // una de 4. Vuelve a 0 con cualquier bloque que no sea Pony.
   let ponySeguidas = 0;
   const HORA24 = 24 * HORA; // "día de por medio" entre CORRIDAS de Pony
   const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
@@ -1541,7 +1517,7 @@ function sequenceWeek(
       }
       // Tras una corrida de cerveza entra Pony si su ventana de BBT ya está
       // abierta (o casi). Si todavía no lo está, sigue la cerveza: dos corridas
-      // de cerveza seguidas son válidas — lo que NUNCA se permite es más de 4
+      // de cerveza seguidas son válidas — lo que NUNCA se permite es más de 5
       // Pony seguidas. Así la Pony se reparte sin retrasar la cerveza que sí
       // tiene que salir temprano.
       // RESERVA DE SEPARADORES: si ya quedan tantos (o menos) bloques de otra
@@ -1590,8 +1566,8 @@ function sequenceWeek(
         best = fBest;
       }
     }
-    // R4 (DURA): JAMÁS más de 4 cocimientos de Pony seguidos — ni aunque medien
-    // días entre corridas, y contando Pony GO y Pony (HG) JUNTAS. Si el elegido
+    // R4 (DURA): JAMÁS más de 5 cocimientos de Pony seguidos — ni aunque medien
+    // días entre corridas. Si el elegido
     // es Pony y con él la corrida se pasaría de PONY_MAX, se mete la marca (no
     // Pony) que pueda arrancar más pronto, cueste lo que cueste. Solo se
     // permite pasarse si ya no queda NINGÚN bloque de otra marca.
@@ -1621,7 +1597,7 @@ function sequenceWeek(
     // partirBloqueEn) y el resultado es peor: la cerveza tiene 12 días de
     // tubería y la Pony 2, así que la cerveza gastada de más al principio ya no
     // se puede reponer al final, y la Pony termina en rachas de 8 y hasta 12
-    // seguidas. Entre tapar el hueco y no pasar nunca de 4 Pony seguidas, manda
+    // seguidas. Entre tapar el hueco y no pasar nunca de 5 Pony seguidas, manda
     // la segunda. Los huecos que quedan se reportan en Conflictos de capacidad.
     const block = pending.splice(idx, 1)[0];
     const idealFirst = block.idealStarts[0];
@@ -2003,7 +1979,7 @@ function sequenceWeek(
       next.blockId !== r.blockId;
   });
 
-  // Control DURO: nunca más de 4 cocimientos de Pony seguidos, aunque medien
+  // Control DURO: nunca más de 5 cocimientos de Pony seguidos, aunque medien
   // días o aseos. Si aun así quedan rachas más largas es porque ya no había
   // NINGÚN bloque de otra marca con qué separarlas (toda la cerveza tiene que
   // cocerse antes por su tubería de 12 días). Se marca en rojo y se avisa.
@@ -2022,7 +1998,7 @@ function sequenceWeek(
           blockEnd: racha[racha.length - 1].end,
           deadline: null,
           retrasoHoras: racha.length,
-          detalle: `${racha.length} cocimientos de Pony seguidos, contando Pony GO y Pony HG juntas (máximo 4). No queda ningún bloque de otra marca con qué separarlos: toda la cerveza debe cocerse antes por su tiempo de proceso. Hay que traer cerveza de la semana siguiente o mover envasados de Pony.`,
+          detalle: `${racha.length} cocimientos de Pony seguidos (máximo ${PONY_MAX}). No queda ningún bloque de otra marca con qué separarlos: toda la cerveza debe cocerse antes por su tiempo de proceso. Hay que traer cerveza de la semana siguiente o mover envasados de Pony.`,
         });
       }
       racha = [];
@@ -2048,7 +2024,7 @@ function sequenceWeek(
       retrasoHoras: corridasCortasForzadas.length,
       detalle: `Hubo que partir ${corridasCortasForzadas
         .map((c) => `"${c.blockLabel}" (${c.numCocimientos} cocimientos)`)
-        .join(", ")} en corridas de menos de ${MIN_CORRIDA_CERVEZA} cocimientos. No quedaba otro bloque de cerveza con qué separar las corridas de Pony, y no pasar de 4 Pony seguidas manda sobre el largo de la corrida de cerveza. Para evitarlo hace falta más volumen de cerveza junto, o menos ventanas de Pony en el plan de envase.`,
+        .join(", ")} en corridas de menos de ${MIN_CORRIDA_CERVEZA} cocimientos. No quedaba otro bloque de cerveza con qué separar las corridas de Pony, y no pasar de 5 Pony seguidas manda sobre el largo de la corrida de cerveza. Para evitarlo hace falta más volumen de cerveza junto, o menos ventanas de Pony en el plan de envase.`,
     });
   }
 
@@ -2118,7 +2094,7 @@ function sequenceWeek(
       blockEnd: aseosCortos[aseosCortos.length - 1].start,
       deadline: null,
       retrasoHoras: aseosCortos.length,
-      detalle: `${aseosCortos.length} de los aseos quedaron con menos de ${aseoPeriodicoMin} cocimientos desde el aseo anterior (el más corto, con ${menor}). Son aseos de CAMBIO DE MARCA y no se pueden posponer: entrar a Pony o a Light siempre exige un CIP. Con estas corridas —Pony va máximo de 4 en 4— las marcas cambian cada pocos cocimientos, así que la ventana de ${aseoPeriodicoMin} a ${aseoPeriodicoMax} no se puede cumplir sin juntar más volumen por marca. Detalle: ${aseosCortos
+      detalle: `${aseosCortos.length} de los aseos quedaron con menos de ${aseoPeriodicoMin} cocimientos desde el aseo anterior (el más corto, con ${menor}). Son aseos de CAMBIO DE MARCA y no se pueden posponer: entrar a Pony o a Light siempre exige un CIP. Con estas corridas —Pony va máximo de 5 en 5— las marcas cambian cada pocos cocimientos, así que la ventana de ${aseoPeriodicoMin} a ${aseoPeriodicoMax} no se puede cumplir sin juntar más volumen por marca. Detalle: ${aseosCortos
         .map((x) => `${x.cocimientos} coc → ${x.nombre}`)
         .join("; ")}.`,
     });
