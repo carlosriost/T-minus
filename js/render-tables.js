@@ -98,12 +98,19 @@ function renderTankAssignments(assignment) {
     const equipos = (assignment.tanks || []).filter(
       (t) => t.disponible !== false && ["FV", "SV", "SV Pony"].includes(t.tipo),
     );
-    const ahora = (
-      (typeof getI0Date === "function" && getI0Date()) ||
-      new Date()
-    ).getTime();
-    const ocupado = (t) =>
-      !!(t.preocupado && t.preocupado.hasta.getTime() > ahora + 60000);
+    // Ocupado = lo que dice el INVENTARIO INGRESADO: el equipo tiene producto
+    // dentro. Antes se contaba "todavía en fermentación o maduración", así que
+    // un tanque lleno cuyo proceso ya terminó salía como libre y los cinco
+    // toneles de Pony aparecían en 0 / 5 teniendo producto los cinco.
+    const conProducto = {};
+    (typeof INVENTORY_BALANCE !== "undefined" ? INVENTORY_BALANCE : []).forEach(
+      (e) => {
+        if (!e || !e.equipo || e.vacio) return;
+        if (!(Number(e.hL) > 0)) return;
+        conProducto[normalizeText(e.equipo)] = true;
+      },
+    );
+    const ocupado = (t) => !!conProducto[normalizeText(t.equipo || "")];
     const tarjeta = (etiqueta, tipos) => {
       const grupo = equipos.filter((t) => tipos.includes(t.tipo));
       if (!grupo.length) return "";
