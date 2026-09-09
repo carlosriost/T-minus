@@ -140,7 +140,7 @@ function renderTankAssignments(assignment) {
     </tr>`;
     })
     .join("");
-  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Mosto</th><th>Inicio</th><th>Fin</th><th>Volumen</th><th>Equipo</th><th>Tipo</th><th>Prioridad</th><th>Capacidad</th><th>Acumulado</th><th>Restante</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Mosto</th><th title="Cuándo entra el mosto al equipo: al terminar el cocimiento en el FV, o al salir del FV en el SV.">Ocupa desde</th><th title="Cuándo termina la etapa y el equipo queda vacío: fin de fermentación en el FV, fin de maduración en el SV.">Hasta</th><th>Volumen</th><th>Equipo</th><th>Tipo</th><th>Prioridad</th><th>Capacidad</th><th>Acumulado</th><th>Restante</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderSequence(seq) {

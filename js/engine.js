@@ -1049,6 +1049,16 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         cocimientoNumero: idx + 1,
         subAsignacion: subIdx + 1,
         etapa: "FV · Fermentación",
+        // El FV queda ocupado desde que entra el mosto —o sea al TERMINAR el
+        // cocimiento— hasta que acaba la fermentación, no lo que dura la
+        // cocina. Con `...r` se heredaban el inicio y el fin del cocimiento
+        // (unas 8:55 h) y el equipo aparecía libre al día siguiente, cuando en
+        // realidad está ocupado 204 h. Las horas del cocimiento se conservan
+        // aparte para la tabla de asignación.
+        cocimientoStart: r.start,
+        cocimientoEnd: r.end,
+        start: new Date(r.end.getTime()),
+        end: new Date(a.fermentEnd.getTime()),
         volumenHL: a.carga,
         tanque: t.equipo || `Equipo ${t.idx + 1}`,
         tanqueId: t.id,
