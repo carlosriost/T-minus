@@ -857,6 +857,21 @@ let TANK_CATALOG = [
     disponible: true,
     aseoHoras: parseHMS("1:00:00"),
   },
+  // Estaba en el inventario "producto en proceso" pero no en este catálogo, así
+  // que no aparecía en la ocupación ni se podía asignar nada. No tenemos su
+  // consumo de agua medido: queda en 0 y con prioridad A como sus hermanos de
+  // 820 hL, y se puede ajustar desde «Equipos / Tanques» cuando haya el dato.
+  {
+    id: "sv_14_210",
+    equipo: "14-210",
+    tipo: "SV",
+    aguaPromedio: 0,
+    capacidadHL: 820,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
   {
     id: "sv_17_210",
     equipo: "17-210",
