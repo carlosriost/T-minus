@@ -2093,7 +2093,7 @@ function renderGanttTanques(assignment, weekStartRaw) {
       etapa: etapaDeTipo(t.tipo),
       mostoId: t.preocupado.mostoId || null,
       nombre: "Producto en proceso",
-      hL: 0,
+      hL: Number(t.preocupado.hL) || 0,
       lotes: ["Del inventario"],
       inventario: true,
     });

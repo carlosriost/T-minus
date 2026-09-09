@@ -820,7 +820,13 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
       t.volumenAsignado = t.capacidadHL;
       t.cocimientosAsignados = Number(t.maxCocimientos) || 0;
       t.loteCerrado = true;
-      t.preocupado = { mostoId: o.mostoId, hasta: o.fecha };
+      // Se guardan también los hL que trae el inventario: es lo que el equipo
+      // tiene dentro y hay que poder mostrarlo en la banda del Gantt.
+      t.preocupado = {
+        mostoId: o.mostoId,
+        hasta: o.fecha,
+        hL: Number(o.hL) || 0,
+      };
     });
   }
 
