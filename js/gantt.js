@@ -938,13 +938,45 @@ function renderGanttFiltracion(plan) {
     FIL_PX_PER_HOUR = Math.min(140, Math.ceil(px));
   }
 
-  const rangeStart = new Date(
-    Date.UTC(
-      plan.i0.getUTCFullYear(),
-      plan.i0.getUTCMonth(),
-      plan.i0.getUTCDate(),
-    ),
+  // El eje tiene que arrancar EN FASE con el Gantt de envasado.
+  // El de envasado no empieza a medianoche sino en el instante real en que
+  // arranca la producción (la hora de la primera columna del instructivo, p. ej.
+  // las 17:00 del primer día), así que sus celdas de día van de 17:00 a 17:00.
+  // El de filtración empezaba en la medianoche del I0, o sea desfasado 7 h. Con
+  // orígenes distintos, un mismo instante caía en celdas rotuladas con días
+  // distintos en cada Gantt, y el cursor compartido —que sí marcaba la misma
+  // hora en los dos— parecía señalar días diferentes.
+  // Ahora se toma el origen del Gantt de envasado y se corre de día COMPLETO en
+  // día completo hasta la posición más tardía que siga cubriendo el inicio de la
+  // filtración: mismo minuto de corte en los dos ejes y celdas alineadas 1 a 1.
+  // Sin Gantt de envasado cargado se usa la medianoche del I0. Todo en
+  // componentes UTC, que es como esta app maneja la hora de planta (las fechas
+  // llegan de SheetJS con la hora del Excel en los componentes UTC, y fmtDate /
+  // fmtDateTime las leen así).
+  const envContainer = document.getElementById("ganttContainer");
+  const envRangeStart = envContainer
+    ? Number(envContainer.dataset.rangeStart)
+    : NaN;
+  const primerInicio = segments.reduce(
+    (min, s) => Math.min(min, s.start.getTime()),
+    plan.i0.getTime(),
   );
+  let rangeStart;
+  if (Number.isFinite(envRangeStart) && envRangeStart > 0) {
+    const DIA_MS = 24 * 3600000;
+    let t = envRangeStart;
+    while (t > primerInicio) t -= DIA_MS;
+    while (t + DIA_MS <= primerInicio) t += DIA_MS;
+    rangeStart = new Date(t);
+  } else {
+    rangeStart = new Date(
+      Date.UTC(
+        plan.i0.getUTCFullYear(),
+        plan.i0.getUTCMonth(),
+        plan.i0.getUTCDate(),
+      ),
+    );
+  }
   const lastEndTime = plan.end.getTime();
   const totalHours = Math.max(
     24,
