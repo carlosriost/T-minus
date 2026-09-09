@@ -2131,12 +2131,16 @@ function renderGanttTanques(assignment, weekStartRaw) {
     const t = tanquesInfo.find((x) => x.equipo === equipo);
     return (t && t.tipo) || "";
   };
+  // Manda el TIPO de equipo, para que los grupos salgan seguidos y el rótulo de
+  // "Fermentadores" / "Maduradores" aparezca una sola vez. Dentro de cada grupo
+  // van primero los que reciben producción de esta programación, que son los que
+  // interesa mirar, y después los que solo aparecen porque venían ocupados.
   const todosLosEquipos = Object.keys(porEquipo).sort((a, b) => {
-    const pa = tieneProduccion(a) ? 0 : 1;
-    const pb = tieneProduccion(b) ? 0 : 1;
     const oa = ordenTipo[tipoDe(a)] ?? 9;
     const ob = ordenTipo[tipoDe(b)] ?? 9;
-    return pa - pb || oa - ob || String(a).localeCompare(String(b), "es");
+    const pa = tieneProduccion(a) ? 0 : 1;
+    const pb = tieneProduccion(b) ? 0 : 1;
+    return oa - ob || pa - pb || String(a).localeCompare(String(b), "es");
   });
   // Botonera de tipo de equipo. Se cuenta sobre TODOS, no sobre lo filtrado,
   // para que los números no cambien al moverse entre pestañas.
@@ -2214,27 +2218,47 @@ function renderGanttTanques(assignment, weekStartRaw) {
   }
 
   const nf = (v) => Math.round(v).toLocaleString("es-CO");
+  // El color es el del MOSTO, el mismo de toda la interfaz, para que una marca
+  // se reconozca igual aquí que en el Gantt de cocina o en el de envasado. La
+  // etapa se distingue por el texto de la banda y por la hilera en la que está.
+  const nombreDeMosto = (id) =>
+    (MOSTO_CATALOG.find((m) => m.id === id) || {}).nombre || id || "Ocupado";
+  const proximasLiberaciones = [];
   const lanes = equipos
     .map((equipo) => {
       const t = tanquesInfo.find((z) => z.equipo === equipo);
       const cap = t && t.capacidadHL ? `${nf(t.capacidadHL)} hL` : "";
+      const tipo = tipoDe(equipo);
       const aseoH = aseoDe(equipo);
       let bloques = "";
+      // Se recorre la hilera de principio a fin emitiendo los tramos ocupados y,
+      // entre ellos, los tramos LIBRES: el hueco en blanco no dice nada, la
+      // banda "Libre" sí dice desde cuándo y hasta cuándo se puede usar.
+      let cursor = rangeStart.getTime();
+      const bandaLibre = (desde, hasta) => {
+        const w = x(hasta) - x(desde);
+        if (w < 6) return;
+        const horas = (hasta - desde) / 3600000;
+        bloques += `<div class="block libre" style="left:${x(desde)}px; width:${w}px;" title="${escapeHtml(
+          `${equipo} · libre\n${fmtDateTime(new Date(desde))} → ${fmtDateTime(new Date(hasta))} (${fmtDuration(hasta - desde)})`,
+        )}">${w >= 46 ? `<b>Libre${w >= 120 ? ` · ${Math.round(horas)} h` : ""}</b>` : ""}</div>`;
+      };
       porEquipo[equipo].forEach((b) => {
         const ini = Math.max(b.start, rangeStart.getTime());
+        if (ini > cursor) bandaLibre(cursor, ini);
         const left = x(ini);
         const width = Math.max(4, x(b.end) - left);
         const bg = b.mostoId ? colorForMosto(b.mostoId) : "#9aa0a6";
         const dur = fmtDuration(b.end - ini);
+        const disponible = b.end + aseoH * 3600000;
         const tip = [
-          `${equipo} · ${b.etapa}`,
-          b.inventario
-            ? "Ya venía ocupado en el inventario"
-            : `${b.nombre}${b.hL ? " · " + nf(b.hL) + " hL" : ""}`,
+          `${equipo}${tipo ? " · " + tipo : ""}${cap ? " · " + cap : ""}`,
+          `${b.etapa}${b.inventario ? " (ya venía ocupado en el inventario)" : ""}`,
+          `${b.nombre}${b.hL ? " · " + nf(b.hL) + " hL" : ""}`,
           `${fmtDateTime(new Date(ini))} → ${fmtDateTime(new Date(b.end))} (${dur})`,
           `Se desocupa el ${fmtDateTime(new Date(b.end))}`,
           aseoH
-            ? `Disponible tras el aseo el ${fmtDateTime(new Date(b.end + aseoH * 3600000))}`
+            ? `Disponible tras el aseo el ${fmtDateTime(new Date(disponible))}`
             : null,
         ]
           .filter(Boolean)
@@ -2245,28 +2269,42 @@ function renderGanttTanques(assignment, weekStartRaw) {
         // Dentro de la banda: DE QUÉ está ocupado y cuántos hL arriba, y CUÁNDO
         // se desocupa abajo. Si la banda es angosta se va recortando: primero se
         // cae la hora de salida, luego los hL, y al final no cabe ni el texto.
-        const marca = b.inventario ? "Ocupado" : b.nombre || b.etapa;
+        const marca = b.inventario
+          ? b.mostoId
+            ? nombreDeMosto(b.mostoId)
+            : "Ocupado"
+          : b.nombre || b.etapa;
         const hlTxt = b.hL > 0 ? ` · ${nf(b.hL)} hL` : "";
         const salida = `sale ${fmtDateTime(new Date(b.end))}`;
         const interior =
-          width >= 128
+          width >= 132
             ? `<b>${escapeHtml(marca + hlTxt)}</b><span>${escapeHtml(salida)}</span>`
-            : width >= 74
+            : width >= 78
               ? `<b>${escapeHtml(marca + hlTxt)}</b>`
-              : width >= 34
+              : width >= 36
                 ? `<b>${escapeHtml(marca)}</b>`
                 : "";
         bloques += `<div class="block" style="left:${left}px; width:${width}px; ${estilo}" title="${escapeHtml(tip)}">${interior}</div>`;
+        cursor = b.end;
         // Aseo de reutilización: el equipo tampoco está libre aquí.
         if (aseoH > 0) {
-          const aLeft = x(b.end);
           const aWidth = Math.max(3, aseoH * TANQUES_PX_PER_HOUR);
-          bloques += `<div class="block changeover" style="left:${aLeft}px; width:${aWidth}px;" title="${escapeHtml(
-            `${equipo} · aseo de reutilización · ${fmtDateTime(new Date(b.end))} → ${fmtDateTime(new Date(b.end + aseoH * 3600000))}`,
+          bloques += `<div class="block changeover" style="left:${x(b.end)}px; width:${aWidth}px;" title="${escapeHtml(
+            `${equipo} · aseo de reutilización · ${fmtDateTime(new Date(b.end))} → ${fmtDateTime(new Date(disponible))}`,
           )}"><b>🧽</b></div>`;
+          cursor = disponible;
         }
+        proximasLiberaciones.push({
+          equipo,
+          tipo,
+          etapa: b.etapa,
+          ocupadoCon: marca,
+          hL: b.hL,
+          seDesocupa: b.end,
+          disponible,
+        });
       });
-      const tipo = tipoDe(equipo);
+      if (cursor < ultimo) bandaLibre(cursor, ultimo);
       return `<div class="gantt-row">
         <div class="lane-label" title="${escapeHtml(equipo + (tipo ? " · " + tipo : "") + (cap ? " · " + cap : ""))}">${escapeHtml(equipo)}${cap ? `<small>${cap}</small>` : ""}</div>
         <div class="lane-track" style="width:${totalWidth}px;">
@@ -2275,18 +2313,31 @@ function renderGanttTanques(assignment, weekStartRaw) {
         </div>
       </div>`;
     })
-    .join("");
+    .join("__CORTE__");
 
-  // Son muchas hileras (un equipo por fila): se limita la altura y se desplaza
-  // por dentro, para que el panel no se coma la página. El encabezado de días
-  // queda pegado arriba al desplazar.
+  // Los equipos van agrupados —fermentadores primero, luego maduradores— con un
+  // rótulo entre medio, para no leer 41 hileras seguidas sin saber dónde
+  // termina una cosa y empieza la otra.
+  const lanesPorGrupo = lanes.split("__CORTE__");
+  let lanesHtml = "";
+  let grupoActual = null;
+  equipos.forEach((equipo, i) => {
+    const tipo = tipoDe(equipo) || "Otros";
+    if (tipo !== grupoActual) {
+      const cuantos = equipos.filter((e) => (tipoDe(e) || "Otros") === tipo).length;
+      lanesHtml += `<div class="gantt-grupo" style="width:${labelWidth + totalWidth}px;">${escapeHtml(tipo === "FV" ? "Fermentadores" : tipo === "SV" ? "Maduradores" : tipo === "SV Pony" ? "Maduradores de Pony" : tipo)} · ${cuantos}</div>`;
+      grupoActual = tipo;
+    }
+    lanesHtml += lanesPorGrupo[i];
+  });
+
   // La fila es baja y son muchas: se limita la altura y se desplaza por dentro,
   // con el encabezado de días fijo arriba.
   container.innerHTML = `
     <div id="ganttTanquesScroll" class="gantt-compacto" style="overflow:auto; max-height:440px; padding:0 0 12px;">
       <div style="position:relative; width:${labelWidth + totalWidth}px;">
         <div class="day-header" style="position:sticky; top:0; z-index:6;">${dayHeaderHtml}</div>
-        ${lanes}
+        ${lanesHtml}
       </div>
     </div>`;
 
@@ -2304,6 +2355,56 @@ function renderGanttTanques(assignment, weekStartRaw) {
         .join("") +
       `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,#9aa0a6,#9aa0a6 3px,#9aa0a699 3px,#9aa0a699 6px);"></span>Ya ocupado al I0 (inventario)</div>` +
       `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);"></span>Aseo de reutilización</div>` +
-      `<div class="item"><span class="sw" style="background:transparent; border:1px solid var(--line);"></span>Libre</div>`;
+      `<div class="item"><span class="sw" style="background:var(--panel2); border:1px dashed var(--line);"></span>Libre</div>`;
   }
+
+  renderTanquesProximosALiberar(proximasLiberaciones);
+}
+
+/* Tabla "próximos a liberar": qué se desocupa primero, con qué está ocupado y
+   desde cuándo se puede volver a cargar (que es después del aseo, no al
+   vaciarse). Se queda con la última salida de cada equipo. */
+function renderTanquesProximosALiberar(lista) {
+  const wrap = document.getElementById("tanquesProximosWrap");
+  if (!wrap) return;
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const ultimaDe = {};
+  (lista || []).forEach((x) => {
+    const prev = ultimaDe[x.equipo];
+    if (!prev || x.seDesocupa > prev.seDesocupa) ultimaDe[x.equipo] = x;
+  });
+  const filas = Object.values(ultimaDe)
+    .filter((x) => x.disponible >= i0.getTime())
+    .sort((a, b) => a.seDesocupa - b.seDesocupa)
+    .slice(0, 12);
+  if (!filas.length) {
+    wrap.innerHTML =
+      '<p class="empty-note">Ningún equipo se libera dentro del rango programado.</p>';
+    return;
+  }
+  const nf = (v) => Math.round(v).toLocaleString("es-CO");
+  const rows = filas
+    .map((x) => {
+      const horas = (x.seDesocupa - i0.getTime()) / 3600000;
+      const cls = horas <= 24 ? "ok" : horas <= 72 ? "warn" : "";
+      const cuando =
+        horas <= 0
+          ? "Ya libre"
+          : horas < 24
+            ? `En ${Math.round(horas)} h`
+            : `En ${Math.round(horas / 24)} d`;
+      return `<tr>
+        <td><b>${escapeHtml(x.equipo)}</b><span style="color:var(--muted); font-size:10.5px; display:block;">${escapeHtml(x.tipo || "")}</span></td>
+        <td>${escapeHtml(x.ocupadoCon)}${x.hL ? `<span style="color:var(--muted); font-size:10.5px; display:block;">${nf(x.hL)} hL</span>` : ""}</td>
+        <td>${escapeHtml(x.etapa)}</td>
+        <td>${fmtDateTime(new Date(x.seDesocupa))}</td>
+        <td>${fmtDateTime(new Date(x.disponible))}</td>
+        <td><span class="tag ${cls}">${cuando}</span></td>
+      </tr>`;
+    })
+    .join("");
+  wrap.innerHTML = `<table><thead><tr>
+      <th>Equipo</th><th>Ocupado con</th><th>Etapa</th><th>Se desocupa</th>
+      <th title="Después del aseo de reutilización, que es cuando de verdad se puede volver a cargar.">Disponible</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
 }

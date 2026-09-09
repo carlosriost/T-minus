@@ -568,18 +568,53 @@
         width: 76px;
         min-width: 76px;
       }
+      /* La banda tiene alto FIJO (48 px) pensado para las hileras de 64: en una
+         de 38 se salía por abajo y el texto quedaba montado sobre el borde. */
       .gantt-compacto .block {
-        padding: 3px 6px;
+        top: 4px;
+        height: 30px;
+        border-radius: 4px;
+        padding: 2px 7px;
         gap: 0;
       }
       .gantt-compacto .block b {
         font-size: 10.5px;
-        line-height: 1.15;
+        line-height: 1.2;
+        white-space: nowrap;
+        text-overflow: ellipsis;
       }
       .gantt-compacto .block span {
         font-size: 9.5px;
-        line-height: 1.15;
-        opacity: 0.85;
+        line-height: 1.2;
+        opacity: 0.9;
+      }
+      /* Tramo sin nada: se dibuja, no se deja en blanco, para que se lea de una
+         que el equipo está libre y hasta cuándo. */
+      .gantt-compacto .block.libre {
+        background: var(--panel2);
+        border: 1px dashed var(--line);
+        box-shadow: none;
+      }
+      .gantt-compacto .block.libre b {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      /* Separación entre el grupo de fermentadores y el de maduradores. */
+      .gantt-grupo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 0 5px 8px;
+        font-family: var(--sans);
+        font-size: 10.5px;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: var(--panel2);
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        left: 0;
       }
       /* Botonera para elegir qué tipo de equipo se mira. */
       .filtro-equipos {
