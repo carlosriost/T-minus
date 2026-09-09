@@ -60,7 +60,9 @@ function renderConflictos(seq) {
               ? "Horas de cocina sin programar"
               : w.tipo === "corridacorta"
                 ? "Corrida de cerveza bajo el mínimo"
-                : "Conflicto de secuencia";
+                : w.tipo === "ponysinespacio"
+                  ? "Pony corrida por falta de madurador"
+                  : "Conflicto de secuencia";
       const detalle = formatCapacityWarning(w);
       return `<tr style="background:${bg}22;">
       <td style="border-left:4px solid var(--danger); color:var(--text); font-family:var(--sans);"><b>${escapeHtml(w.nombre)}</b><span style="display:block;color:var(--muted);font-size:10px;">${titulo}</span></td>
@@ -150,10 +152,16 @@ function renderSequence(seq) {
       '<p class="empty-note">Sin cocimientos programados esta semana.</p>';
     return;
   }
+  // Los avisos NO se vuelcan en un bloque rojo: cada uno se pega, como tooltip,
+  // a la marca a la que corresponde. Aquí arriba queda solo el conteo, y los que
+  // no son de una marca concreta (huecos de cocina, ventana de aseos) siguen
+  // enteros en la pestaña de Conflictos de capacidad.
+  const avisosDe = (blockLabel) =>
+    (seq.capacityWarnings || []).filter(
+      (w) => w.blockLabel && blockLabel && w.blockLabel === blockLabel,
+    );
   if (seq.capacityWarnings.length) {
-    alertWrap.innerHTML = `<div style="border:1px solid rgba(237,28,43,.35); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; color:var(--danger);">
-      ${seq.capacityWarnings.map((w) => `<div>⚠️ ${escapeHtml(formatCapacityWarning(w))}</div>`).join("")}
-    </div>`;
+    alertWrap.innerHTML = `<div style="color:var(--muted); font-size:11.5px; margin-bottom:10px;">${seq.capacityWarnings.length} aviso(s) en esta secuencia. Pasa el cursor por encima de cada marca para ver el suyo; el detalle completo está en «Conflictos de capacidad».</div>`;
   } else {
     alertWrap.innerHTML = "";
   }
@@ -181,7 +189,21 @@ function renderSequence(seq) {
           ? ` · desplazado +${r.shiftHours.toFixed(1)} h`
           : "") +
         (r.violaDeadline ? " · ⚠️ excede fecha límite" : "");
-      return `<tr style="background:${bg}22; ${r.violaDeadline ? "box-shadow:inset 0 0 0 1px var(--danger);" : ""}">
+      // Tooltip de la fila: el bloque al que pertenece, sus fechas y los avisos
+      // que le tocan. Es lo que se ve al pasar el cursor por encima.
+      const avisos = avisosDe(r.blockLabel);
+      const tip = [
+        r.blockLabel || r.nombre,
+        r.deadline ? `Envasado que cubre: ${fmtDateTime(r.deadline)}` : null,
+        r.latestStart ? `Inicio ideal: ${fmtDateTime(r.latestStart)}` : null,
+        r.shiftHours > 0.05
+          ? `Desplazado ${r.shiftHours.toFixed(1)} h respecto al ideal`
+          : null,
+        ...avisos.map((w) => "⚠️ " + formatCapacityWarning(w)),
+      ]
+        .filter(Boolean)
+        .join("\n");
+      return `<tr title="${escapeHtml(tip)}" style="background:${bg}22; ${r.violaDeadline ? "box-shadow:inset 0 0 0 1px var(--danger);" : ""} cursor:help;">
       <td>${r.n}</td>
       <td style="border-left:4px solid ${r.violaDeadline ? "var(--danger)" : bg}; color:var(--text); font-family:var(--sans);"><b>${escapeHtml(r.nombre)}</b><span style="color:${r.violaDeadline ? "var(--danger)" : "var(--muted)"}; font-size:10.5px;">${tags}</span></td>
       <td>${fmtDateTime(r.start)}</td>

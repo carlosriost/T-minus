@@ -460,11 +460,28 @@ function renderGanttCocina(seq, weekStartRaw) {
       const borderStyle = r.violaDeadline
         ? "box-shadow:inset 0 0 0 2px var(--danger); outline:2px solid var(--danger); outline-offset:-2px;"
         : "";
-      const extra = r.violaDeadline
-        ? ` ⚠️ excede su fecha límite (${fmtDateTime(r.deadline)})`
-        : "";
+      // Los avisos de este bloque van en el tooltip, no en un bloque de texto
+      // aparte: se leen pasando el cursor por encima de la marca.
+      const avisos = (
+        (seq && seq.capacityWarnings) ||
+        []
+      ).filter((w) => w.blockLabel && w.blockLabel === r.blockLabel);
       const titleAttr = escapeHtml(
-        `${r.nombre} · Cocimiento ${r.n} · ${fmtDateTime(r.start)} → ${fmtDateTime(r.end)} (${dur})${extra}`,
+        [
+          `${r.nombre} · Cocimiento ${r.n} · ${fmtDateTime(r.start)} → ${fmtDateTime(r.end)} (${dur})`,
+          r.blockLabel || null,
+          r.deadline ? `Envasado que cubre: ${fmtDateTime(r.deadline)}` : null,
+          r.violaDeadline ? "⚠️ Excede su fecha límite" : null,
+          ...avisos.map(
+            (w) =>
+              "⚠️ " +
+              (typeof formatCapacityWarning === "function"
+                ? formatCapacityWarning(w)
+                : w.detalle || ""),
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n"),
       );
       blocksHtml += `<div class="block" style="left:${left}px; width:${width}px; background:${bg}; ${borderStyle}" title="${titleAttr}">${showText ? `<b>${escapeHtml(r.nombre)}${r.violaDeadline ? " ⚠️" : ""}</b><span>${dur}</span>` : ""}</div>`;
     }

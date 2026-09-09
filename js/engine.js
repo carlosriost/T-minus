@@ -1522,6 +1522,10 @@ function sequenceWeek(
   // el siguiente bloque que entra es Pony: si de todas formas hay que lavar, que
   // ese lavado sirva para meter la Pony y no se gaste otro CIP más adelante.
   let aseoPeriodicoPendiente = false;
+  // Corridas de Pony que hubo que correr porque no había SV Pony libre. No se
+  // pierden: se programan cuando lo hay, y mientras tanto la cocina sigue con
+  // cerveza. Se anotan para poder decir cuánto esperaron y por qué.
+  const ponySinEspacio = [];
   let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
   // Cocimientos de Pony SEGUIDOS que llevamos en la corrida actual. Se usa para
   // LLENAR la corrida hasta PONY_MAX antes de cambiar de marca: cada entrada a
@@ -1581,7 +1585,7 @@ function sequenceWeek(
     // Instante REAL más temprano en que cada bloque podría arrancar, con sus
     // topes: aseo de cambio de marca, levadura Light, y para Pony el máx. en
     // BBT y el "día de por medio". Sirve para no dejar la cocina parada.
-    const arranqueDe = (b) => {
+    const arranqueDe = (b, conAlmacen = true) => {
       let t = prevMostoId ? libreCadencia : b.idealStarts[0].getTime();
       if (i0Ms != null) t = Math.max(t, i0Ms); // nunca antes del I0
       if (aplicaTopeAdelanto(b.mostoId))
@@ -1615,7 +1619,7 @@ function sequenceWeek(
           );
         if (finUltimoPony) t = Math.max(t, finUltimoPony.getTime() + HORA24);
       }
-      return aplicarPisoAlmacen(b, t);
+      return conAlmacen ? aplicarPisoAlmacen(b, t) : t;
     };
     // Selección: el bloque que pueda ARRANCAR ANTES (menor arranqueDe, que ya
     // incluye su inicio ideal, aseos, levadura Light, máx. BBT y día de por
@@ -1651,11 +1655,6 @@ function sequenceWeek(
       // de cerveza seguidas son válidas — lo que NUNCA se permite es más de 5
       // Pony seguidas. Así la Pony se reparte sin retrasar la cerveza que sí
       // tiene que salir temprano.
-      // RESERVA DE SEPARADORES: si ya quedan tantos (o menos) bloques de otra
-      // marca como separaciones harán falta entre las corridas de Pony que
-      // faltan, no se gastan seguidos: se alterna aunque haya que esperar a la
-      // ventana de Pony. Es lo que evita que la cerveza se acabe y la Pony
-      // quede apelotonada al final.
       // RESERVA DE SEPARADORES: si ya quedan tantos (o menos) bloques de otra
       // marca como separaciones harán falta entre las corridas de Pony que
       // faltan, no se gastan seguidos. Hay que reservarlos porque la cerveza
@@ -1738,6 +1737,24 @@ function sequenceWeek(
     // se puede reponer al final, y la Pony termina en rachas de 8 y hasta 12
     // seguidas. Entre tapar el hueco y no pasar nunca de 5 Pony seguidas, manda
     // la segunda. Los huecos que quedan se reportan en Conflictos de capacidad.
+
+    // LA FALTA DE ESPACIO DE PONY NO PARA LA COCINA.
+    // El piso de almacenamiento ya empuja la Pony hasta que haya SV Pony libre,
+    // y como la selección elige el bloque que puede arrancar antes, mientras
+    // tanto entra la cerveza. La Pony no se pierde: se programa cuando sí hay
+    // espacio. Lo único que se anota aquí es cuánto tuvo que esperar por eso.
+    if (esMostoPony(pending[idx].mostoId) && cursorLibre) {
+      const cand = pending[idx];
+      const sinPiso = arranqueDe(cand, false);
+      if (best > sinPiso + HORA)
+        ponySinEspacio.push({
+          blockLabel: cand.blockLabel,
+          numCocimientos: cand.numCocimientos,
+          volumenEnvasar: cand.volumenEnvasar,
+          desde: new Date(best),
+          esperaHoras: (best - sinPiso) / HORA,
+        });
+    }
     const block = pending.splice(idx, 1)[0];
     const idealFirst = block.idealStarts[0];
 
@@ -1995,7 +2012,21 @@ function sequenceWeek(
       block.maxBBTHoras > 0 &&
       actualFirst.getTime() <
         idealFirst.getTime() - block.maxBBTHoras * HORA - HORA;
-    const viola = shiftHoras > 0.05 || excedeBBT;
+    // ¿LLEGA TARDE DE VERDAD? Se compara el fin del proceso —último cocimiento
+    // más fermentación y maduración— contra la fecha de envasado que el bloque
+    // tiene que cubrir. Antes bastaba con que el arranque se hubiera desplazado
+    // del ideal para pintarlo en rojo, y eso marcaba bloques que terminaban
+    // HOLGADAMENTE antes de su límite: de 68 filas, 63 salían con aviso.
+    const finProceso =
+      actualFirst.getTime() +
+      Math.max(0, block.numCocimientos - 1) * block.gapHoras * HORA +
+      block.cocinaHoras * HORA +
+      (block.fermentacionHoras + block.maduracionHoras) * HORA;
+    const retrasoRealHoras = block.fechaEnvasado
+      ? (finProceso - block.fechaEnvasado.getTime()) / HORA
+      : 0;
+    const llegaTarde = retrasoRealHoras > 0.05;
+    const viola = llegaTarde || excedeBBT;
     const rowStartIdx = rows.length;
 
     // Aseo programado (periódico): al llegar al máximo de la ventana, contando
@@ -2062,7 +2093,14 @@ function sequenceWeek(
       }
     }
 
-    if (viola && shiftHoras > 0.05) {
+    if (llegaTarde) {
+      const finReal = new Date(
+        rows[rows.length - 1].end.getTime() +
+          (block.fermentacionHoras + block.maduracionHoras) * HORA,
+      );
+      const retraso = block.fechaEnvasado
+        ? (finReal.getTime() - block.fechaEnvasado.getTime()) / HORA
+        : retrasoRealHoras;
       capacityWarnings.push({
         tipo: "deadline",
         mostoId: block.mostoId,
@@ -2070,15 +2108,12 @@ function sequenceWeek(
         tren: block.tren,
         blockLabel: block.blockLabel,
         blockStart: rows[rowStartIdx].start,
-        blockEnd: new Date(
-          rows[rows.length - 1].end.getTime() +
-            (block.fermentacionHoras + block.maduracionHoras) * HORA,
-        ),
+        blockEnd: finReal,
         deadline: block.fechaEnvasado,
-        retrasoHoras: shiftHoras,
+        retrasoHoras: Math.max(0, retraso),
         detalle: `El bloque arrancó ${shiftHoras.toFixed(
           1,
-        )} h después de su inicio ideal (envasado − cocina − fermentación − maduración) porque la cocina seguía ocupada.`,
+        )} h después de su inicio ideal porque la cocina seguía ocupada, así que el proceso (cocina + fermentación + maduración) no alcanza a terminar antes del envasado que tiene que cubrir.`,
       });
     }
 
@@ -2181,6 +2216,34 @@ function sequenceWeek(
       else cerrarRacha();
     });
     cerrarRacha();
+  }
+
+  // PONY QUE HUBO QUE CORRER POR FALTA DE MADURADOR.
+  if (ponySinEspacio.length) {
+    const coc = ponySinEspacio.reduce((a, x) => a + x.numCocimientos, 0);
+    const espera = ponySinEspacio.reduce(
+      (a, x) => Math.max(a, x.esperaHoras || 0),
+      0,
+    );
+    const desde = ponySinEspacio.reduce(
+      (a, x) => (a == null || x.desde < a ? x.desde : a),
+      null,
+    );
+    capacityWarnings.push({
+      tipo: "ponysinespacio",
+      mostoId: "pony",
+      nombre: "Pony",
+      blockLabel: `${coc} cocimiento(s) de Pony corridos por falta de madurador`,
+      blockStart: desde,
+      blockEnd: null,
+      deadline: null,
+      retrasoHoras: espera,
+      detalle: `${coc} cocimiento(s) de Pony se corrieron porque no había SV Pony libre; el que más esperó, ${Math.round(
+        espera,
+      )} h. La cocina no se paró por eso: mientras tanto entró cerveza, y la Pony entra en cuanto se libera un madurador (el primero, el ${
+        desde ? fmtDateTime(desde) : "—"
+      }). Para adelantarla hay que envasar antes lo que ocupa los SV Pony.`,
+    });
   }
 
   // CORRIDAS DE CERVEZA POR DEBAJO DEL MÍNIMO. Solo pasa cuando no había otra
@@ -2291,6 +2354,10 @@ function sequenceWeek(
     },
     resumen: { totalHL, ponyHL, cervezaHL: totalHL - ponyHL },
     ordenBloques,
+    ponySinEspacio,
+    // Desde cuándo hay FV / SV Pony libre. Se expone para poder explicarlo en la
+    // interfaz y para poder verificar el piso de almacenamiento.
+    almacenLibreDesde,
     yeastEvents,
     yeastPool,
     yeastBlocked: yeastEvents.filter((e) => e.estado === "BLOQUEADO"),
