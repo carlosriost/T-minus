@@ -281,6 +281,12 @@ function computeCocimientoStarts(fechaEnvasadoMinima, numCocimientos, m) {
 // un cocimiento suelto nunca queda solo.
 const PONY_MIN_COCIMIENTOS = 2;
 
+// Una corrida de cerveza (Estandar, Pilsen o Light) va de 14 cocimientos
+// seguidos para arriba. Por eso los bloques cercanos de un mismo mosto se
+// juntan en uno solo en vez de programarse por separado, y un bloque solo se
+// parte si de la partida salen dos corridas que sigan llegando a este mínimo.
+const MIN_CORRIDA_CERVEZA = 14;
+
 function ponyMaxCocimientosSeguidos(tankCatalog, volumenPorCocimiento) {
   const capHL = (tankCatalog || [])
     .filter((t) => t.tipo === "SV Pony" && t.disponible !== false)
@@ -501,17 +507,23 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     });
   });
 
-  // --- No dejar un cocimiento SOLO ---------------------------------------------
-  // Un bloque que queda con 1 solo cocimiento no se programa aislado: se fusiona
-  // con el bloque hermano (mismo mosto y, en Pony, misma variante) más cercano
-  // en fecha de envasado, para que salgan juntos en la secuencia. El número
-  // total de cocimientos del grupo no cambia.
+  // --- Juntar los bloques cercanos del mismo mosto ------------------------------
+  // Un bloque que se queda corto no se programa aislado: se fusiona con el
+  // bloque hermano (mismo mosto) más cercano en fecha de envasado, para que
+  // salgan juntos en la secuencia. El número total de cocimientos del grupo no
+  // cambia, solo el reparto.
+  //   · Cerveza (Estandar, Pilsen, Light): corto = menos de MIN_CORRIDA_CERVEZA.
+  //     Las Estandar cercanas terminan así en un solo bloque largo en vez de
+  //     salir picadas en varias corridas.
+  //   · Pony: corto = un solo cocimiento. Sus corridas son de 2 a 4 por regla,
+  //     así que aquí solo se evita el cocimiento suelto.
   Object.values(grpCoc).forEach((rs) => {
     if (rs.length < 2) return;
     const m = catalog.find((x) => x.id === rs[0].mostoId) || {};
+    const minJuntar = esMostoPony(rs[0].mostoId) ? 2 : MIN_CORRIDA_CERVEZA;
     for (let i = rs.length - 1; i >= 0; i--) {
       const src = rs[i];
-      if (src.__merged || src.numCocimientos > 1) continue;
+      if (src.__merged || src.numCocimientos >= minJuntar) continue;
       let tgt = null;
       let bd = Infinity;
       rs.forEach((o) => {
@@ -1328,13 +1340,17 @@ function sequenceWeek(
   // corrida larga de cerveza → aseo → 2-4 Pony … La cerveza NO se pica en
   // trocitos: solo se parte cuando de verdad faltan separadores, y nunca en
   // trozos de menos de MIN_CORRIDA_CERVEZA cocimientos.
-  const MIN_CORRIDA_CERVEZA = 5;
+  // Cuando ni partiendo por 14 alcanzan los separadores, se baja el piso a este
+  // otro y se avisa: es preferible una corrida de cerveza más corta de lo
+  // deseado que una racha de 12 Pony seguidas, que sí está prohibida.
+  const MIN_CORRIDA_CERVEZA_FORZADO = 5;
+  const corridasCortasForzadas = [];
   {
-    const partirBloque = (b, partes) => {
+    const partirBloque = (b, partes, minimo) => {
       const tam = splitEnTramos(
         b.numCocimientos,
         Math.ceil(b.numCocimientos / partes),
-        MIN_CORRIDA_CERVEZA,
+        minimo,
       );
       let off = 0;
       return tam.map((size, k) => {
@@ -1364,12 +1380,25 @@ function sequenceWeek(
       // pegadas una detrás de otra, el separador se gasta en balde y la Pony
       // se amontona al final. Del grande salen dos mitades que sí alcanzan a
       // separar dos corridas de Pony distintas.
-      const candidato = noPony
-        .filter((b) => b.numCocimientos >= 2 * MIN_CORRIDA_CERVEZA)
-        .sort((a, b) => b.numCocimientos - a.numCocimientos)[0];
+      const porPiso = (min) =>
+        noPony
+          .filter((b) => b.numCocimientos >= 2 * min)
+          .sort((a, b) => b.numCocimientos - a.numCocimientos)[0];
+      let minimo = MIN_CORRIDA_CERVEZA;
+      let candidato = porPiso(minimo);
+      if (!candidato) {
+        // No hay ningún bloque que dé dos corridas de 14. Se baja el piso.
+        minimo = MIN_CORRIDA_CERVEZA_FORZADO;
+        candidato = porPiso(minimo);
+        if (candidato)
+          corridasCortasForzadas.push({
+            blockLabel: candidato.blockLabel,
+            numCocimientos: candidato.numCocimientos,
+          });
+      }
       if (!candidato) break;
       const i = blocks.indexOf(candidato);
-      blocks.splice(i, 1, ...partirBloque(candidato, 2));
+      blocks.splice(i, 1, ...partirBloque(candidato, 2, minimo));
     }
   }
 
@@ -2003,6 +2032,24 @@ function sequenceWeek(
       else cerrarRacha();
     });
     cerrarRacha();
+  }
+
+  // CORRIDAS DE CERVEZA POR DEBAJO DEL MÍNIMO. Solo pasa cuando no había otra
+  // forma de separar las corridas de Pony, que es la regla que manda.
+  if (corridasCortasForzadas.length) {
+    capacityWarnings.push({
+      tipo: "corridacorta",
+      mostoId: null,
+      nombre: "Cerveza",
+      blockLabel: `${corridasCortasForzadas.length} bloque(s) partidos por debajo de ${MIN_CORRIDA_CERVEZA}`,
+      blockStart: null,
+      blockEnd: null,
+      deadline: null,
+      retrasoHoras: corridasCortasForzadas.length,
+      detalle: `Hubo que partir ${corridasCortasForzadas
+        .map((c) => `"${c.blockLabel}" (${c.numCocimientos} cocimientos)`)
+        .join(", ")} en corridas de menos de ${MIN_CORRIDA_CERVEZA} cocimientos. No quedaba otro bloque de cerveza con qué separar las corridas de Pony, y no pasar de 4 Pony seguidas manda sobre el largo de la corrida de cerveza. Para evitarlo hace falta más volumen de cerveza junto, o menos ventanas de Pony en el plan de envase.`,
+    });
   }
 
   // HORAS DE COCINA SIN PROGRAMAR. La cocina espera cuando lo único que queda
