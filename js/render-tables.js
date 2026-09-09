@@ -92,34 +92,34 @@ function renderTankAssignments(assignment) {
     count.style.display = assignment.sinTanque.length ? "inline-block" : "none";
   }
   if (alert) {
-    alert.innerHTML = assignment.sinTanque.length
-      ? `<div style="border:1px solid rgba(237,28,43,.35); background:rgba(237,28,43,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--danger);"><b>⚠️ ${assignment.sinTanque.length} cocimiento(s) sin tanque.</b> La asignación se detuvo para esos cocimientos porque no existe capacidad suficiente en equipos disponibles con prioridad A → B → C.</div>`
-      : '<div style="border:1px solid rgba(76,175,130,.35); background:rgba(76,175,130,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--ok);"><b>✓ Todos los cocimientos tienen tanque asignado.</b> Los FV son solo de fermentación; los SV son solo de maduración; los SV Pony son exclusivos de Pony; los BBT son solo de producto terminado.</div>';
-    const preoc = (assignment.tanks || []).filter((t) => t.preocupado);
-    if (preoc.length) {
-      const ahora = (
-        (typeof getI0Date === "function" && getI0Date()) ||
-        new Date()
-      ).getTime();
-      const enProceso = preoc.filter(
-        (t) => t.preocupado.hasta.getTime() > ahora + 60000,
-      );
-      const porLiberar = preoc.length - enProceso.length;
-      const partes = [];
-      if (enProceso.length)
-        partes.push(
-          `${enProceso.length} aún en fermentación/maduración (${enProceso
-            .map(
-              (t) =>
-                `${escapeHtml(t.equipo || "?")} → ${fmtDate(t.preocupado.hasta)}`,
-            )
-            .join(" · ")})`,
-        );
-      if (porLiberar) partes.push(`${porLiberar} listo(s) para liberar`);
-      alert.innerHTML += `<div style="border:1px solid rgba(243,154,45,.35); background:rgba(243,154,45,.08); border-radius:4px; padding:10px 14px; margin-bottom:14px; color:var(--warn); font-size:12.5px;"><b>ℹ️ ${preoc.length} equipo(s) con producto en proceso</b> — ${partes.join(
-        "; ",
-      )}. Solo se usan los equipos vacíos, respetando la prioridad A → B → C.</div>`;
-    }
+    // Ocupación en tarjetas, no en un párrafo. Antes se listaban los 37 equipos
+    // con producto y su fecha uno por uno: eso no se lee, y el detalle ya está
+    // en el Gantt de ocupación y en «Próximos a liberar».
+    const equipos = (assignment.tanks || []).filter(
+      (t) => t.disponible !== false && ["FV", "SV", "SV Pony"].includes(t.tipo),
+    );
+    const ahora = (
+      (typeof getI0Date === "function" && getI0Date()) ||
+      new Date()
+    ).getTime();
+    const ocupado = (t) =>
+      !!(t.preocupado && t.preocupado.hasta.getTime() > ahora + 60000);
+    const tarjeta = (etiqueta, tipos) => {
+      const grupo = equipos.filter((t) => tipos.includes(t.tipo));
+      if (!grupo.length) return "";
+      const n = grupo.filter(ocupado).length;
+      // Rojo cuando no queda ninguno libre; naranja cuando queda poco.
+      const cls =
+        n >= grupo.length ? "danger" : n > grupo.length * 0.8 ? "warn" : "ok";
+      return `<div class="kpi ${cls}"><div class="n">${n} / ${grupo.length}</div><div class="l">${etiqueta}</div></div>`;
+    };
+    const sin = assignment.sinTanque.length;
+    alert.innerHTML = `<div class="kpis">
+      ${tarjeta("Fermentadores ocupados", ["FV"])}
+      ${tarjeta("Maduradores ocupados", ["SV"])}
+      ${tarjeta("Maduradores de Pony ocupados", ["SV Pony"])}
+      <div class="kpi ${sin ? "danger" : "ok"}"><div class="n">${sin}</div><div class="l">Cocimientos sin tanque</div></div>
+    </div>`;
   }
   if (!assignment.rows.length) {
     wrap.innerHTML = '<p class="empty-note">Sin cocimientos programados.</p>';
