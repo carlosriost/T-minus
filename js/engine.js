@@ -1533,7 +1533,16 @@ function sequenceWeek(
   // una de 4. Vuelve a 0 con cualquier bloque que no sea Pony.
   let ponySeguidas = 0;
   const HORA24 = 24 * HORA; // "día de por medio" entre CORRIDAS de Pony
-  const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
+  // PISO DE LA PROGRAMACIÓN: nada se coloca antes de aquí. Manda el I0.
+  // Si el campo del I0 está vacío getI0Date() devuelve null, y sin piso el motor
+  // colocaba cocimientos días antes del inicio del plan —programar en el pasado—
+  // sin avisar de nada. En ese caso se usa el primer día del plan cargado, que
+  // es la fecha más temprana que tiene sentido para lo que se está planeando.
+  const i0Ms = i0FloorDate
+    ? i0FloorDate.getTime()
+    : weekStart instanceof Date && !isNaN(weekStart.getTime())
+      ? weekStart.getTime()
+      : null;
 
   // ALMACENAMIENTO DISPONIBLE. Un cocimiento no se programa si al terminar no
   // hay dónde ponerlo: la cerveza va a un FV y la Pony directo a un SV Pony.
