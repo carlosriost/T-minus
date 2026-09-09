@@ -877,7 +877,17 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
   // cocimiento se iba a la cuba más pequeña que lo aguantara y el plan se
   // desperdigaba entre 39 equipos en vez de 27.
   const ORDEN_PRIORIDAD = { A: 0, B: 1, C: 2 };
-  function ordenarPorAjuste(mostoId, restante, volPorCoc) {
+  // Fracción mínima que un volumen tiene que llenar de un equipo VACÍO para que
+  // valga la pena destaparlo. Por debajo de eso se prefiere uno más chico donde
+  // quepa: destapar un tanque grande lo compromete con esa marca hasta que se
+  // vacíe, así que dejarlo al 9 % sale caro.
+  // Solo se mira en MADURACIÓN. Al fermentador los cocimientos entran de a uno
+  // y se van acumulando, así que al destapar un EXT de 7.200 solo hay 600 hL a
+  // la vista y ningún cocimiento suelto justificaría abrirlo nunca: los grandes
+  // no se usarían jamás. Al madurador, en cambio, el lote llega entero y ya no
+  // crece, así que ahí sí se puede juzgar si aprovecha el equipo.
+  const UMBRAL_APROVECHAMIENTO = 1 / 3;
+  function ordenarPorAjuste(mostoId, restante, volPorCoc, loteCompleto) {
     const esResto = restante < (Number(volPorCoc) || 600) - 1e-9;
     const cabeEn = (t) => {
       const libre = t.capacidadHL - t.volumenAsignado;
@@ -891,15 +901,40 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
       const abiertoB = b.mostoId === mostoId ? 0 : 1;
       if (abiertoA !== abiertoB) return abiertoA - abiertoB;
       if (esResto) {
+        // El resto busca el equipo más pequeño donde quepa entero; y si no cabe
+        // en ninguno, se sigue repartiendo entre los chicos, de menor a mayor.
+        // Un pequeño se completa con otros pequeños, no cayendo en un grande.
         const todoA = cabeEn(a) >= restante - 1e-9 ? 0 : 1;
         const todoB = cabeEn(b) >= restante - 1e-9 ? 0 : 1;
         if (todoA !== todoB) return todoA - todoB;
-        if (todoA === 0 && a.capacidadHL !== b.capacidadHL)
+        if (a.capacidadHL !== b.capacidadHL)
           return a.capacidadHL - b.capacidadHL;
+        return a.idx - b.idx;
+      }
+      // Volumen normal: manda la prioridad del catálogo y, dentro de ella, el
+      // equipo MÁS GRANDE. Así los cocimientos completos se van acumulando en
+      // pocos tanques hasta llenarlos, en vez de dejar media docena de grandes
+      // a un cuarto de su capacidad. Antes se ordenaba de menor a mayor y se
+      // empezaba siempre por el EXT de 4.800, dejando los de 7.200 y 8.500 casi
+      // vacíos.
+      // PERO no se destapa un equipo grande para algo que no lo aprovecha: un
+      // lote de 750 hL abriendo un madurador de 8.500 lo deja al 9 % y
+      // comprometido con esa marca. Si el volumen no llena al menos un tercio
+      // del equipo VACÍO y hay uno más chico donde quepa, va al chico.
+      const aprovecha = (t) => {
+        if (t.volumenAsignado > 1e-9) return 1; // ya abierto: no es destaparlo
+        const cabe = Math.min(restante, cabeEn(t));
+        return t.capacidadHL > 0 ? cabe / t.capacidadHL : 1;
+      };
+      if (loteCompleto) {
+        const desaprovechaA = aprovecha(a) < UMBRAL_APROVECHAMIENTO ? 1 : 0;
+        const desaprovechaB = aprovecha(b) < UMBRAL_APROVECHAMIENTO ? 1 : 0;
+        if (desaprovechaA !== desaprovechaB)
+          return desaprovechaA - desaprovechaB;
       }
       return (
         ORDEN_PRIORIDAD[a.prioridad] - ORDEN_PRIORIDAD[b.prioridad] ||
-        a.capacidadHL - b.capacidadHL ||
+        b.capacidadHL - a.capacidadHL ||
         a.idx - b.idx
       );
     };
@@ -1233,7 +1268,7 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
             return false;
           return true;
         })
-        .sort(ordenarPorAjuste(tr.mostoId, restante, volPorCoc));
+        .sort(ordenarPorAjuste(tr.mostoId, restante, volPorCoc, true));
       const tank = candidatos[0];
       if (!tank) break;
       // NUNCA por encima de la capacidad, igual que en el FV. Un lote que sale de
