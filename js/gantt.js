@@ -2079,12 +2079,18 @@ function renderGanttTanques(assignment, weekStartRaw) {
   // El equipo que ya venía ocupado en el inventario: se pinta desde el inicio
   // del eje hasta que se libera, para que se vea que no está disponible.
   const tanquesInfo = (assignment && assignment.tanks) || [];
+  // La etapa la define el TIPO de equipo: un FV solo puede estar fermentando y
+  // un SV (normal o de Pony) solo puede estar madurando. Que el producto venga
+  // del inventario no es una etapa, es de dónde salió; eso se marca aparte con
+  // el rayado de la banda y se dice en el tooltip.
+  const etapaDeTipo = (tipo) =>
+    tipo === "FV" ? "Fermentación" : tipo ? "Maduración" : "Ocupado";
   tanquesInfo.forEach((t) => {
     if (!t.preocupado || !t.preocupado.hasta) return;
     (porEquipo[t.equipo] = porEquipo[t.equipo] || []).push({
       start: -Infinity,
       end: t.preocupado.hasta.getTime(),
-      etapa: "Ocupado al I0",
+      etapa: etapaDeTipo(t.tipo),
       mostoId: t.preocupado.mostoId || null,
       nombre: "Producto en proceso",
       hL: 0,
@@ -2104,10 +2110,14 @@ function renderGanttTanques(assignment, weekStartRaw) {
     const fus = [];
     bandas.forEach((b) => {
       const prev = fus[fus.length - 1];
+      // Se funden solo bandas del mismo mosto, la misma etapa y el mismo origen:
+      // si no, una del inventario se tragaría a una programada y la banda
+      // quedaría rayada de más (o de menos).
       if (
         prev &&
         prev.etapa === b.etapa &&
         prev.mostoId === b.mostoId &&
+        !!prev.inventario === !!b.inventario &&
         b.start <= prev.end
       ) {
         prev.end = Math.max(prev.end, b.end);
