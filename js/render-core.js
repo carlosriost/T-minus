@@ -117,7 +117,7 @@ function recompute() {
   seq.tankAssignment = assignTanks(seq, plan, TANK_CATALOG, MOSTO_CATALOG);
   STATE.seq = seq;
   renderKPIs(plan, seq);
-  renderCocinaPlan(plan);
+  renderCocinaPlan(plan, seq.tankAssignment);
   renderSequence(seq);
   renderTankAssignments(seq.tankAssignment);
   renderGanttEnvasado(STATE.mergedByTrain, weekStart, STATE.parsed.weeks);

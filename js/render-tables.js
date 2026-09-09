@@ -270,13 +270,28 @@ function renderReglas(seq) {
   wrap.innerHTML = `<table><thead><tr><th>#</th><th>Regla</th><th>Impacto</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function renderCocinaPlan(plan) {
+function renderCocinaPlan(plan, assignment) {
   const wrap = document.getElementById("cocinaTableWrap");
   if (!plan.results.length) {
     wrap.innerHTML =
       '<p class="empty-note">Sin volumen a envasar homologado a ningún mosto esta semana.</p>';
     return;
   }
+  // Cocimientos de este bloque que se quedaron sin dónde ir. Se busca por
+  // etiqueta —la de la secuencia arrastra la del plan más el sufijo de corrida o
+  // de parte— y, si no calza, por mosto.
+  const sinEspacioDe = (r) => {
+    const todos = (assignment && assignment.sinTanque) || [];
+    const porEtiqueta = todos.filter(
+      (s) =>
+        r.blockLabel &&
+        typeof s.blockLabel === "string" &&
+        s.blockLabel.startsWith(r.blockLabel),
+    );
+    return porEtiqueta.length
+      ? porEtiqueta
+      : todos.filter((s) => s.mostoId === r.mostoId);
+  };
   let rows = plan.results
     .map((r) => {
       const startsHtml = r.starts.length
@@ -291,17 +306,43 @@ function renderCocinaPlan(plan) {
         r.inventarioUsadoHL > 0
           ? `${r.inventarioUsadoHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL`
           : '<span style="color:var(--muted);">—</span>';
+      // Espacio de almacenamiento: si algún cocimiento del bloque se quedó sin
+      // tanque, se dice aquí mismo cuántos, en qué etapa y desde cuándo habrá
+      // dónde ponerlo. Solo cuenta el equipo VACÍO; el que tiene producto no
+      // está disponible hasta que termine su etapa y pase por aseo.
+      const sinEspacio = r.numCocimientos > 0 ? sinEspacioDe(r) : [];
+      let espacioHtml;
+      if (!r.numCocimientos) {
+        espacioHtml = '<span style="color:var(--muted);">—</span>';
+      } else if (!sinEspacio.length) {
+        espacioHtml =
+          '<span style="color:var(--ok);">✓ Hay espacio</span>';
+      } else {
+        const libres = sinEspacio
+          .map((s) => (s.espacioDesde ? s.espacioDesde.getTime() : null))
+          .filter(Boolean);
+        const etapas = [
+          ...new Set(sinEspacio.map((s) => (s.etapa || "").split(" · ")[0])),
+        ].join(" y ");
+        const hl = sinEspacio.reduce((a, s) => a + (Number(s.volumenHL) || 0), 0);
+        const cuando = libres.length
+          ? `Habrá espacio desde el ${fmtDateTime(new Date(Math.min(...libres)))}.`
+          : "Ningún equipo se libera dentro del horizonte cargado.";
+        espacioHtml = `<span style="color:var(--danger); font-weight:650;">⚠️ Sin espacio en ${escapeHtml(etapas)}</span>
+          <div style="color:var(--muted); font-size:10.5px; margin-top:2px;">${sinEspacio.length} cocimiento(s) · ${Math.round(hl).toLocaleString("es-CO")} HL sin dónde ir. ${escapeHtml(cuando)}</div>`;
+      }
       return `<tr>
       <td>${escapeHtml(r.nombre)}${r.blockLabel ? `<br><span style="color:var(--muted);font-size:10.5px;">${escapeHtml(r.blockLabel)}</span>` : ""}<br>${marcasHtml}</td>
       <td>${r.volumenEnvasar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
       <td>${invHtml}</td>
       <td>${r.volumenCocinar.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL</td>
       <td>${r.numCocimientos}</td>
+      <td>${espacioHtml}</td>
       <td>${startsHtml}</td>
     </tr>`;
     })
     .join("");
-  wrap.innerHTML = `<table><thead><tr><th>Mosto</th><th>Volumen a envasar</th><th>Cubierto por inventario</th><th>Volumen a cocinar</th><th>N° Cocimientos</th><th>Inicio de cada cocimiento</th></tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.innerHTML = `<table><thead><tr><th>Mosto</th><th>Volumen a envasar</th><th>Cubierto por inventario</th><th>Volumen a cocinar</th><th>N° Cocimientos</th><th title="Solo cuenta el equipo vacío. Un FV o SV con producto no está disponible hasta que termine su etapa y pase por aseo.">Espacio en tanques</th><th>Inicio de cada cocimiento</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderSinHomologar(list) {

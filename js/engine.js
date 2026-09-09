@@ -841,6 +841,45 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
     });
   }
 
+  // ¿Cuándo se libera el primer equipo capaz de recibir esto? Solo cuenta el
+  // almacenamiento que de verdad sirve para este mosto y esta etapa: un SV no
+  // vale para fermentar, un SV normal no recibe Pony, y un BBT no madura. De los
+  // que sirven, se toma el que antes queda vacío, sumándole su aseo de
+  // reutilización. Devuelve null si no hay NINGÚN equipo que pueda recibirlo
+  // (entonces no es que falte espacio: es que no existe el equipo).
+  function proximoEspacioLibre(puedeUsar, mostoId, ahora) {
+    const desde = ahora ? ahora.getTime() : Date.now();
+    let mejor = null;
+    tanks.forEach((t) => {
+      if (!puedeUsar(t, mostoId)) return;
+      // Fecha de salida del equipo. Si ya se liberó, vale la última que tuvo:
+      // sigue sin poder recibir hasta que pase su aseo de reutilización. Uno que
+      // sigue abierto llenándose con otro mosto no tiene fecha todavía, y de ese
+      // no se puede prometer nada.
+      const salida = t.releaseTime || t.ultimoReleaseTime;
+      if (!salida) return;
+      const listo = salida.getTime() + limpiezaNecesaria(t, mostoId) * 3600000;
+      if (listo >= desde && (mejor == null || listo < mejor)) mejor = listo;
+    });
+    return mejor == null ? null : new Date(mejor);
+  }
+
+  // Texto para el plan de cocinas: cuánto falta y desde cuándo habrá dónde
+  // ponerlo. Es la respuesta a "no hay espacio, ¿y cuándo lo habrá?".
+  function motivoSinEspacio(restante, etapa, puedeUsar, mostoId, ahora) {
+    const hl = restante.toLocaleString("es-CO", { maximumFractionDigits: 1 });
+    const libre = proximoEspacioLibre(puedeUsar, mostoId, ahora);
+    const hayAlguno = tanks.some((t) => puedeUsar(t, mostoId));
+    if (!hayAlguno)
+      return `No hay ningún equipo habilitado para ${etapa} este mosto. Faltan ${hl} HL.`;
+    if (!libre)
+      return `No hay espacio para ${etapa}: faltan ${hl} HL y ningún equipo tiene fecha de salida dentro del horizonte cargado.`;
+    const tarde = ahora && libre.getTime() - ahora.getTime() > 3650 * 86400000;
+    return tarde
+      ? `No hay espacio para ${etapa}: faltan ${hl} HL y ningún equipo se libera dentro del horizonte cargado (hay maduradores ocupados con levadura, sin fecha de salida).`
+      : `No hay espacio para ${etapa}: faltan ${hl} HL. El primer equipo se libera el ${fmtDateTime(libre)}.`;
+  }
+
   function limpiezaNecesaria(t, nuevoMostoId) {
     // El aseo de reutilización lo define el usuario POR EQUIPO en el catálogo.
     // La matriz ASEO_MATRIX sigue siendo exclusivamente para aseos de cocina
@@ -967,7 +1006,10 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         volumenHL: Math.max(0, Number(r.cocVolumenHL) || 0),
         tanque: null,
         estado: "sin tanque",
-        motivo: `Faltan ${restante.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL de capacidad en FV disponibles. Los SV son solo de maduración y los BBT solo de producto terminado.`,
+        espacioDesde: proximoEspacioLibre(canFV, r.mostoId, r.start),
+        motivo:
+          motivoSinEspacio(restante, "fermentar", canFV, r.mostoId, r.start) +
+          " Los SV son solo de maduración y los BBT solo de producto terminado.",
       };
       resultRows.push(sin);
       sinTanque.push(sin);
@@ -1138,7 +1180,10 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         volumenHL: restante,
         tanque: null,
         estado: "sin tanque",
-        motivo: `Faltan ${restante.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL de capacidad en SV habilitados para maduración. Los BBT no se utilizan para maduración.`,
+        espacioDesde: proximoEspacioLibre(canSV, tr.mostoId, tr.fecha),
+        motivo:
+          motivoSinEspacio(restante, "madurar", canSV, tr.mostoId, tr.fecha) +
+          " Los BBT no se utilizan para maduración.",
       };
       resultRows.push(sin);
       sinTanque.push(sin);
@@ -1457,6 +1502,50 @@ function sequenceWeek(
   let ponySeguidas = 0;
   const HORA24 = 24 * HORA; // "día de por medio" entre CORRIDAS de Pony
   const i0Ms = i0FloorDate ? i0FloorDate.getTime() : null;
+
+  // ALMACENAMIENTO DISPONIBLE. Un cocimiento no se programa si al terminar no
+  // hay dónde ponerlo: la cerveza va a un FV y la Pony directo a un SV Pony.
+  // Solo cuenta el equipo VACÍO; el que tiene producto no está libre hasta que
+  // termina su etapa y pasa por su aseo de reutilización. La foto del inventario
+  // es del I0, así que este piso solo manda de ahí en adelante: lo que el plan
+  // coloca antes del I0 es justamente lo que ya está dentro de esos tanques.
+  const almacenLibreDesde = (() => {
+    const occ =
+      typeof inventoryOccupancyByEquipo === "function"
+        ? inventoryOccupancyByEquipo()
+        : {};
+    const base = i0Ms != null ? i0Ms : Date.now();
+    const primeroLibre = (tipos) => {
+      let mejor = null;
+      (tankCatalog || []).forEach((t) => {
+        if (!tipos.includes(t.tipo) || t.disponible === false) return;
+        if (!(Number(t.capacidadHL) > 0)) return;
+        const o = occ[normalizeText(t.equipo || "")];
+        const libre = !o || o.vacio ? base : o.fecha.getTime();
+        const listo = libre + (Number(t.aseoHoras) || 0) * HORA;
+        if (mejor == null || listo < mejor) mejor = listo;
+      });
+      return mejor;
+    };
+    return { pony: primeroLibre(["SV Pony"]), cerveza: primeroLibre(["FV"]) };
+  })();
+  // Piso por almacenamiento para un bloque: el cocimiento tiene que TERMINAR
+  // cuando ya haya equipo libre, así que el piso del arranque es esa fecha menos
+  // lo que dura la cocina. Solo se aplica a lo que va del I0 en adelante (ver
+  // aplicarPisoAlmacen): a lo que el plan coloca antes, el piso no le toca, y si
+  // se queda sin tanque el plan de cocinas lo dice con nombre y fecha.
+  const pisoAlmacen = (b) => {
+    const libre = esMostoPony(b.mostoId)
+      ? almacenLibreDesde.pony
+      : almacenLibreDesde.cerveza;
+    if (libre == null) return null;
+    return libre - (Number(b.cocinaHoras) || 0) * HORA;
+  };
+  const aplicarPisoAlmacen = (b, t) => {
+    if (i0Ms == null || t < i0Ms) return t;
+    const piso = pisoAlmacen(b);
+    return piso == null ? t : Math.max(t, piso);
+  };
   const pending = blocks.slice();
 
   while (pending.length) {
@@ -1505,7 +1594,7 @@ function sequenceWeek(
           );
         if (finUltimoPony) t = Math.max(t, finUltimoPony.getTime() + HORA24);
       }
-      return t;
+      return aplicarPisoAlmacen(b, t);
     };
     // Selección: el bloque que pueda ARRANCAR ANTES (menor arranqueDe, que ya
     // incluye su inicio ideal, aseos, levadura Light, máx. BBT y día de por
@@ -1791,6 +1880,12 @@ function sequenceWeek(
           actualFirst = new Date(pisoDia.getTime());
       }
     }
+
+    // Piso por almacenamiento: no se arranca un cocimiento si al terminar no hay
+    // FV (cerveza) o SV Pony (Pony) libre donde meterlo.
+    actualFirst = new Date(
+      aplicarPisoAlmacen(block, actualFirst.getTime()),
+    );
 
     // El aseo se hace JUSTO ANTES del cambio de marca, no en cuanto termina el
     // bloque anterior. Si el bloque que entra tiene que esperar (ventana de
