@@ -160,10 +160,14 @@ function saveInventoryBalance() {
 // en proceso: es el equipo ocupado con levadura (guardada ahí, no madurando).
 // No cuenta como inventario disponible ni libera el equipo por sí sola.
 function esLevaduraEnMadurador(e) {
+  // El volumen se mira en las DOS columnas: la levadura guardada trae hL sin
+  // diluir pero la columna diluida en 0, así que mirando solo esa el equipo
+  // parecía vacío y contaba como disponible.
+  const tieneProducto = Number(e && e.hL) > 0 || Number(e && e.hLSinDiluir) > 0;
   return (
     !!e &&
     (e.tipo === "SV" || e.tipo === "SV Pony") &&
-    Number(e.hL) > 0 &&
+    tieneProducto &&
     (e.diasEnEquipo === "" || e.diasEnEquipo == null)
   );
 }

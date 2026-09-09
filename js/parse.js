@@ -795,9 +795,12 @@ function mergeEvents(events) {
 /* =========================================================================
    PARSEO DEL EXCEL "PRODUCTO EN PROCESO" (.xlsm) — inventario por equipo
    Hoja "Reporte": dos bloques fijos por columnas
-     · FV  → equipo=col C, marca=col D, días=col E, HL Diluidos=col H
-     · SV  → equipo=col K, marca=col L, días=col M, HL Diluidos=col P
+     · FV  → equipo=col C, marca=col D, días=col E, HL=col F, HL Diluidos=col H
+     · SV  → equipo=col K, marca=col L, días=col M, HL=col N, HL Diluidos=col P
             (el mismo bloque SV contiene los SV normales y los SV Pony)
+   Se leen las DOS columnas de volumen. La diluida es la que se compara con el
+   plan de envasado, pero la sin diluir hace falta para reconocer la levadura
+   guardada en un madurador: esas filas traen hL sin diluir y la diluida en 0.
    Hoja "BBTs": BBT=col A, PRODUCTO=col B, CANTIDAD=col C (producto terminado,
    sin tiempo). Devuelve [{equipo, marcaTexto, tipo:"FV"|"SV"|"BBT",
    diasEnEquipo, hL}].
@@ -808,6 +811,14 @@ function parseProductoEnProceso(workbook) {
   const num = (v) => {
     const n = Number(v);
     return isFinite(n) ? n : 0;
+  };
+  // Distingue "sin dato" de cero: una celda vacía o con texto devuelve null.
+  const numOrNull = (v) => {
+    if (v == null) return null;
+    const s = String(v).trim();
+    if (s === "") return null;
+    const n = Number(s);
+    return isFinite(n) ? n : null;
   };
   const sheet = (want) => {
     const w = norm(want);
@@ -839,7 +850,7 @@ function parseProductoEnProceso(workbook) {
     });
     aoa.forEach((row) => {
       row = row || [];
-      const push = (eqCol, maCol, diaCol, hlCol, tipo) => {
+      const push = (eqCol, maCol, diaCol, hlSinDilCol, hlCol, tipo) => {
         const eq = row[eqCol];
         const ma = row[maCol];
         if (typeof eq !== "string" || typeof ma !== "string") return;
@@ -847,17 +858,22 @@ function parseProductoEnProceso(workbook) {
         // VACIO / PONY / PONY GO / etc. SÍ se incluyen: un equipo vacío cuenta
         // como disponible (0 hL, 0 días) para poder llenarlo con otra cosa.
         const vacio = /^vac[ií]/.test(norm(ma));
+        const dias = numOrNull(row[diaCol]);
         out.push({
           equipo: String(eq).trim(),
           marcaTexto: vacio ? "" : String(ma).trim(),
           vacio,
           tipo,
-          diasEnEquipo: row[diaCol] == null ? null : Math.round(num(row[diaCol])),
+          // Celda de días en blanco = SIN días, no cero. La levadura guardada se
+          // reconoce justamente por venir sin días; leyéndola como 0 pasaba por
+          // un equipo recién cargado.
+          diasEnEquipo: dias == null ? null : Math.round(dias),
           hL: Math.round(num(row[hlCol])),
+          hLSinDiluir: Math.round(num(row[hlSinDilCol])),
         });
       };
-      push(2, 3, 4, 7, "FV"); // bloque FV: C, D, E, H
-      push(10, 11, 12, 15, "SV"); // bloque SV (normal + Pony): K, L, M, P
+      push(2, 3, 4, 5, 7, "FV"); // bloque FV: C, D, E, F, H
+      push(10, 11, 12, 13, 15, "SV"); // bloque SV (normal + Pony): K, L, M, N, P
     });
   }
 

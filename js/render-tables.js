@@ -102,11 +102,13 @@ function renderTankAssignments(assignment) {
     // dentro. Antes se contaba "todavía en fermentación o maduración", así que
     // un tanque lleno cuyo proceso ya terminó salía como libre y los cinco
     // toneles de Pony aparecían en 0 / 5 teniendo producto los cinco.
+    // Cuenta el volumen en las dos columnas: un madurador con levadura guardada
+    // trae hL sin diluir y la columna diluida en 0, y aun así está ocupado.
     const conProducto = {};
     (typeof INVENTORY_BALANCE !== "undefined" ? INVENTORY_BALANCE : []).forEach(
       (e) => {
         if (!e || !e.equipo || e.vacio) return;
-        if (!(Number(e.hL) > 0)) return;
+        if (!(Number(e.hL) > 0 || Number(e.hLSinDiluir) > 0)) return;
         conProducto[normalizeText(e.equipo)] = true;
       },
     );
@@ -883,6 +885,10 @@ renderInventoryBalance(STATE && STATE.plan);
               ? ""
               : Math.max(0, Math.round(Number(p.diasEnEquipo) || 0)),
           hL: Math.max(0, Math.round(Number(p.hL) || 0)),
+          // Volumen SIN diluir. Hace falta para reconocer la levadura guardada
+          // en un madurador: esas filas traen hL sin diluir y la diluida en 0,
+          // así que mirando solo la diluida el equipo parecía vacío.
+          hLSinDiluir: Math.max(0, Math.round(Number(p.hLSinDiluir) || 0)),
           almacenBBTHoras:
             p.tipo === "BBT" && p.almacenBBTHoras != null
               ? Math.max(0, Number(p.almacenBBTHoras) || 0)
