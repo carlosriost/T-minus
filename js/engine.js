@@ -1476,10 +1476,12 @@ function sequenceWeek(
   const rows = [];
   const ordenBloques = [];
   let n = 0;
-  // Se puede cocinar ANTES de I0 lo que haga falta para llegar a la fecha de
-  // envasado: no hay piso en I0. La cocina sí es un recurso único: cada bloque
-  // arranca cuando la cadena queda libre (o cuando termina su aseo de cambio de
-  // marca), nunca antes de su inicio ideal.
+  // NADA se programa antes del I0: el I0 es la hora desde la que se planea y no
+  // se puede cocinar en el pasado. Un bloque cuyo inicio ideal ya quedó atrás se
+  // corre hasta el I0 y sale en rojo por fecha límite, que es la señal de que
+  // ese volumen ya no alcanza a estar listo a tiempo.
+  // La cocina además es un recurso único: cada bloque arranca cuando la cadena
+  // queda libre (o cuando termina su aseo de cambio de marca).
   let cursorCadencia = null; // cocina libre para el siguiente CARGUE
   let cursorLibre = null; // cocina totalmente libre (fin del último cocimiento)
   let prevMostoId = null;
@@ -1506,9 +1508,7 @@ function sequenceWeek(
   // ALMACENAMIENTO DISPONIBLE. Un cocimiento no se programa si al terminar no
   // hay dónde ponerlo: la cerveza va a un FV y la Pony directo a un SV Pony.
   // Solo cuenta el equipo VACÍO; el que tiene producto no está libre hasta que
-  // termina su etapa y pasa por su aseo de reutilización. La foto del inventario
-  // es del I0, así que este piso solo manda de ahí en adelante: lo que el plan
-  // coloca antes del I0 es justamente lo que ya está dentro de esos tanques.
+  // termina su etapa y pasa por su aseo de reutilización.
   const almacenLibreDesde = (() => {
     const occ =
       typeof inventoryOccupancyByEquipo === "function"
@@ -1531,20 +1531,14 @@ function sequenceWeek(
   })();
   // Piso por almacenamiento para un bloque: el cocimiento tiene que TERMINAR
   // cuando ya haya equipo libre, así que el piso del arranque es esa fecha menos
-  // lo que dura la cocina. Solo se aplica a lo que va del I0 en adelante (ver
-  // aplicarPisoAlmacen): a lo que el plan coloca antes, el piso no le toca, y si
-  // se queda sin tanque el plan de cocinas lo dice con nombre y fecha.
-  const pisoAlmacen = (b) => {
+  // lo que dura la cocina. Como toda la programación arranca en el I0 o después,
+  // la foto del inventario —que es del I0— vale para todo lo que se programa.
+  const aplicarPisoAlmacen = (b, t) => {
     const libre = esMostoPony(b.mostoId)
       ? almacenLibreDesde.pony
       : almacenLibreDesde.cerveza;
-    if (libre == null) return null;
-    return libre - (Number(b.cocinaHoras) || 0) * HORA;
-  };
-  const aplicarPisoAlmacen = (b, t) => {
-    if (i0Ms == null || t < i0Ms) return t;
-    const piso = pisoAlmacen(b);
-    return piso == null ? t : Math.max(t, piso);
+    if (libre == null) return t;
+    return Math.max(t, libre - (Number(b.cocinaHoras) || 0) * HORA);
   };
   const pending = blocks.slice();
 
@@ -1563,6 +1557,7 @@ function sequenceWeek(
     // BBT y el "día de por medio". Sirve para no dejar la cocina parada.
     const arranqueDe = (b) => {
       let t = prevMostoId ? libreCadencia : b.idealStarts[0].getTime();
+      if (i0Ms != null) t = Math.max(t, i0Ms); // nunca antes del I0
       if (aplicaTopeAdelanto(b.mostoId))
         t = Math.max(
           t,
@@ -1880,6 +1875,12 @@ function sequenceWeek(
           actualFirst = new Date(pisoDia.getTime());
       }
     }
+
+    // PISO DEL I0: no se programa nada en el pasado. Va después de todos los
+    // topes de adelanto —el de la cerveza y el de BBT de la Pony pueden dejar el
+    // arranque antes del I0— y antes del piso de almacenamiento.
+    if (i0Ms != null && actualFirst.getTime() < i0Ms)
+      actualFirst = new Date(i0Ms);
 
     // Piso por almacenamiento: no se arranca un cocimiento si al terminar no hay
     // FV (cerveza) o SV Pony (Pony) libre donde meterlo.
