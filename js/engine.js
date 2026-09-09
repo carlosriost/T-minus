@@ -862,6 +862,49 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
     t.capacidadHL > 0 &&
     (t.tipo !== "SV Pony" ? !isPony(mostoId) : isPony(mostoId));
 
+  // ELEGIR EL EQUIPO SEGÚN LO QUE FALTA POR METER.
+  //   1. Primero el que ya está abierto con este mismo mosto: se termina de
+  //      llenar lo empezado antes de destapar otro.
+  //   2. Si lo que queda por meter es UN RESTO —menos de un cocimiento
+  //      completo— se busca el equipo MÁS PEQUEÑO en el que quepa entero. No
+  //      vale la pena destapar un tanque de 7.200 hL para 300 hL sueltos: queda
+  //      comprometido con esa marca y bloqueado para lo que venga.
+  //   3. Para un volumen normal manda la prioridad A → B → C del catálogo y,
+  //      dentro de ella, el equipo más chico que sirva. Así los cocimientos
+  //      completos se van acumulando en los tanques grandes de prioridad A, que
+  //      es como se llenan.
+  // El orden aplica solo al RESTO y no a todo: aplicándolo siempre, cada
+  // cocimiento se iba a la cuba más pequeña que lo aguantara y el plan se
+  // desperdigaba entre 39 equipos en vez de 27.
+  const ORDEN_PRIORIDAD = { A: 0, B: 1, C: 2 };
+  function ordenarPorAjuste(mostoId, restante, volPorCoc) {
+    const esResto = restante < (Number(volPorCoc) || 600) - 1e-9;
+    const cabeEn = (t) => {
+      const libre = t.capacidadHL - t.volumenAsignado;
+      const cupo =
+        ((Number(t.maxCocimientos) || 999) - t.cocimientosAsignados) *
+        volPorCoc;
+      return Math.max(0, Math.min(libre, cupo));
+    };
+    return (a, b) => {
+      const abiertoA = a.mostoId === mostoId ? 0 : 1;
+      const abiertoB = b.mostoId === mostoId ? 0 : 1;
+      if (abiertoA !== abiertoB) return abiertoA - abiertoB;
+      if (esResto) {
+        const todoA = cabeEn(a) >= restante - 1e-9 ? 0 : 1;
+        const todoB = cabeEn(b) >= restante - 1e-9 ? 0 : 1;
+        if (todoA !== todoB) return todoA - todoB;
+        if (todoA === 0 && a.capacidadHL !== b.capacidadHL)
+          return a.capacidadHL - b.capacidadHL;
+      }
+      return (
+        ORDEN_PRIORIDAD[a.prioridad] - ORDEN_PRIORIDAD[b.prioridad] ||
+        a.capacidadHL - b.capacidadHL ||
+        a.idx - b.idx
+      );
+    };
+  }
+
   function releaseFinished(now) {
     tanks.forEach((t) => {
       if (t.releaseTime && now && now.getTime() >= t.releaseTime.getTime()) {
@@ -994,17 +1037,7 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
             return false;
           return true;
         })
-        .sort((a, b) => {
-          const aa = a.mostoId === r.mostoId ? 0 : 1,
-            bb = b.mostoId === r.mostoId ? 0 : 1;
-          return (
-            aa - bb ||
-            { A: 0, B: 1, C: 2 }[a.prioridad] -
-              { A: 0, B: 1, C: 2 }[b.prioridad] ||
-            a.capacidadHL - b.capacidadHL ||
-            a.idx - b.idx
-          );
-        });
+        .sort(ordenarPorAjuste(r.mostoId, restante, volPorCoc));
       const tank = candidatos[0];
       if (!tank) break;
       // NUNCA por encima de la capacidad. Se carga lo que de verdad cabe: lo que
@@ -1200,17 +1233,7 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
             return false;
           return true;
         })
-        .sort((a, b) => {
-          const aa = a.mostoId === tr.mostoId ? 0 : 1,
-            bb = b.mostoId === tr.mostoId ? 0 : 1;
-          return (
-            aa - bb ||
-            { A: 0, B: 1, C: 2 }[a.prioridad] -
-              { A: 0, B: 1, C: 2 }[b.prioridad] ||
-            a.capacidadHL - b.capacidadHL ||
-            a.idx - b.idx
-          );
-        });
+        .sort(ordenarPorAjuste(tr.mostoId, restante, volPorCoc));
       const tank = candidatos[0];
       if (!tank) break;
       // NUNCA por encima de la capacidad, igual que en el FV. Un lote que sale de
