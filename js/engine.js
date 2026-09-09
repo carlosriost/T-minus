@@ -391,16 +391,37 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
         ? b.marcas
         : [{ name: b.name, volumen: volumenEnvasar }];
     let cubiertoPorInventario = 0;
+    // HASTA DÓNDE ALCANZA EL INVENTARIO. Las corridas del bloque se cubren en
+    // orden cronológico, así que si el inventario tapa las primeras, el
+    // cocimiento no hace falta para ESAS sino para la primera que queda
+    // descubierta. Esa es la fecha contra la que se calcula el inicio y la que
+    // decide si el bloque llega tarde. Sin esto un bloque salía en rojo por una
+    // corrida que el inventario ya tenía cubierta.
+    let primeraDescubierta = null;
     eventos.forEach((ev) => {
       const vol = Number(ev.volumen) || 0;
       if (!(vol > 0)) return;
-      cubiertoPorInventario += tomarDeInventario(
+      const tomado = tomarDeInventario(
         mostoId,
         vol,
         ev.name || b.name,
         asignacionesInv,
       );
+      cubiertoPorInventario += tomado;
+      if (primeraDescubierta == null && tomado < vol - 1e-9 && ev.earliest) {
+        // Si la corrida quedó cubierta a medias, el mosto nuevo se necesita
+        // cuando se acabe lo cubierto, no al empezar la corrida.
+        const ini = ev.earliest.getTime();
+        const fin = ev.end ? ev.end.getTime() : null;
+        const frac = tomado / vol;
+        primeraDescubierta = new Date(
+          fin && fin > ini ? ini + (fin - ini) * frac : ini,
+        );
+      }
     });
+    // Si el inventario cubre TODO el bloque no hay fecha de necesidad; y si no
+    // se llegó a tocar ninguna corrida, manda la primera del bloque.
+    const fechaNecesidad = primeraDescubierta || b.earliest;
     const volumenEnvasarPendiente = volumenEnvasar - cubiertoPorInventario;
 
     // El número de cocimientos lo fija SOLO el volumen, con la fórmula:
@@ -425,8 +446,8 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     const volumenCocinar = volumenEnvasarPendiente / factor;
 
     let starts = [];
-    if (b.earliest && numCocimientos > 0) {
-      starts = computeCocimientoStarts(b.earliest, numCocimientos, m);
+    if (fechaNecesidad && numCocimientos > 0) {
+      starts = computeCocimientoStarts(fechaNecesidad, numCocimientos, m);
     }
 
     results.push({
@@ -437,7 +458,12 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       numCocimientos,
       volumenPorCocimientoOverride: null,
       starts,
-      fechaEnvasadoMinima: b.earliest,
+      // Fecha contra la que se programa: la primera corrida del bloque que el
+      // inventario NO alcanza a cubrir, no la primera del bloque.
+      fechaEnvasadoMinima: fechaNecesidad,
+      // Primera corrida del bloque, cubierta o no. Sirve para explicar en la
+      // interfaz desde cuándo se envasa esta marca.
+      fechaEnvasadoPrimera: b.earliest,
       fechaEnvasadoFin: b.end || null,
       codigo: b.codigo,
       tren: b.train,

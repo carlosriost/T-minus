@@ -15,7 +15,7 @@ function fmtDurationHoras(h) {
 }
 function formatCapacityWarning(w) {
   if (w && w.tipo === "deadline") {
-    return `Conflicto de capacidad: el proceso de ${w.nombre} termina el ${fmtDateTime(w.blockEnd)} — ${fmtDurationHoras(w.retrasoHoras)} (${w.retrasoHoras.toFixed(1)} h) después de su límite (${fmtDateTime(w.deadline)}), por la secuencia y disponibilidad de la cocina compartida.`;
+    return `Conflicto de capacidad: el proceso de ${w.nombre} termina el ${fmtDateTime(w.blockEnd)} — ${fmtDurationHoras(w.retrasoHoras)} (${w.retrasoHoras.toFixed(1)} h) después de su límite (${fmtDateTime(w.deadline)}), por la secuencia y disponibilidad de la cocina compartida. El límite ya descuenta lo que cubre el inventario: es la fecha del primer envasado que el inventario NO alcanza a cubrir, no la del primer envasado de la marca.`;
   }
   if (w && w.tipo === "solapamiento") {
     return `Conflicto de capacidad: ${w.detalle || `el cocimiento de ${w.nombre} se solapa con otro cocimiento`}.`;
@@ -302,9 +302,20 @@ function renderCocinaPlan(plan, assignment) {
       const marcasHtml = r.marcas
         .map((b) => `<span class="brand-chip">${escapeHtml(b.name)}</span>`)
         .join("");
+      // Cuánto cubre el inventario y HASTA DÓNDE llega. Las corridas del bloque
+      // se cubren en orden, así que si el inventario tapa las primeras, el
+      // cocimiento no hace falta hasta la primera que queda descubierta: esa es
+      // la fecha contra la que se programa y contra la que se mide el atraso.
+      const cubreHasta =
+        r.inventarioUsadoHL > 0 &&
+        r.fechaEnvasadoPrimera &&
+        r.fechaEnvasadoMinima &&
+        r.fechaEnvasadoMinima.getTime() > r.fechaEnvasadoPrimera.getTime()
+          ? `<div style="color:var(--ok); font-size:10.5px; margin-top:2px;">Cubre el envasado hasta el ${fmtDateTime(r.fechaEnvasadoMinima)}</div>`
+          : "";
       const invHtml =
         r.inventarioUsadoHL > 0
-          ? `${r.inventarioUsadoHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL`
+          ? `${r.inventarioUsadoHL.toLocaleString("es-CO", { maximumFractionDigits: 1 })} HL${cubreHasta}`
           : '<span style="color:var(--muted);">—</span>';
       // Espacio de almacenamiento: si algún cocimiento del bloque se quedó sin
       // tanque, se dice aquí mismo cuántos, en qué etapa y desde cuándo habrá
