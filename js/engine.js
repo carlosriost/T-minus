@@ -1358,7 +1358,12 @@ function sequenceWeek(
       const noPony = blocks.filter((b) => !esMostoPony(b.mostoId));
       const faltan = Math.max(0, nPony - 1 - noPony.length);
       if (faltan <= 0) break;
-      // El bloque de otra marca más grande que aún dé DOS corridas largas.
+      // El bloque de otra marca MÁS GRANDE que aún dé dos corridas largas.
+      // Probado al revés (partir el más chico, para dejar entero el bloque
+      // grande de Estandar) y sale peor: las dos mitades chicas terminan
+      // pegadas una detrás de otra, el separador se gasta en balde y la Pony
+      // se amontona al final. Del grande salen dos mitades que sí alcanzan a
+      // separar dos corridas de Pony distintas.
       const candidato = noPony
         .filter((b) => b.numCocimientos >= 2 * MIN_CORRIDA_CERVEZA)
         .sort((a, b) => b.numCocimientos - a.numCocimientos)[0];
@@ -1472,11 +1477,7 @@ function sequenceWeek(
             t,
             b.idealStarts[0].getTime() - topeBBTHoras(b) * HORA,
           );
-        // "Día de por medio": aplica entre CORRIDAS, no dentro de una. Si
-        // venimos cociendo Pony y la corrida todavía no llega a PONY_MAX, se
-        // sigue de largo: partirla ahí obligaría a otro CIP para volver.
-        if (finUltimoPony && !esMostoPony(prevMostoId))
-          t = Math.max(t, finUltimoPony.getTime() + HORA24);
+        if (finUltimoPony) t = Math.max(t, finUltimoPony.getTime() + HORA24);
       }
       return t;
     };
@@ -1519,14 +1520,17 @@ function sequenceWeek(
       // faltan, no se gastan seguidos: se alterna aunque haya que esperar a la
       // ventana de Pony. Es lo que evita que la cerveza se acabe y la Pony
       // quede apelotonada al final.
+      // RESERVA DE SEPARADORES: si ya quedan tantos (o menos) bloques de otra
+      // marca como separaciones harán falta entre las corridas de Pony que
+      // faltan, no se gastan seguidos. Hay que reservarlos porque la cerveza
+      // tiene 12 días de tubería y la Pony 2: al final del horizonte ya no se
+      // puede cocer cerveza nueva para separar, y la Pony se amontonaría en
+      // corridas de 8 y 12 seguidas.
       const ponyPend = pending.filter((b) => esMostoPony(b.mostoId)).length;
       const noPonyPend = pending.length - ponyPend;
       const escasezSeparadores = noPonyPend <= Math.max(0, ponyPend - 1);
-      if (
-        pIdx >= 0 &&
-        (escasezSeparadores ||
-          pBest <= Math.max(best, libreCadencia) + 12 * HORA)
-      ) {
+      const esperaPony = pBest - Math.max(best, libreCadencia);
+      if (pIdx >= 0 && (escasezSeparadores || esperaPony <= 12 * HORA)) {
         idx = pIdx;
         best = pBest;
       }
@@ -1582,6 +1586,14 @@ function sequenceWeek(
         best = cbest;
       }
     }
+    // NOTA sobre los huecos de la cocina. Cuando el bloque elegido es Pony y su
+    // ventana de BBT todavía no se abre, la cocina espera. Se probó rellenar esa
+    // espera adelantando una corrida corta de cerveza (partiendo el bloque con
+    // partirBloqueEn) y el resultado es peor: la cerveza tiene 12 días de
+    // tubería y la Pony 2, así que la cerveza gastada de más al principio ya no
+    // se puede reponer al final, y la Pony termina en rachas de 8 y hasta 12
+    // seguidas. Entre tapar el hueco y no pasar nunca de 4 Pony seguidas, manda
+    // la segunda. Los huecos que quedan se reportan en Conflictos de capacidad.
     const block = pending.splice(idx, 1)[0];
     const idealFirst = block.idealStarts[0];
 
@@ -1709,11 +1721,24 @@ function sequenceWeek(
       // (b) "Día de por medio": una corrida de Pony arranca al menos 24 h
       //     después de que terminó de cocinar la corrida de Pony anterior
       //     (aunque haya cocido cerveza en medio, si esa cerveza tomó menos).
+      //     También sirve de freno: sin él las corridas se pegan unas a otras y
+      //     la Pony termina amontonada en rachas de 8 y 12.
       if (finUltimoPony) {
         const pisoDia = new Date(finUltimoPony.getTime() + HORA24);
         if (actualFirst.getTime() < pisoDia.getTime())
           actualFirst = new Date(pisoDia.getTime());
       }
+    }
+
+    // El aseo se hace JUSTO ANTES del cambio de marca, no en cuanto termina el
+    // bloque anterior. Si el bloque que entra tiene que esperar (ventana de
+    // BBT, levadura, día de por medio), adelantar el CIP solo dejaba la cocina
+    // lavada y parada durante horas; corriéndolo hasta pegarlo al arranque, esas
+    // horas quedan libres para cocer otra cosa.
+    if (aseoRow && actualFirst.getTime() > aseoRow.end.getTime()) {
+      const dur = aseoRow.end.getTime() - aseoRow.start.getTime();
+      aseoRow.end = new Date(actualFirst.getTime());
+      aseoRow.start = new Date(actualFirst.getTime() - dur);
     }
 
     // Aviso de exceso en BBT: si una corrida de Pony (típicamente la de
@@ -1978,6 +2003,53 @@ function sequenceWeek(
       else cerrarRacha();
     });
     cerrarRacha();
+  }
+
+  // HORAS DE COCINA SIN PROGRAMAR. La cocina espera cuando lo único que queda
+  // por cocer todavía no puede arrancar: casi siempre una corrida de Pony cuya
+  // ventana de BBT no se ha abierto (no se puede cocer más de 72 h antes de
+  // envasar) y no hay cerveza con qué llenar la espera sin quedarse luego sin
+  // separadores. No se tapan por las malas —adelantar cerveza aquí obliga a
+  // amontonar la Pony al final—, pero sí se muestran, con hora y motivo.
+  {
+    const orden = rows
+      .filter((r) => r.start instanceof Date && r.end instanceof Date)
+      .sort((a, b) => a.start - b.start);
+    const huecos = [];
+    for (let i = 1; i < orden.length; i++) {
+      const prev = orden[i - 1];
+      // La cocina queda libre para el siguiente cargue a la cadencia; tras un
+      // aseo, al terminar el aseo.
+      const gapH =
+        Number(
+          (catalogById[prev.mostoId] || {}).tiempoEntreCarguesHoras,
+        ) || 0;
+      const libre =
+        prev.tipo === "aseo"
+          ? prev.end.getTime()
+          : prev.start.getTime() + gapH * HORA;
+      const h = (orden[i].start.getTime() - libre) / HORA;
+      if (h > 1) huecos.push({ h, desde: new Date(libre), hasta: orden[i].start });
+    }
+    if (huecos.length) {
+      const total = huecos.reduce((a, x) => a + x.h, 0);
+      huecos.sort((a, b) => b.h - a.h);
+      capacityWarnings.push({
+        tipo: "cocinaparada",
+        mostoId: null,
+        nombre: "Cocina",
+        blockLabel: `${Math.round(total)} h sin programar`,
+        blockStart: huecos[huecos.length - 1].desde,
+        blockEnd: huecos[0].hasta,
+        deadline: null,
+        retrasoHoras: total,
+        detalle: `La cocina queda parada ${Math.round(
+          total,
+        )} h repartidas en ${huecos.length} hueco(s). El mayor es de ${Math.round(
+          huecos[0].h,
+        )} h desde el ${fmtDateTime(huecos[0].desde)}. Pasa cuando lo único pendiente es una corrida de Pony cuya ventana de BBT todavía no abre —no se puede cocer más de 72 h antes de envasar— y no queda cerveza que meter sin dejar luego a la Pony sin separador. Para cerrarlos hay que juntar los envasados de Pony en menos días.`,
+      });
+    }
   }
 
   // Ventana de 16-20 cocimientos entre aseos. Los aseos periódicos ya respetan

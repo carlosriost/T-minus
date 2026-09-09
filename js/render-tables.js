@@ -56,7 +56,9 @@ function renderConflictos(seq) {
           ? "Conflicto de aseo"
           : w.tipo === "aseocorto"
             ? "Ventana de cocimientos entre aseos"
-            : "Conflicto de secuencia";
+            : w.tipo === "cocinaparada"
+              ? "Horas de cocina sin programar"
+              : "Conflicto de secuencia";
       const detalle = formatCapacityWarning(w);
       return `<tr style="background:${bg}22;">
       <td style="border-left:4px solid var(--danger); color:var(--text); font-family:var(--sans);"><b>${escapeHtml(w.nombre)}</b><span style="display:block;color:var(--muted);font-size:10px;">${titulo}</span></td>
