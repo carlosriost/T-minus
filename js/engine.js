@@ -1317,6 +1317,23 @@ function sequenceWeek(
   // corrida larga de cerveza → aseo → 2-5 Pony … La cerveza NO se pica en
   // trocitos: solo se parte cuando de verdad faltan separadores, y nunca en
   // trozos de menos de MIN_CORRIDA_CERVEZA cocimientos.
+  // Parte un bloque en dos: los primeros `size` cocimientos y el resto. Se usa
+  // para cortar una corrida de cerveza justo donde toca el aseo periódico, y
+  // dejar el resto pendiente para después de la Pony que entra con ese aseo.
+  const partirBloqueEn = (b, size) => {
+    if (!(size > 0) || size >= b.numCocimientos) return [b, null];
+    const trozo = (desde, cant, k) => ({
+      ...b,
+      blockId: `${b.blockId}__p${k}`,
+      blockLabel: `${b.blockLabel} (parte ${k + 1})`,
+      numCocimientos: cant,
+      volumenEnvasar: (b.volumenEnvasar * cant) / b.numCocimientos,
+      volumenCocinar: (b.volumenCocinar * cant) / b.numCocimientos,
+      idealStarts: b.idealStarts.slice(desde, desde + cant),
+    });
+    return [trozo(0, size, 0), trozo(size, b.numCocimientos - size, 1)];
+  };
+
   // Cuando ni partiendo por 14 alcanzan los separadores, se baja el piso a este
   // otro y se avisa: es preferible una corrida de cerveza más corta de lo
   // deseado que una racha de 12 Pony seguidas, que sí está prohibida.
@@ -1428,6 +1445,10 @@ function sequenceWeek(
   // Aseos que quedaron por debajo del mínimo porque el cambio de marca los
   // obligó antes de tiempo: se avisan, no se esconden.
   const aseosCortos = [];
+  // Aseo periódico que ya toca y todavía no se ha hecho. Mientras esté en true,
+  // el siguiente bloque que entra es Pony: si de todas formas hay que lavar, que
+  // ese lavado sirva para meter la Pony y no se gaste otro CIP más adelante.
+  let aseoPeriodicoPendiente = false;
   let ponyIniciado = false; // ¿ya se programó la primera corrida de Pony?
   // Cocimientos de Pony SEGUIDOS que llevamos en la corrida actual. Se usa para
   // LLENAR la corrida hasta PONY_MAX antes de cambiar de marca: cada entrada a
@@ -1535,7 +1556,15 @@ function sequenceWeek(
       const noPonyPend = pending.length - ponyPend;
       const escasezSeparadores = noPonyPend <= Math.max(0, ponyPend - 1);
       const esperaPony = pBest - Math.max(best, libreCadencia);
-      if (pIdx >= 0 && (escasezSeparadores || esperaPony <= 12 * HORA)) {
+      // Con un aseo periódico pendiente la Pony entra sí o sí: el CIP se va a
+      // hacer igual, y entrar a Pony cuesta un CIP, así que aprovecharlo es
+      // gratis. Es la regla de "acomodar la Pony siempre después de un aseo".
+      if (
+        pIdx >= 0 &&
+        (aseoPeriodicoPendiente ||
+          escasezSeparadores ||
+          esperaPony <= 12 * HORA)
+      ) {
         idx = pIdx;
         best = pBest;
       }
@@ -1691,6 +1720,34 @@ function sequenceWeek(
       earliestFeasible = new Date(ponyStart);
     }
 
+    // Aseo periódico pendiente. Si el cambio de marca ya trajo su propio CIP, ese
+    // sirve y no se hace otro: un aseo es un aseo. Solo se pinta aquí cuando no
+    // hubo ninguno — porque sigue la misma marca, o porque se venía saliendo de
+    // Pony, que sale sin lavar.
+    if (
+      aseoPeriodicoPendiente &&
+      !aseoRow &&
+      prevMostoId &&
+      aseoPeriodicoActivo &&
+      aseoPeriodicoHoras > 0 &&
+      cursorLibre
+    ) {
+      const aseoStart = new Date(cursorLibre.getTime());
+      const aseoEnd = new Date(aseoStart.getTime() + aseoPeriodicoHoras * HORA);
+      aseoRow = {
+        n: 0,
+        tipo: "aseo",
+        mostoId: null,
+        blockId: block.blockId,
+        nombre: `ASEO programado (${aseoPeriodicoMax} cocimientos desde el aseo anterior)`,
+        start: aseoStart,
+        end: aseoEnd,
+        definido: true,
+        periodico: true,
+      };
+      earliestFeasible = aseoEnd;
+    }
+
     // R5: cada bloque arranca cuando la cadena queda libre (fin de cadencia del
     // bloque anterior, o fin de su aseo) PERO nunca antes de su inicio ideal
     // (envasado − cocina − ferm − madur). Así la cerveza no se adelanta semanas
@@ -1790,6 +1847,7 @@ function sequenceWeek(
           start: aseoRow.start,
         });
       cocDesdeAseo = 0;
+      aseoPeriodicoPendiente = false;
     }
 
     // Un bloque Light programado se vuelve cosecha de levadura Light a futuro.
@@ -1857,35 +1915,28 @@ function sequenceWeek(
           : 0,
       });
       cocDesdeAseo++;
-      // El aseo periódico solo entra al llegar al MÁXIMO de la ventana. Por
-      // debajo de eso se espera: puede que el siguiente cambio de marca traiga
-      // su propio CIP dentro de la ventana y no haga falta este.
+      // El aseo periódico entra al llegar al MÁXIMO de la ventana. Por debajo de
+      // eso se espera: puede que el siguiente cambio de marca traiga su propio
+      // CIP dentro de la ventana y no haga falta este.
+      // Aquí NO se pinta el aseo: se CORTA la corrida y el resto del bloque
+      // vuelve a la cola. El aseo se hace al empezar el bloque siguiente, que
+      // será Pony (ver aseoPeriodicoPendiente en la selección). Antes el aseo se
+      // metía en mitad del bloque y lo que seguía era la misma marca, así que
+      // ese CIP no servía para entrar a Pony y más adelante había que hacer otro.
       if (
         aseoPeriodicoActivo &&
         aseoPeriodicoHoras > 0 &&
         cocDesdeAseo >= aseoPeriodicoMax &&
-        // No dejar un cocimiento SOLO ni antes ni después del aseo: se inserta
-        // solo si en ESTE bloque ya se hizo ≥1 cocimiento y aún quedan ≥2; si
-        // no, se pospone al siguiente punto válido.
-        i >= 1 &&
-        i < block.numCocimientos - 2
+        i < block.numCocimientos - 1 &&
+        !esMostoPony(block.mostoId) &&
+        pending.some((b) => esMostoPony(b.mostoId))
       ) {
-        cocDesdeAseo = 0;
-        offsetMs += aseoPeriodicoHoras * HORA;
-        const nextStart = new Date(
-          actualFirst.getTime() + (i + 1) * block.gapHoras * HORA + offsetMs,
-        );
-        rows.push({
-          n: ++n,
-          tipo: "aseo",
-          mostoId: null,
-          blockId: block.blockId,
-          nombre: `ASEO programado (${aseoPeriodicoMax} cocimientos desde el aseo anterior)`,
-          start: new Date(nextStart.getTime() - aseoPeriodicoHoras * HORA),
-          end: nextStart,
-          definido: true,
-          periodico: true,
-        });
+        const [, resto] = partirBloqueEn(block, i + 1);
+        if (resto) {
+          pending.push(resto);
+          aseoPeriodicoPendiente = true;
+          break;
+        }
       }
     }
 
