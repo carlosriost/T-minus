@@ -761,20 +761,27 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
     En SV se aplica la misma regla para los lotes transferidos desde FV. Se respeta
     A → B → C sin mezclar marcas.
   */
+  // Cocimientos que admite cada equipo, por capacidad. Son números de planta y
+  // van por capacidad EXACTA, no por rangos: antes se resolvía con umbrales
+  // (>= 850 → 1,5) y eso se tragaba capacidades que no estaban en la lista. Los
+  // toneles de Pony, de 860 hL, caían en la regla de las cubas de 900 y salían
+  // con 1,5 en vez de 1,33; y el EXT 7, un madurador de 3.200 hL, quedaba topado
+  // en 1,5 cocimientos —900 hL— cuando le caben más de cinco.
+  const COCIMIENTOS_POR_CAPACIDAD = {
+    7200: 12, // tanques grandes
+    4800: 8, // tanques pequeños
+    900: 1.5, // cubas grandes
+    860: 1.33, // toneles de Pony
+    750: 1.25, // cubas pequeñas
+  };
+  // Cocimiento de referencia para las capacidades que no están en la lista: se
+  // llenan hasta la capacidad que tengan cargada en el catálogo de equipos.
+  const HL_POR_COCIMIENTO_REF = 600;
   function getMaxCocimientosPorCapacidad(capacidadHL) {
     const capacidad = Number(capacidadHL) || 0;
-    // Regla operativa de capacidad por FV:
-    // - FV EXT grandes: 7200 HL = 12 cocimientos máximos
-    // - FV EXT medianos: 4800 HL = 8 cocimientos máximos
-    // - FV de 900 HL: admiten 1,5 cocimientos por lote
-    // - FV de 750 HL: admiten 1,25 cocimientos por lote
-    // - Si la capacidad no cae en esos rangos, se usa una regla proporcional.
-    if (capacidad >= 7000) return 12;
-    if (capacidad >= 4500) return 8;
-    if (capacidad >= 850) return 1.5;
-    if (capacidad >= 700) return 1.25;
-    if (capacidad > 0) return Math.max(1, capacidad / 600);
-    return 1;
+    if (COCIMIENTOS_POR_CAPACIDAD[capacidad] != null)
+      return COCIMIENTOS_POR_CAPACIDAD[capacidad];
+    return capacidad > 0 ? capacidad / HL_POR_COCIMIENTO_REF : 1;
   }
 
   const tanks = (tankCatalog || [])
@@ -1000,8 +1007,19 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         });
       const tank = candidatos[0];
       if (!tank) break;
-      // El cocimiento completo entra al mismo tanque; nunca se fracciona.
-      const carga = restante;
+      // NUNCA por encima de la capacidad. Se carga lo que de verdad cabe: lo que
+      // queda del cocimiento, el hueco que tenga el tanque, y el cupo de
+      // cocimientos que le queda, lo que sea menor. El resto se sigue repartiendo
+      // en la siguiente vuelta.
+      // Un cocimiento SÍ se puede repartir entre dos tanques: es la única forma
+      // de llenar por completo una cuba de 900 hL, que admite 1,5 cocimientos de
+      // 600 hL. Antes se validaba contra lo que cabía pero se cargaba el
+      // cocimiento entero, y una cuba de 900 terminaba con 1.200 hL dentro.
+      const libreTank = tank.capacidadHL - tank.volumenAsignado;
+      const cupoCoc =
+        (Number(tank.maxCocimientos) || 999) - tank.cocimientosAsignados;
+      const carga = Math.min(restante, libreTank, cupoCoc * volPorCoc);
+      if (!(carga > 1e-9)) break;
       tank.volumenAsignado += carga;
       // Se acumulan cocimientos fraccionales según el volumen real del catálogo:
       // 900 HL => 1,5 cocimientos, 750 HL => 1,25 cocimientos, etc.
@@ -1195,8 +1213,15 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         });
       const tank = candidatos[0];
       if (!tank) break;
-      // El lote completo permanece en un solo SV; no se fracciona entre tanques.
-      const carga = restante;
+      // NUNCA por encima de la capacidad, igual que en el FV. Un lote que sale de
+      // un fermentador grande no cabe en un madurador chico: se reparte entre los
+      // que haga falta. Antes entraba entero, y el EXT 14 —de 820 hL— llegaba a
+      // tener 5.376 hL asignados.
+      const libreTank = tank.capacidadHL - tank.volumenAsignado;
+      const cupoCoc =
+        (Number(tank.maxCocimientos) || 999) - tank.cocimientosAsignados;
+      const carga = Math.min(restante, libreTank, cupoCoc * volPorCoc);
+      if (!(carga > 1e-9)) break;
       tank.volumenAsignado += carga;
       tank.cocimientosAsignados += carga / volPorCoc;
       tank.mostoId = tr.mostoId;
