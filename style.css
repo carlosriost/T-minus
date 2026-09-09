@@ -550,6 +550,63 @@
         height: 64px;
         flex: 0 0 auto;
       }
+      /* Gantt de ocupación de tanques: una hilera por equipo y son muchas, así
+         que la fila es más baja y la etiqueta más angosta que en los demás. */
+      .gantt-compacto .lane-track {
+        height: 38px;
+      }
+      .gantt-compacto .lane-label {
+        width: 76px;
+        min-width: 76px;
+        font-size: 11.5px;
+      }
+      .gantt-compacto .lane-label small {
+        font-size: 9px;
+        margin-top: 0;
+      }
+      .gantt-compacto .day-header .lane-label {
+        width: 76px;
+        min-width: 76px;
+      }
+      .gantt-compacto .block {
+        padding: 3px 6px;
+        gap: 0;
+      }
+      .gantt-compacto .block b {
+        font-size: 10.5px;
+        line-height: 1.15;
+      }
+      .gantt-compacto .block span {
+        font-size: 9.5px;
+        line-height: 1.15;
+        opacity: 0.85;
+      }
+      /* Botonera para elegir qué tipo de equipo se mira. */
+      .filtro-equipos {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 0 0 10px;
+      }
+      .filtro-equipos button {
+        font-family: var(--sans);
+        font-size: 11.5px;
+        padding: 5px 12px;
+        border-radius: 4px;
+        border: 1px solid var(--line);
+        background: var(--panel2);
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .filtro-equipos button:hover {
+        color: var(--text);
+      }
+      .filtro-equipos button.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0b0b0b;
+        font-weight: 650;
+      }
       .day-header {
         display: flex;
         position: sticky;

@@ -2037,10 +2037,19 @@ if (document.readyState === "loading") {
    tanque no está disponible en el instante en que se vacía. Lo que no tiene
    banda es tiempo libre.
    ========================================================================= */
+// Escala propia, más apretada que la de los otros Gantt: aquí hay una hilera por
+// equipo y lo que importa es ver la ocupación de varios días de un vistazo, no
+// el detalle hora a hora.
+const TANQUES_PX_PER_HOUR = 9;
+// Tipo de equipo que se está mirando: "todos", "FV", "SV" o "SV Pony".
+let TANQUES_FILTRO = "todos";
+let TANQUES_ULTIMO = null; // {assignment, weekStartRaw} para redibujar al filtrar
+
 function renderGanttTanques(assignment, weekStartRaw) {
   const container = document.getElementById("ganttTanquesContainer");
   const legendEl = document.getElementById("ganttTanquesLegend");
   if (!container) return;
+  TANQUES_ULTIMO = { assignment, weekStartRaw };
   const filas = ((assignment && assignment.rows) || []).filter(
     (r) => r.tanque && r.start instanceof Date && r.end instanceof Date,
   );
@@ -2118,15 +2127,53 @@ function renderGanttTanques(assignment, weekStartRaw) {
   const ordenTipo = { FV: 0, SV: 1, "SV Pony": 2 };
   const tieneProduccion = (equipo) =>
     porEquipo[equipo].some((b) => !b.inventario);
-  const equipos = Object.keys(porEquipo).sort((a, b) => {
+  const tipoDe = (equipo) => {
+    const t = tanquesInfo.find((x) => x.equipo === equipo);
+    return (t && t.tipo) || "";
+  };
+  const todosLosEquipos = Object.keys(porEquipo).sort((a, b) => {
     const pa = tieneProduccion(a) ? 0 : 1;
     const pb = tieneProduccion(b) ? 0 : 1;
-    const ta = tanquesInfo.find((x) => x.equipo === a);
-    const tb = tanquesInfo.find((x) => x.equipo === b);
-    const oa = ordenTipo[ta && ta.tipo] ?? 9;
-    const ob = ordenTipo[tb && tb.tipo] ?? 9;
+    const oa = ordenTipo[tipoDe(a)] ?? 9;
+    const ob = ordenTipo[tipoDe(b)] ?? 9;
     return pa - pb || oa - ob || String(a).localeCompare(String(b), "es");
   });
+  // Botonera de tipo de equipo. Se cuenta sobre TODOS, no sobre lo filtrado,
+  // para que los números no cambien al moverse entre pestañas.
+  const filtroEl = document.getElementById("ganttTanquesFiltro");
+  if (filtroEl) {
+    const cuenta = (tipo) =>
+      tipo === "todos"
+        ? todosLosEquipos.length
+        : todosLosEquipos.filter((e) => tipoDe(e) === tipo).length;
+    filtroEl.innerHTML = ["todos", "FV", "SV", "SV Pony"]
+      .map((tipo) => {
+        const n = cuenta(tipo);
+        const etiqueta = tipo === "todos" ? "Todos" : tipo;
+        return `<button data-tipo-equipo="${escapeHtml(tipo)}" class="${TANQUES_FILTRO === tipo ? "active" : ""}"${n ? "" : " disabled"}>${etiqueta} (${n})</button>`;
+      })
+      .join("");
+    filtroEl.querySelectorAll("[data-tipo-equipo]").forEach((b) =>
+      b.addEventListener("click", () => {
+        TANQUES_FILTRO = b.dataset.tipoEquipo;
+        if (TANQUES_ULTIMO)
+          renderGanttTanques(
+            TANQUES_ULTIMO.assignment,
+            TANQUES_ULTIMO.weekStartRaw,
+          );
+      }),
+    );
+  }
+  const equipos =
+    TANQUES_FILTRO === "todos"
+      ? todosLosEquipos
+      : todosLosEquipos.filter((e) => tipoDe(e) === TANQUES_FILTRO);
+  if (!equipos.length) {
+    container.innerHTML =
+      '<p class="empty-note">Ningún equipo de este tipo se usa ni está ocupado.</p>';
+    if (legendEl) legendEl.innerHTML = "";
+    return;
+  }
 
   // Eje: mismo criterio que el Gantt de cocina, para poder compararlos.
   const weekStart =
@@ -2150,11 +2197,11 @@ function renderGanttTanques(assignment, weekStartRaw) {
     Math.ceil((ultimo - rangeStart.getTime()) / 3600000),
   );
   const totalDays = Math.ceil(totalHours / 24);
-  const dayWidth = 24 * GANTT_PX_PER_HOUR;
+  const dayWidth = 24 * TANQUES_PX_PER_HOUR;
   const totalWidth = totalDays * dayWidth;
-  const labelWidth = 96;
+  const labelWidth = 76;
   const x = (ms) =>
-    ((ms - rangeStart.getTime()) / 3600000) * GANTT_PX_PER_HOUR;
+    ((ms - rangeStart.getTime()) / 3600000) * TANQUES_PX_PER_HOUR;
 
   let dayHeaderHtml =
     '<div class="lane-label" style="background:var(--bg2); border-right:1px solid var(--line);"></div>';
@@ -2195,22 +2242,33 @@ function renderGanttTanques(assignment, weekStartRaw) {
         const estilo = b.inventario
           ? `background:repeating-linear-gradient(45deg, ${bg}, ${bg} 5px, ${bg}99 5px, ${bg}99 10px);`
           : `background:${bg};`;
-        bloques += `<div class="block" style="left:${left}px; width:${width}px; ${estilo}" title="${escapeHtml(tip)}">${
-          width >= 40
-            ? `<b>${escapeHtml(b.etapa)}</b><span>${escapeHtml(b.nombre)}</span>`
-            : ""
-        }</div>`;
+        // Dentro de la banda: DE QUÉ está ocupado y cuántos hL arriba, y CUÁNDO
+        // se desocupa abajo. Si la banda es angosta se va recortando: primero se
+        // cae la hora de salida, luego los hL, y al final no cabe ni el texto.
+        const marca = b.inventario ? "Ocupado" : b.nombre || b.etapa;
+        const hlTxt = b.hL > 0 ? ` · ${nf(b.hL)} hL` : "";
+        const salida = `sale ${fmtDateTime(new Date(b.end))}`;
+        const interior =
+          width >= 128
+            ? `<b>${escapeHtml(marca + hlTxt)}</b><span>${escapeHtml(salida)}</span>`
+            : width >= 74
+              ? `<b>${escapeHtml(marca + hlTxt)}</b>`
+              : width >= 34
+                ? `<b>${escapeHtml(marca)}</b>`
+                : "";
+        bloques += `<div class="block" style="left:${left}px; width:${width}px; ${estilo}" title="${escapeHtml(tip)}">${interior}</div>`;
         // Aseo de reutilización: el equipo tampoco está libre aquí.
         if (aseoH > 0) {
           const aLeft = x(b.end);
-          const aWidth = Math.max(3, aseoH * GANTT_PX_PER_HOUR);
+          const aWidth = Math.max(3, aseoH * TANQUES_PX_PER_HOUR);
           bloques += `<div class="block changeover" style="left:${aLeft}px; width:${aWidth}px;" title="${escapeHtml(
             `${equipo} · aseo de reutilización · ${fmtDateTime(new Date(b.end))} → ${fmtDateTime(new Date(b.end + aseoH * 3600000))}`,
           )}"><b>🧽</b></div>`;
         }
       });
+      const tipo = tipoDe(equipo);
       return `<div class="gantt-row">
-        <div class="lane-label">${escapeHtml(equipo)}${cap ? `<small>${cap}</small>` : ""}</div>
+        <div class="lane-label" title="${escapeHtml(equipo + (tipo ? " · " + tipo : "") + (cap ? " · " + cap : ""))}">${escapeHtml(equipo)}${cap ? `<small>${cap}</small>` : ""}</div>
         <div class="lane-track" style="width:${totalWidth}px;">
           <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLinesHtml}</div>
           ${bloques}
@@ -2222,8 +2280,10 @@ function renderGanttTanques(assignment, weekStartRaw) {
   // Son muchas hileras (un equipo por fila): se limita la altura y se desplaza
   // por dentro, para que el panel no se coma la página. El encabezado de días
   // queda pegado arriba al desplazar.
+  // La fila es baja y son muchas: se limita la altura y se desplaza por dentro,
+  // con el encabezado de días fijo arriba.
   container.innerHTML = `
-    <div id="ganttTanquesScroll" style="overflow:auto; max-height:520px; padding:0 0 16px;">
+    <div id="ganttTanquesScroll" class="gantt-compacto" style="overflow:auto; max-height:440px; padding:0 0 12px;">
       <div style="position:relative; width:${labelWidth + totalWidth}px;">
         <div class="day-header" style="position:sticky; top:0; z-index:6;">${dayHeaderHtml}</div>
         ${lanes}
