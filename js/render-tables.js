@@ -270,35 +270,264 @@ function renderRecomendaciones(seq) {
   wrap.innerHTML = `<table><thead><tr><th>Recomendación</th><th>Impacto</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/* ---- ACUERDOS DE SERVICIO ------------------------------------------------
+   Tablero de calificación semanal: tarjetas de resumen arriba, el detalle de
+   cada acuerdo con su ponderación y su puntaje a la izquierda, y a la derecha
+   el score global con el reparto por estado y los hallazgos clave.
+   Antes esta página era una tabla que no evaluaba nada: reglaWarnings nunca se
+   llenaba, así que todo acuerdo verificable salía siempre como "Aplicada".
+   -------------------------------------------------------------------------- */
+const ACUERDOS_ESTADO = {
+  cumple: { txt: "Cumple", color: "var(--ok)", icono: "✓" },
+  parcial: { txt: "Parcial", color: "var(--warn)", icono: "–" },
+  critico: { txt: "Crítico", color: "var(--danger)", icono: "!" },
+  "sin-datos": { txt: "Sin datos", color: "var(--muted)", icono: "?" },
+};
+
+// La primera frase alcanza para reconocer el acuerdo en la tabla; el texto
+// completo queda en el tooltip de la fila y en la línea de detalle.
+function acuerdoTitulo(texto) {
+  const t = String(texto || "").split(". ")[0];
+  return t.length > 78 ? t.slice(0, 76) + "…" : t;
+}
+
 function renderReglas(seq) {
-  const wrap = document.getElementById("reglasWrap");
-  const warns = seq ? seq.reglaWarnings : [];
-  let rows = REGLAS_OPERATIVAS.map((r) => {
-    const rel = warns.filter((w) => w.ids.includes(r.id));
-    let estado, cls, detalle;
-    if (!REGLAS_VERIFICABLES.has(r.id)) {
-      estado = "No verificable";
-      cls = "warn";
-      detalle =
-        "Requiere datos de líneas de envasado, filtración, mantenimiento o SUITE360 no incluidos en este archivo.";
-    } else if (rel.length) {
-      estado = "Advertencia";
-      cls = "danger";
-      detalle = rel.map((w) => w.text).join(" ");
-    } else {
-      estado = "Aplicada";
-      cls = "ok";
-      detalle = "Sin conflictos detectados con los datos de esta semana.";
-    }
-    return `<tr>
-      <td>${r.id}</td>
-      <td style="font-family:var(--sans); color:var(--text);">${escapeHtml(r.texto)}</td>
-      <td>${r.impacto}</td>
-      <td><span class="tag ${cls}">${estado}</span></td>
-      <td style="font-family:var(--sans); color:var(--muted); font-size:11.5px;">${escapeHtml(detalle)}</td>
-    </tr>`;
-  }).join("");
-  wrap.innerHTML = `<table><thead><tr><th>#</th><th>Regla</th><th>Impacto</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const cont = document.getElementById("acuerdosDash");
+  if (!cont) return;
+  const ev = evaluarAcuerdos(STATE && STATE.plan, seq);
+  const nf = (x, d) =>
+    Number(x).toLocaleString("es-CO", {
+      minimumFractionDigits: d || 0,
+      maximumFractionDigits: d || 0,
+    });
+  const score = ev.score == null ? null : Math.round(ev.score);
+  const colScore =
+    score == null
+      ? "var(--muted)"
+      : score >= 90
+        ? "var(--ok)"
+        : score >= 60
+          ? "var(--warn)"
+          : "var(--danger)";
+  const nMed = ev.medibles.length;
+
+  /* ---- Tarjetas de resumen ---- */
+  const kpi = (icono, titulo, valor, pie, color) =>
+    '<div class="acu-kpi"><div class="acu-kpi-ico" style="color:' +
+    color +
+    ';">' +
+    icono +
+    '</div><div><div class="acu-kpi-tit">' +
+    titulo +
+    '</div><div class="acu-kpi-val" style="color:' +
+    color +
+    ';">' +
+    valor +
+    '</div><div class="acu-kpi-pie">' +
+    pie +
+    "</div></div></div>";
+  const kpis =
+    kpi(
+      "◎",
+      "Score total",
+      score == null ? "—" : score + " <small>/ 100</small>",
+      ev.semana ? escapeHtml(ev.semana) : "Semana evaluada",
+      colScore,
+    ) +
+    kpi(
+      "✓",
+      "Acuerdos cumplidos",
+      ev.cumplidos + " <small>de " + nMed + "</small>",
+      nMed ? Math.round((ev.cumplidos / nMed) * 100) + "% de los medibles" : "—",
+      "var(--ok)",
+    ) +
+    kpi(
+      "⚠",
+      "Críticos",
+      String(ev.criticos),
+      nMed ? Math.round((ev.criticos / nMed) * 100) + "% de los medibles" : "—",
+      ev.criticos ? "var(--danger)" : "var(--muted)",
+    ) +
+    kpi(
+      "▤",
+      "Sin datos para medir",
+      String(ev.sinDatos.length),
+      "de " + ev.filas.length + " acuerdos",
+      "var(--muted)",
+    );
+
+  /* ---- Tabla de detalle ---- */
+  const fila = (f) => {
+    const e = ACUERDOS_ESTADO[f.estado];
+    const pondCell = f.medible
+      ? '<input type="number" class="acu-pond" data-acu="' +
+        f.id +
+        '" min="0" max="100" step="1" value="' +
+        f.ponderacion +
+        '" title="Ponderación del acuerdo. Se guarda y recalcula el score." />%'
+      : '<span style="color:var(--muted);">—</span>';
+    const cumpl = f.medible
+      ? '<div class="acu-bar"><span style="width:' +
+        f.cumplimiento +
+        "%; background:" +
+        e.color +
+        ';"></span></div><small>' +
+        nf(f.cumplimiento) +
+        "%</small>"
+      : '<span style="color:var(--muted);">—</span>';
+    return (
+      '<tr title="' +
+      escapeHtml(f.texto) +
+      '"><td class="acu-nom"><b>' +
+      f.id +
+      ".</b> " +
+      escapeHtml(acuerdoTitulo(f.texto)) +
+      '<div class="acu-det">' +
+      escapeHtml(f.detalle) +
+      '</div></td><td class="acu-c">' +
+      pondCell +
+      '</td><td class="acu-c">' +
+      cumpl +
+      '</td><td class="acu-c">' +
+      (f.medible ? nf(f.puntaje, 1) : "—") +
+      '</td><td class="acu-c"><span class="acu-tag" style="color:' +
+      e.color +
+      "; border-color:" +
+      e.color +
+      ';">' +
+      e.icono +
+      " " +
+      e.txt +
+      "</span></td></tr>"
+    );
+  };
+  const orden = { critico: 0, parcial: 1, cumple: 2, "sin-datos": 3 };
+  const filasHtml = ev.filas
+    .slice()
+    .sort((a, b) => orden[a.estado] - orden[b.estado] || a.id - b.id)
+    .map(fila)
+    .join("");
+
+  /* ---- Anillo del score ---- */
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  const arco = score == null ? 0 : (score / 100) * C;
+  const anillo =
+    '<svg viewBox="0 0 140 140" class="acu-donut">' +
+    '<circle cx="70" cy="70" r="' +
+    R +
+    '" fill="none" stroke="var(--line)" stroke-width="16"/>' +
+    '<circle cx="70" cy="70" r="' +
+    R +
+    '" fill="none" stroke="' +
+    colScore +
+    '" stroke-width="16" stroke-linecap="round" stroke-dasharray="' +
+    arco +
+    " " +
+    (C - arco) +
+    '" transform="rotate(-90 70 70)"/>' +
+    '<text x="70" y="68" text-anchor="middle" class="acu-donut-n" fill="' +
+    colScore +
+    '">' +
+    (score == null ? "—" : score) +
+    "</text>" +
+    '<text x="70" y="86" text-anchor="middle" class="acu-donut-s">/ 100</text></svg>';
+
+  const reparto = [
+    ["cumple", ev.cumplidos],
+    ["parcial", ev.parciales],
+    ["critico", ev.criticos],
+    ["sin-datos", ev.sinDatos.length],
+  ]
+    .map((par) => {
+      const e = ACUERDOS_ESTADO[par[0]];
+      const pct = ev.filas.length
+        ? Math.round((par[1] / ev.filas.length) * 100)
+        : 0;
+      return (
+        '<div class="acu-leg"><span class="dot" style="background:' +
+        e.color +
+        ';"></span><span class="l">' +
+        e.txt +
+        "</span><b>" +
+        par[1] +
+        '</b><span class="p">' +
+        pct +
+        "%</span></div>"
+      );
+    })
+    .join("");
+
+  /* ---- Hallazgos clave: lo peor primero, con su medición real ---- */
+  const hallazgos = ev.medibles
+    .slice()
+    .sort((a, b) => a.cumplimiento - b.cumplimiento)
+    .slice(0, 3)
+    .map((f, i) => {
+      const e = ACUERDOS_ESTADO[f.estado];
+      return (
+        '<div class="acu-hall"><div class="n" style="border-color:' +
+        e.color +
+        "; color:" +
+        e.color +
+        ';">' +
+        (i + 1) +
+        "</div><div><b>" +
+        escapeHtml(acuerdoTitulo(f.texto)) +
+        "</b><div>" +
+        nf(f.cumplimiento) +
+        "% de cumplimiento. " +
+        escapeHtml(f.detalle) +
+        "</div></div></div>"
+      );
+    })
+    .join("");
+
+  cont.innerHTML =
+    '<div class="acu-kpis">' +
+    kpis +
+    '</div><div class="acu-grid"><div class="acu-card">' +
+    '<div class="acu-card-tit">Detalle de acuerdos de servicio</div>' +
+    '<div class="table-scroll"><table class="acu-tabla"><thead><tr>' +
+    '<th>Acuerdo</th><th class="acu-c">Ponderación</th>' +
+    '<th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th>' +
+    '<th class="acu-c">Estado</th></tr></thead><tbody>' +
+    filasHtml +
+    '</tbody><tfoot><tr><td><b>Total medible</b></td><td class="acu-c"><b>' +
+    nf(ev.pondTotal) +
+    '%</b></td><td class="acu-c">—</td><td class="acu-c"><b>' +
+    nf(ev.puntajeTotal, 1) +
+    '</b></td><td class="acu-c"><b style="color:' +
+    colScore +
+    ';">' +
+    (score == null ? "—" : score + " / 100") +
+    "</b></td></tr></tfoot></table></div></div><div>" +
+    '<div class="acu-card"><div class="acu-card-tit">Score global</div>' +
+    '<div class="acu-donut-wrap">' +
+    anillo +
+    '<div class="acu-legs">' +
+    reparto +
+    '</div></div><div class="acu-nota">El score se calcula sobre la ponderación de los ' +
+    nMed +
+    " acuerdos que sí se pueden medir con los archivos cargados. Los " +
+    ev.sinDatos.length +
+    " restantes no lo penalizan.</div></div>" +
+    '<div class="acu-card" style="margin-top:14px;">' +
+    '<div class="acu-card-tit">Hallazgos clave</div>' +
+    (hallazgos || '<p class="empty-note">Sin acuerdos medibles todavía.</p>') +
+    "</div></div></div>";
+
+  // Ponderación editable: recalcula el score y la guarda.
+  cont.querySelectorAll(".acu-pond").forEach((inp) => {
+    inp.addEventListener("wheel", () => inp.blur(), { passive: true });
+    inp.addEventListener("change", () => {
+      const p = ponderacionAcuerdos();
+      const v = Number(inp.value);
+      p[inp.dataset.acu] = isFinite(v) && v >= 0 ? v : 0;
+      guardarPonderacionAcuerdos(p);
+      renderReglas(seq);
+    });
+  });
 }
 
 function renderCocinaPlan(plan, assignment) {

@@ -892,6 +892,227 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      /* ===== ACUERDOS DE SERVICIO — tablero de calificación semanal ===== */
+      .acu-kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .acu-kpi {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        background: var(--panel2);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      .acu-kpi-ico {
+        font-size: 20px;
+        line-height: 1;
+        margin-top: 2px;
+      }
+      .acu-kpi-tit {
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .acu-kpi-val {
+        font-size: 24px;
+        font-weight: 750;
+        font-family: var(--mono);
+        line-height: 1.15;
+      }
+      .acu-kpi-val small {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .acu-kpi-pie {
+        font-size: 10.5px;
+        color: var(--muted);
+      }
+
+      .acu-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.9fr) minmax(260px, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+      @media (max-width: 1100px) {
+        .acu-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .acu-card {
+        background: var(--panel2);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 14px 16px;
+      }
+      .acu-card-tit {
+        font-size: 13px;
+        font-weight: 650;
+        color: var(--text);
+        margin-bottom: 10px;
+      }
+
+      .acu-tabla {
+        width: 100%;
+      }
+      .acu-tabla td,
+      .acu-tabla th {
+        vertical-align: middle;
+      }
+      .acu-tabla .acu-c {
+        text-align: center;
+        white-space: nowrap;
+      }
+      .acu-nom {
+        font-family: var(--sans);
+        color: var(--text);
+        font-size: 12px;
+        min-width: 260px;
+      }
+      .acu-det {
+        color: var(--muted);
+        font-size: 10.5px;
+        margin-top: 3px;
+        font-family: var(--sans);
+      }
+      .acu-pond {
+        width: 46px;
+        padding: 2px 4px;
+        text-align: right;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text);
+        background: var(--input-bg);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+      }
+      .acu-pond:hover,
+      .acu-pond:focus {
+        border-color: var(--accent);
+        outline: none;
+      }
+      .acu-bar {
+        width: 78px;
+        height: 6px;
+        margin: 0 auto 3px;
+        background: var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .acu-bar span {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+      }
+      .acu-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border: 1px solid;
+        border-radius: 10px;
+        font-size: 10.5px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .acu-donut-wrap {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .acu-donut {
+        width: 132px;
+        height: 132px;
+        flex: 0 0 132px;
+      }
+      .acu-donut-n {
+        font-family: var(--mono);
+        font-size: 30px;
+        font-weight: 750;
+      }
+      .acu-donut-s {
+        font-family: var(--mono);
+        font-size: 11px;
+        fill: var(--muted);
+      }
+      .acu-legs {
+        flex: 1 1 120px;
+        min-width: 120px;
+      }
+      .acu-leg {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        padding: 3px 0;
+        color: var(--text);
+      }
+      .acu-leg .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .acu-leg .l {
+        flex: 1;
+        color: var(--muted);
+      }
+      .acu-leg b {
+        font-family: var(--mono);
+      }
+      .acu-leg .p {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        width: 34px;
+        text-align: right;
+      }
+      .acu-nota {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 10.5px;
+        line-height: 1.5;
+      }
+
+      .acu-hall {
+        display: flex;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .acu-hall:first-of-type {
+        border-top: none;
+        padding-top: 2px;
+      }
+      .acu-hall .n {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        border: 1px solid;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+      .acu-hall b {
+        color: var(--text);
+        display: block;
+        margin-bottom: 2px;
+        font-weight: 650;
+      }
+
       /* Pestañita bajo cada BBT: fijar a mano si está enviando o por llenar. */
       .bbt-gauge .bbt-modo {
         width: 100%;
