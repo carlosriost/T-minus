@@ -196,13 +196,21 @@ function parseSuite360Workbook(workbook, sheetName) {
   }
   const firstTime =
     suiteHourParts(HOUR_ROW, FIRST_TIME_COL) || { h: 22, m: 0, s: 0 };
-  // La primera columna de la cuadrícula es la hora `firstTime` del PRIMER día
-  // rotulado (fila 8), sin restarle ni sumarle días. P. ej. si la fila 8 dice
-  // "lunes 7 de septiembre" y la fila 10 arranca en 22:00, la cuadrícula
-  // empieza el lunes 7 a las 22:00 y avanza una hora por columna. (Antes se
-  // restaba un día cuando la hora era >= 12, lo que corría todo el plan un día
-  // hacia atrás respecto al Excel.)
-  const timelineStart = combine(firstDay, firstTime);
+  // EL DÍA DE PLANEACIÓN NO ES EL DÍA DE CALENDARIO.
+  // El día de planeación va de 22:00 a 21:00, así que el bloque rotulado
+  // "jueves 10 de septiembre" arranca en realidad el MIÉRCOLES 9 a las 22:00 y
+  // termina el jueves 10 a las 21:00. Las columnas 22:00 y 23:00 son del día
+  // ANTERIOR al rótulo; de 00:00 en adelante ya son del día rotulado.
+  // Por eso, cuando la cuadrícula abre en la noche, el origen es el día rotulado
+  // MENOS UN DÍA. Sin esto todo el plan salía corrido 24 h hacia adelante: una
+  // marca que en el instructivo va el miércoles a las 22:00 aparecía el jueves.
+  // El calendario en sí no cambia —sigue siendo el real, ver la nota de utils.js—
+  // lo que cambia es a qué instante corresponde cada casilla de la cuadrícula.
+  const abreEnLaNoche = firstTime.h >= 12;
+  const timelineStart = combine(
+    abreEnLaNoche ? addDays(firstDay, -1) : firstDay,
+    firstTime,
+  );
 
   function brandFamily(text) {
     const n = normalizeText(text);
