@@ -1273,7 +1273,7 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
       if (!tank) break;
       // NUNCA por encima de la capacidad, igual que en el FV. Un lote que sale de
       // un fermentador grande no cabe en un madurador chico: se reparte entre los
-      // que haga falta. Antes entraba entero, y el EXT 14 —de 820 hL— llegaba a
+      // que haga falta. Antes entraba entero, y un tonel de 820 hL llegaba a
       // tener 5.376 hL asignados.
       const libreTank = tank.capacidadHL - tank.volumenAsignado;
       const cupoCoc =

@@ -846,21 +846,12 @@ let TANK_CATALOG = [
     disponible: true,
     aseoHoras: parseHMS("1:00:00"),
   },
-  {
-    id: "sv_ext14",
-    equipo: "EXT 14",
-    tipo: "SV",
-    aguaPromedio: 0,
-    capacidadHL: 820,
-    indiceAguaCapacidad: 0,
-    prioridad: "A",
-    disponible: true,
-    aseoHoras: parseHMS("1:00:00"),
-  },
-  // Estaba en el inventario "producto en proceso" pero no en este catálogo, así
-  // que no aparecía en la ocupación ni se podía asignar nada. No tenemos su
-  // consumo de agua medido: queda en 0 y con prioridad A como sus hermanos de
-  // 820 hL, y se puede ajustar desde «Equipos / Tanques» cuando haya el dato.
+  // "EXT 14" no existe: no aparece en ninguna hoja del inventario "producto en
+  // proceso", y su capacidad (820 hL) coincide con la de 14-210, que sí está en
+  // el reporte. Era el mismo tonel con un nombre mal transcrito, y por contarlo
+  // aparte salían 15 maduradores donde la planta tiene 14.
+  // No tenemos su consumo de agua medido: queda en 0 y con prioridad A como sus
+  // hermanos de 820 hL, y se puede ajustar desde «Equipos / Tanques».
   {
     id: "sv_14_210",
     equipo: "14-210",
