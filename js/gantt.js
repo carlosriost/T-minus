@@ -144,6 +144,22 @@ function ganttLinkCursor(ms) {
   }
 }
 
+// Medianoche del día al que pertenece un instante, en la hora de planta.
+// Todos los Gantt anclan su eje aquí: la línea de tiempo es el CALENDARIO REAL
+// —días, semanas y meses del mundo, que empiezan a medianoche— y cada barra se
+// dibuja en el punto que le corresponde por su hora real.
+// Antes cada eje arrancaba en el instante del primer evento (p. ej. las 22:00),
+// así que la "semana" empezaba a esa hora: la celda rotulada "Lun 07/09" iba en
+// realidad del 07/09 22:00 al 08/09 22:00 y cualquier instante de la mañana del
+// 8 aparecía bajo el rótulo del 7. La hora a la que arranca la producción no
+// define el calendario; se marca sobre él.
+function medianochePlanta(ms) {
+  const d = new Date(ms);
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
+}
+
 function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   const container = document.getElementById("ganttContainer");
   if (!container) return;
@@ -170,11 +186,11 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     (min, b) => (b.start.getTime() < min ? b.start.getTime() : min),
     allBlocks[0].start.getTime(),
   );
-  // El eje arranca EXACTAMENTE cuando arranca la producción (que en el
-  // instructivo es la hora de la primera columna de la cuadrícula, p. ej.
-  // 22:00 del primer día rotulado). Así cada "celda de día" del Gantt coincide
-  // 1:1 con el bloque de día del Excel y no se ve corrido.
-  const rangeStart = new Date(firstStart);
+  // El eje es el calendario real: arranca en la medianoche del primer día del
+  // plan y cada celda es un día completo. Las barras NO se corren: la primera
+  // empieza donde le toca por su hora (si el instructivo arranca a las 22:00,
+  // arranca a las 22:00 de ese día, con el resto del día vacío a su izquierda).
+  const rangeStart = medianochePlanta(Math.min(firstStart, weekStart.getTime()));
   const totalHours = Math.max(
     24,
     Math.ceil((lastEnd - rangeStart.getTime()) / 3600000),
@@ -396,8 +412,10 @@ function renderGanttCocina(seq, weekStartRaw) {
     if (r.deadline) deadlines.push(r.deadline.getTime());
   });
   const lastDeadline = deadlines.length ? Math.max(...deadlines) : lastEnd;
-  const rangeStart =
-    firstStart < weekStart.getTime() ? new Date(firstStart) : weekStart;
+  // Calendario real: medianoche del primer día que hay que mostrar.
+  const rangeStart = medianochePlanta(
+    Math.min(firstStart, weekStart.getTime()),
+  );
   const rangeEndTime = Math.max(lastEnd, lastDeadline);
   const totalHours = Math.max(
     24,
@@ -955,32 +973,31 @@ function renderGanttFiltracion(plan) {
     FIL_PX_PER_HOUR = Math.min(140, Math.ceil(px));
   }
 
-  // El eje arranca en la MEDIANOCHE del día en que empieza la filtración, para
-  // que cada celda sea un día de calendario completo y su rótulo sea la fecha
-  // real. Antes arrancaba en fase con el Gantt de envasado, que no empieza a
-  // medianoche sino en el instante real en que arranca la producción (la hora de
-  // la primera columna del instructivo, p. ej. las 22:00): con esa fase, la celda
-  // rotulada "Sáb 12/09" abarcaba en realidad del 12/09 22:00 al 13/09 22:00, y
-  // un I0 del 13/09 a las 00:00 aparecía bajo el rótulo del 12.
-  // Los dos Gantt siguen sincronizados minuto a minuto: cada bloque se ubica por
-  // su instante absoluto y el cursor compartido convierte la posición con el
-  // rangeStart de cada contenedor, así que un mismo instante cae en el mismo
-  // punto de la línea de tiempo en ambos. Lo que cambia es solo dónde se parten
-  // las celdas de día, que ahora coinciden con el calendario.
-  // El Gantt de envasado NO se toca: es fijo.
-  // Todo en componentes UTC, que es como esta app maneja la hora de planta.
+  // Mismo calendario real que los demás Gantt. Se toma el origen del Gantt de
+  // envasado —que ahora también es una medianoche— y se corre de día COMPLETO en
+  // día completo hasta el primer día de la filtración: así los dos ejes quedan
+  // alineados 1 a 1 y cualquier instante cae en la misma fecha en ambos.
+  // La hora del I0 de filtración no define el calendario: se marca sobre él, en
+  // el punto que le corresponde del día que le corresponde.
+  // Sin Gantt de envasado cargado se usa la medianoche del inicio de filtración.
+  const envContainer = document.getElementById("ganttContainer");
+  const envRangeStart = envContainer
+    ? Number(envContainer.dataset.rangeStart)
+    : NaN;
   const primerInicio = segments.reduce(
     (min, s) => Math.min(min, s.start.getTime()),
     plan.i0.getTime(),
   );
-  const primerDia = new Date(primerInicio);
-  const rangeStart = new Date(
-    Date.UTC(
-      primerDia.getUTCFullYear(),
-      primerDia.getUTCMonth(),
-      primerDia.getUTCDate(),
-    ),
-  );
+  let rangeStart;
+  if (Number.isFinite(envRangeStart) && envRangeStart > 0) {
+    const DIA_MS = 24 * 3600000;
+    let t = envRangeStart;
+    while (t > primerInicio) t -= DIA_MS;
+    while (t + DIA_MS <= primerInicio) t += DIA_MS;
+    rangeStart = new Date(t);
+  } else {
+    rangeStart = medianochePlanta(primerInicio);
+  }
   const lastEndTime = plan.end.getTime();
   const totalHours = Math.max(
     24,
@@ -2191,8 +2208,8 @@ function renderGanttTanques(assignment, weekStartRaw) {
   const ultimo = Math.max(
     ...filas.map((r) => r.end.getTime() + aseoDe(r.tanque) * 3600000),
   );
-  const rangeStart =
-    primero < weekStart.getTime() ? new Date(primero) : weekStart;
+  // Calendario real: medianoche del primer día que hay que mostrar.
+  const rangeStart = medianochePlanta(Math.min(primero, weekStart.getTime()));
   const totalHours = Math.max(
     24,
     Math.ceil((ultimo - rangeStart.getTime()) / 3600000),
