@@ -1351,10 +1351,17 @@ function simulateBBTLifecycle(plan) {
   // Qué producto admite cada BBT (cerveza / Pony vidrio / Pony PET). Ver la nota
   // en catalog.js: no todo BBT sirve para todo.
   const admiteByKey = {};
+  const noDisponible = {};
   if (typeof TANK_CATALOG !== "undefined") {
     (TANK_CATALOG || [])
-      .filter((t) => t.tipo === "BBT" && t.disponible !== false)
+      .filter((t) => t.tipo === "BBT")
       .forEach((t) => {
+        if (t.disponible === false) {
+          // Marcado como inexistente o fuera de servicio: se anota para poder
+          // descartarlo también si viene en la hoja del inventario.
+          noDisponible[nText(t.equipo)] = true;
+          return;
+        }
         const k = nText(t.equipo);
         capByKey[k] = Number(t.capacidadHL) || 0;
         nameByKey[k] = t.equipo;
@@ -1371,16 +1378,22 @@ function simulateBBTLifecycle(plan) {
       .filter((e) => e.tipo === "BBT")
       .forEach((e, idx) => {
         const k = nText(e.equipo);
+        if (noDisponible[k]) return; // no existe: la fila del reporte se ignora
         invKeys.add(k);
         const cap = capByKey[k] || Math.max(Number(e.hL) || 0, capDefault);
+        // Un BBT del inventario SIN producto está vacío, no "en envase": si no,
+        // el llenado nunca lo tomaba, porque solo busca tanques vacíos. (Antes no
+        // se notaba porque los vacíos ni siquiera llegaban del inventario.)
+        const hL = Math.max(0, Math.round(Number(e.hL) || 0));
+        const vacio = e.vacio === true || hL <= 0;
         slots.push({
           equipo: e.equipo || nameByKey[k] || "BBT " + (idx + 1),
           cap,
-          hL: Math.max(0, Math.round(Number(e.hL) || 0)),
-          brandKey: nText(e.marcaTexto) || null,
-          marca: (e.marcaTexto || "").trim() || null,
-          mostoId: matchMosto(e.marcaTexto, MOSTO_CATALOG),
-          estado: "envase",
+          hL,
+          brandKey: vacio ? null : nText(e.marcaTexto) || null,
+          marca: vacio ? null : (e.marcaTexto || "").trim() || null,
+          mostoId: vacio ? null : matchMosto(e.marcaTexto, MOSTO_CATALOG),
+          estado: vacio ? "vacio" : "envase",
           libreEn: i0ms,
           admite: admiteByKey[k] || null,
         });
@@ -1510,8 +1523,34 @@ function simulateBBTLifecycle(plan) {
           const sirve = (s) =>
             typeof bbtAdmiteProducto !== "function" ||
             bbtAdmiteProducto(s, f.mostoId, f.marca);
+          // Igualdad de marca laxa, la misma de espacioAt: "aguila light" ~ "light".
+          const fk = f.marca ? nText(f.marca) : null;
+          const mismaMarca = (s) => {
+            if (!fk || !s.brandKey) return false;
+            return (
+              s.brandKey === fk ||
+              s.brandKey.includes(fk) ||
+              fk.includes(s.brandKey)
+            );
+          };
+          const conHueco = (s) => s.cap - s.hL > 1e-6;
           llenando =
-            slots.find((s) => s.estado === "llenando" && sirve(s)) ||
+            // 1) el que ya se está llenando con esta misma marca
+            slots.find(
+              (s) => s.estado === "llenando" && mismaMarca(s) && conHueco(s),
+            ) ||
+            // 2) uno que YA TIENE esta misma marca y todavía le cabe: se sigue
+            // llenando hasta completar su capacidad. Antes solo se miraban los
+            // tanques vacíos, así que ese hueco se desperdiciaba —y el aviso de
+            // espacio sí lo contaba, porque espacioAt siempre lo tuvo en cuenta.
+            slots.find(
+              (s) =>
+                s.estado === "envase" &&
+                mismaMarca(s) &&
+                conHueco(s) &&
+                sirve(s),
+            ) ||
+            // 3) uno vacío que admita el producto
             slots.find(
               (s) => s.estado === "vacio" && s.libreEn <= ms && sirve(s),
             ) ||

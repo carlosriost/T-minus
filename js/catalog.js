@@ -254,7 +254,13 @@ function envaseDeSKU(nombre) {
 // porque el envase no siempre se conoce: una fila de filtración que solo dice
 // "Pony HG" puede terminar en vidrio o en PET, y en ese caso valen los dos.
 function clasesProductoBBT(mostoId, nombreEnvasado) {
-  if (!esMostoPony(mostoId)) return ["cerveza"];
+  // El mosto no siempre viene: los tramos del Gantt de filtración solo llevan la
+  // marca. Si falta, se deduce del texto — si no, todo se tomaba por cerveza y
+  // los BBT de Pony quedaban descartados.
+  let mid = mostoId;
+  if (!mid && typeof matchMosto === "function")
+    mid = matchMosto(nombreEnvasado, MOSTO_CATALOG);
+  if (!esMostoPony(mid)) return ["cerveza"];
   const env = envaseDeSKU(nombreEnvasado);
   if (env === "pet") return ["ponypet"];
   if (env === "vidrio") return ["ponyvidrio"];
@@ -1204,16 +1210,20 @@ let TANK_CATALOG = [
   // por serie —BBT1 a BBT8 son de 800 hL y BBT19 a BBT26 de 1.300 hL, que es lo
   // que traen sus hermanos ya cargados— y el agua queda en 0 con prioridad A.
   // Hay que confirmar ambos datos y corregirlos desde «Equipos / Tanques».
+  // BBT8 NO EXISTE: la hoja "BBTs" del producto en proceso trae la fila, pero no
+  // hay tal tanque en la planta. Se deja aquí marcado como no disponible —en vez
+  // de borrarlo— para que la fila del reporte se ignore a propósito y no se le
+  // invente una capacidad al leerla.
   {
     id: "bbt8",
     equipo: "BBT8",
     tipo: "BBT",
     aguaPromedio: 0,
-    capacidadHL: 800,
-    admite: ["cerveza"],
+    capacidadHL: 0,
     indiceAguaCapacidad: 0,
     prioridad: "A",
-    disponible: true,
+    admite: [],
+    disponible: false,
     aseoHoras: parseHMS("1:00:00"),
   },
   {
