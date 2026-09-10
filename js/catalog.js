@@ -1140,6 +1140,67 @@ let TANK_CATALOG = [
     disponible: true,
     aseoHoras: parseHMS("1:00:00"),
   },
+  // Estos cinco están en la hoja "BBTs" del producto en proceso pero faltaban
+  // aquí, así que no contaban como espacio de dilución.
+  // OJO: no tenemos su capacidad ni su consumo de agua medidos. La capacidad va
+  // por serie —BBT1 a BBT8 son de 800 hL y BBT19 a BBT26 de 1.300 hL, que es lo
+  // que traen sus hermanos ya cargados— y el agua queda en 0 con prioridad A.
+  // Hay que confirmar ambos datos y corregirlos desde «Equipos / Tanques».
+  {
+    id: "bbt8",
+    equipo: "BBT8",
+    tipo: "BBT",
+    aguaPromedio: 0,
+    capacidadHL: 800,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
+  {
+    id: "bbt21",
+    equipo: "BBT21",
+    tipo: "BBT",
+    aguaPromedio: 0,
+    capacidadHL: 1300,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
+  {
+    id: "bbt23",
+    equipo: "BBT23",
+    tipo: "BBT",
+    aguaPromedio: 0,
+    capacidadHL: 1300,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
+  {
+    id: "bbt25",
+    equipo: "BBT25",
+    tipo: "BBT",
+    aguaPromedio: 0,
+    capacidadHL: 1300,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
+  {
+    id: "bbt26",
+    equipo: "BBT26",
+    tipo: "BBT",
+    aguaPromedio: 0,
+    capacidadHL: 1300,
+    indiceAguaCapacidad: 0,
+    prioridad: "A",
+    disponible: true,
+    aseoHoras: parseHMS("1:00:00"),
+  },
 ];
 
 function escapeHtml(s) {

@@ -881,28 +881,29 @@ function parseProductoEnProceso(workbook) {
       row = row || [];
       const bbt = row[0];
       const prod = row[1];
-      if (
-        typeof bbt === "string" &&
-        /^\s*bbt/i.test(bbt) &&
-        typeof prod === "string" &&
-        prod.trim() &&
-        norm(prod) !== "producto"
-      ) {
-        out.push({
-          equipo: bbt.trim(),
-          // PRODUCTO es la MARCA terminada (COSTEÑITA, PILSEN, PONY GO…), no el
-          // mosto: un BBT solo puede envasar esa marca.
-          marcaTexto: prod.trim(),
-          vacio: false,
-          tipo: "BBT",
-          diasEnEquipo: null,
-          // Col. D "TIEMPO DE ALMACENAMIENTO": horas que el lote lleva ya en el
-          // BBT. Solo viene diligenciada para Pony y sirve para saber cuál se
-          // acerca a su máximo de 48 h.
-          almacenBBTHoras: row[3] == null ? null : num(row[3]),
-          hL: Math.round(num(row[2])),
-        });
-      }
+      if (typeof bbt !== "string" || !/^\s*bbt/i.test(bbt)) return;
+      const prodTexto = typeof prod === "string" ? prod.trim() : "";
+      if (norm(prodTexto) === "producto") return; // fila de encabezado
+      // Un BBT SIN producto está VACÍO, no ausente: es el más disponible que hay,
+      // porque acepta cualquier marca. Antes se exigía que la celda PRODUCTO
+      // viniera diligenciada, así que los vacíos se caían del inventario y el
+      // programa no los veía como espacio libre. Se tratan igual que un FV o un
+      // SV vacío, que sí se incluían.
+      const vacio = prodTexto === "";
+      out.push({
+        equipo: bbt.trim(),
+        // PRODUCTO es la MARCA terminada (COSTEÑITA, PILSEN, PONY GO…), no el
+        // mosto: un BBT solo puede envasar esa marca.
+        marcaTexto: vacio ? "" : prodTexto,
+        vacio,
+        tipo: "BBT",
+        diasEnEquipo: null,
+        // Col. D "TIEMPO DE ALMACENAMIENTO": horas que el lote lleva ya en el
+        // BBT. Solo viene diligenciada para Pony y sirve para saber cuál se
+        // acerca a su máximo de 48 h.
+        almacenBBTHoras: row[3] == null ? null : num(row[3]),
+        hL: Math.round(num(row[2])),
+      });
     });
   }
 
