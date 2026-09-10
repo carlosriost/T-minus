@@ -852,8 +852,13 @@ function buildFiltracionPlan(st) {
   let nCiclo = 1;
   let prevWasLight = false;
 
-  function cerrarCiclo() {
-    if (cambioH > 0) {
+  // `absorbido` = el cierre lo cubre el CIP de cambio a Light: se reinicia el
+  // ciclo pero NO se dibuja ni se cuenta un "cambio de ciclo" aparte, porque el
+  // cambio de ciclo va DENTRO de ese CIP. Antes salían los dos pegados (media
+  // hora de cambio + las 8 h del CIP) y se contaba un cambio de ciclo que en la
+  // planta no existe como tal.
+  function cerrarCiclo(absorbido) {
+    if (cambioH > 0 && !absorbido) {
       segments.push({
         tipo: "cambio",
         marca: "Cambio de ciclo",
@@ -871,25 +876,30 @@ function buildFiltracionPlan(st) {
   filas.forEach((f, idx) => {
     const isLight = /\blight\b/.test(normalizeText(f.marca));
 
-    // Regla Light: un ciclo no puede pasar de [otra marca] -> [Light].
+    // CIP solo al cambiar de [otra marca] -> [Light]. No hay CIP entre Light y
+    // Light, ni cuando la filtración arranca directamente con Light (idx 0): se
+    // asume que ese aseo ya se hizo antes de I0.
+    const habraCipLight = isLight && !prevWasLight && cipH > 0 && idx > 0;
+
+    // Regla Light: un ciclo no puede pasar de [otra marca] -> [Light]. Si además
+    // toca CIP de cambio a Light, ese CIP YA INCLUYE el cambio de ciclo: se
+    // cierra el ciclo en silencio y solo se dibuja el CIP.
     if (
       isLight &&
       Number.isFinite(cicloCap) &&
       cicloTieneNoLight &&
       capRestante < cicloCap - 1e-6
     ) {
-      cerrarCiclo();
+      cerrarCiclo(habraCipLight);
     }
 
-    // CIP solo al cambiar de [otra marca] -> [Light]. No hay CIP entre Light y
-    // Light, ni cuando la filtración arranca directamente con Light (idx 0): se
-    // asume que ese aseo ya se hizo antes de I0.
-    if (isLight && !prevWasLight && cipH > 0 && idx > 0) {
+    if (habraCipLight) {
       segments.push({
         tipo: "cip",
         marca: "CIP cambio a Light",
         start: new Date(cursor),
         durH: cipH,
+        incluyeCambioCiclo: true,
       });
       cursor += cipH * 3600000;
       nCip += 1;
@@ -1080,7 +1090,8 @@ function renderGanttFiltracion(plan) {
     } else {
       const icon = seg.tipo === "cip" ? "🧼" : "🔁";
       const titleAttr = escapeHtml(
-        `${seg.marca} · ${fmtDateTime(seg.start)} → ${fmtDateTime(endTime)} (${dur})`,
+        `${seg.marca} · ${fmtDateTime(seg.start)} → ${fmtDateTime(endTime)} (${dur})` +
+          (seg.incluyeCambioCiclo ? " · incluye el cambio de ciclo" : ""),
       );
       blocksHtml += `<div class="block changeover" style="left:${left}px; width:${width}px;" title="${titleAttr}">${
         showText ? `<b>${escapeHtml(seg.marca)}</b><span>${dur}</span>` : `<b>${icon}</b>`
