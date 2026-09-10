@@ -15,23 +15,10 @@ const programI0Input = document.getElementById("programI0Input");
 const i0Badge = document.getElementById("i0Badge");
 
 // I0 se guarda localmente para que no tengas que escribirlo cada vez que abras el HTML.
-// El valor por defecto toma la fecha Y HORA actuales (hora de pared local), para poder
-// programar cocimientos enseguida el mismo día I0 sin tener que ajustar la hora a mano.
+// El valor por defecto es la fecha Y HORA actuales EN LA PLANTA (America/Bogota), para
+// poder programar cocimientos enseguida el mismo día I0 sin ajustar la hora a mano.
 const savedI0 = localStorage.getItem("planCocinasI0");
-const todayUTC = new Date();
-const defaultI0 =
-  savedI0 ||
-  toInputDateTimeUTC(
-    new Date(
-      Date.UTC(
-        todayUTC.getFullYear(),
-        todayUTC.getMonth(),
-        todayUTC.getDate(),
-        todayUTC.getHours(),
-        todayUTC.getMinutes(),
-      ),
-    ),
-  );
+const defaultI0 = savedI0 || toInputDateTimeUTC(ahoraPlanta());
 programI0Input.value = defaultI0;
 function refreshI0Badge() {
   const d = getI0Date();

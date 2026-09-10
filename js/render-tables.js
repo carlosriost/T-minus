@@ -660,7 +660,7 @@ function renderInventoryBalance(plan) {
           liberaHtml = '<span class="tag ok">Listo para envase</span>';
         } else {
           // Hora tope para envasarlo antes de pasarse del máximo en BBT.
-          const base = getI0Date() || new Date();
+          const base = getI0Date() || ahoraPlanta();
           const tope = new Date(base.getTime() + restanBBT * 3600000);
           liberaHtml =
             restanBBT <= 0
@@ -672,7 +672,7 @@ function renderInventoryBalance(plan) {
         if (faltanD <= 0) {
           liberaHtml = '<span class="tag ok">Listo para liberar</span>';
         } else {
-          const base = getI0Date() || new Date();
+          const base = getI0Date() || ahoraPlanta();
           const fecha = new Date(base.getTime() + faltanD * 86400000);
           liberaHtml = `${faltanD.toFixed(1)} d · ${fmtDate(fecha)}`;
         }
@@ -1070,7 +1070,7 @@ document.getElementById("addYeastBtn").addEventListener("click", () => {
     id: "levadura_" + Date.now(),
     mostoId: "light",
     origen: "",
-    disponibleDesde: toInputDateTimeUTC(getI0Date() || new Date()),
+    disponibleDesde: toInputDateTimeUTC(getI0Date() || ahoraPlanta()),
     disponible: true,
   });
   saveYeastAvailability();

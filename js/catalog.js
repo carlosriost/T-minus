@@ -246,7 +246,7 @@ function marcaBBTSirvePara(marcaBBT, nombreEnvasado, mostoId) {
 }
 
 function inventoryBatchesByMosto(catalog) {
-  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const catById = {};
   (catalog || []).forEach((m) => (catById[m.id] = m));
   const out = {};
@@ -310,7 +310,7 @@ function inventoryBatchesByMosto(catalog) {
 // terminado). Los equipos vacíos quedan como disponibles (faltanDias 0).
 function inventoryOccupancyByEquipo() {
   const out = {};
-  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const catById = {};
   (MOSTO_CATALOG || []).forEach((m) => (catById[m.id] = m));
   (INVENTORY_BALANCE || []).forEach((e) => {
@@ -385,7 +385,7 @@ function inventoryOccupancyByEquipo() {
 // que ya lleva en BBT). Si ya se pasó, la fecha cae en o antes de I0.
 // Devuelve {pony: Date|null, cerveza: Date|null} (cerveza siempre null).
 function proximoLimiteBBT(catalog) {
-  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const catById = {};
   (catalog || []).forEach((m) => (catById[m.id] = m));
   let pony = null;
@@ -448,7 +448,7 @@ function yeastCompatible(sourceMostoId, targetMostoId) {
 }
 function yeastAvailableDate(row) {
   if (!row || row.disponible === false) return null;
-  if (!row.disponibleDesde) return getI0Date() || new Date();
+  if (!row.disponibleDesde) return getI0Date() || ahoraPlanta();
   const d = new Date(row.disponibleDesde);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -469,7 +469,7 @@ function esFermentadorEXT(nombre) {
 //    del lote + 6 días.
 // Devuelve [{ mostoId, tipo:"light"|"general", fuente, fechaDisponible }].
 function computedYeastHarvests(tankAssignment) {
-  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const out = [];
 
   (INVENTORY_BALANCE || []).forEach((e) => {

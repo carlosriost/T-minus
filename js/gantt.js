@@ -2377,7 +2377,7 @@ function renderGanttTanques(assignment, weekStartRaw) {
 function renderTanquesProximosALiberar(lista) {
   const wrap = document.getElementById("tanquesProximosWrap");
   if (!wrap) return;
-  const i0 = (typeof getI0Date === "function" && getI0Date()) || new Date();
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const ultimaDe = {};
   (lista || []).forEach((x) => {
     const prev = ultimaDe[x.equipo];

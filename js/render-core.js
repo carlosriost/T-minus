@@ -80,7 +80,7 @@ function recompute() {
   // cada inicio se calcula a partir de la fecha/hora real de envasado de la marca.
   // La secuencia semanal NO vuelve a reconstruir el mes/año desde la celda FECHA.
   const weekStart =
-    STATE.parsed.weekStartDate || STATE.parsed.headerDate || new Date();
+    STATE.parsed.weekStartDate || STATE.parsed.headerDate || ahoraPlanta();
   const seq = sequenceWeek(
     plan,
     MOSTO_CATALOG,
@@ -148,7 +148,7 @@ function renderKPIs(plan, seq) {
     typeof proximoLimiteBBT === "function"
       ? proximoLimiteBBT(MOSTO_CATALOG)
       : { pony: null, cerveza: null };
-  const i0 = getI0Date() || new Date();
+  const i0 = getI0Date() || ahoraPlanta();
   const vencItem = (fecha, label) => ({
     n: fecha ? fmtDateTime(fecha) : "Sin límite en BBT",
     l: label,

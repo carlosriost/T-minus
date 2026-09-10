@@ -94,8 +94,12 @@ function mergeSuite360Weeks(parsedWeeks) {
 }
 
 function suiteCellDateUTC(v) {
+  // Componentes LOCALES: son los que traen el valor real de la celda (ver la
+  // nota sobre SheetJS en utils.js). Leyendo los UTC, en cualquier zona horaria
+  // al este de Greenwich la fecha se corría un día.
   if (isDateLike(v)) {
-    return new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
+    const f = excelFechaAPlanta(v);
+    if (f) return f;
   }
   const dmy = parseDMYStringUTC(v);
   if (dmy) return dmy;
@@ -173,9 +177,10 @@ function parseSuite360Workbook(workbook, sheetName) {
   }
   if (!firstDay) throw new Error('No se pudo leer el primer día en la hoja "' + sheetName + '".');
 
-  // La hora inicial de la cuadrícula. cellDates:true convierte las celdas
-  // "solo hora" aplicando un desfase de zona horaria (22:00 se lee como 02:56),
-  // así que se prefiere el texto ya formateado de la celda (.w = "22:00").
+  // La hora inicial de la cuadrícula. Se prefiere el texto ya formateado de la
+  // celda (.w = "22:00"): es literalmente lo que muestra Excel, sin intermediarios.
+  // El respaldo, cellTimeParts, lee los componentes locales del Date de SheetJS,
+  // que traen ese mismo valor (ver la nota sobre SheetJS en utils.js).
   function suiteHourParts(r, c) {
     const cell = ws[XLSX.utils.encode_cell({ r, c })];
     if (cell && cell.w) {
@@ -443,13 +448,7 @@ function parseLegacyWorkbook(workbook) {
   const headerRow = head.row;
   const headerDateRaw = aoa[headerRow][dateCol];
   const headerDate = isDateLike(headerDateRaw)
-    ? new Date(
-        Date.UTC(
-          headerDateRaw.getUTCFullYear(),
-          headerDateRaw.getUTCMonth(),
-          headerDateRaw.getUTCDate(),
-        ),
-      )
+    ? excelFechaAPlanta(headerDateRaw)
     : parseDMYStringUTC(headerDateRaw);
   if (!headerDate)
     throw new Error('No se pudo leer la fecha de referencia junto a "FECHA".');
@@ -612,17 +611,11 @@ function parseLegacyWorkbook(workbook) {
     }
     if (!isBlank(dayCell)) {
       const dateCell = row[dateCol];
-      if (isDateLike(dateCell)) {
+      if (isDateLike(dateCell) && excelFechaAPlanta(dateCell)) {
         // Si la semana viene explícita en el encabezado, se conserva su mes/año y
         // solo se toma el día de la celda cuando corresponda. Esto evita que una
         // fecha de referencia del mes anterior desplace el plan.
-        const parsedCellDate = new Date(
-          Date.UTC(
-            dateCell.getUTCFullYear(),
-            dateCell.getUTCMonth(),
-            dateCell.getUTCDate(),
-          ),
-        );
+        const parsedCellDate = excelFechaAPlanta(dateCell);
         if (explicitWeekStart) {
           const dayNum = parsedCellDate.getUTCDate();
           if (prevDayNum !== null && dayNum < prevDayNum) {
