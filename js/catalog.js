@@ -235,24 +235,62 @@ function ponyVariante(texto) {
    sirviendo mientras no se le indique lo contrario.
    --------------------------------------------------------------------------- */
 
-// Envase de un texto del plan: PET o vidrio, o null si no se puede saber.
-// Los SKU del instructivo sí lo dicen: los retornables de vidrio vienen como "R"
-// o "RB" ("Pony Malta R 330cc X 30") y los plásticos dicen PET ("Pony Mlta Pet
-// 330cc X 24"). Pero las filas del Gantt de filtración se llenan por MARCA
-// ("Pony GO", "Pony HG"), que es el mosto y no dice nada del envase: ahí se
-// devuelve null y no se restringe entre los dos tipos de Pony.
+// Envase de un SKU: es PET si el SKU lo dice, y todo lo demás es vidrio.
+// Los retornables de vidrio vienen como "R" o "RB" ("Pony Malta R 330cc X 30")
+// y los plásticos dicen PET ("Pony Mlta Pet 330cc X 24"), pero no hace falta
+// reconocer el vidrio: basta con que no diga PET.
 function envaseDeSKU(nombre) {
-  const n = normalizeText(nombre || "");
-  // "pet" / "r" / "rb" como palabra suelta, para no confundirse con otra que las
-  // contenga.
-  if (/(^|[^a-z])pet([^a-z]|$)/.test(n)) return "pet";
-  if (/(^|[^a-z])(r|rb)([^a-z]|$)/.test(n)) return "vidrio";
-  return null;
+  // "pet" como palabra suelta, para no confundirse con otra que la contenga.
+  return /(^|[^a-z])pet([^a-z]|$)/.test(normalizeText(nombre || ""))
+    ? "pet"
+    : "vidrio";
 }
 
-// Clases de BBT que sirven para guardar este producto. Se devuelve una lista
-// porque el envase no siempre se conoce: una fila de filtración que solo dice
-// "Pony HG" puede terminar en vidrio o en PET, y en ese caso valen los dos.
+// En qué envases se envasa una MARCA, según el instructivo cargado.
+// Las filas del Gantt de filtración se llenan por marca ("Pony GO", "Pony HG"),
+// que no es un SKU y por lo tanto nunca dice PET: aplicarle la regla directo la
+// daría siempre por vidrio. Así que se buscan los SKU de esa marca en el plan de
+// envasado y se les aplica la regla a ellos. Una marca puede ir en los dos
+// envases, y entonces valen los dos.
+// Sin instructivo cargado, o si la marca no aparece, se cae a la regla directa
+// sobre el texto (que es lo correcto cuando lo que llega YA es un SKU).
+function envasesDeMarca(texto) {
+  const t = normalizeText(texto || "");
+  if (!t) return [];
+  // Si el texto YA dice PET, es un SKU y no hay nada que deducir.
+  if (envaseDeSKU(texto) === "pet") return ["pet"];
+  const porTren =
+    (typeof STATE !== "undefined" && STATE && STATE.mergedByTrain) || null;
+  if (!porTren) return [envaseDeSKU(texto)];
+  // Si el texto es un SKU del plan, vale su propio envase: no se ensancha a los
+  // envases de toda la marca.
+  const esSKUdelPlan = (typeof TRAINS !== "undefined" ? TRAINS : []).some((tr) =>
+    (porTren[tr] || []).some((b) => normalizeText(b && b.name) === t),
+  );
+  if (esSKUdelPlan) return [envaseDeSKU(texto)];
+  const mostoTexto =
+    typeof matchMosto === "function" ? matchMosto(texto, MOSTO_CATALOG) : null;
+  const variante =
+    typeof ponyVariante === "function" && mostoTexto && esMostoPony(mostoTexto)
+      ? ponyVariante(texto)
+      : null;
+  const encontrados = {};
+  (typeof TRAINS !== "undefined" ? TRAINS : []).forEach((tr) => {
+    (porTren[tr] || []).forEach((b) => {
+      const sku = b && b.name;
+      if (!sku) return;
+      // Mismo mosto y, en Pony, la misma variante (GO / HG).
+      const m = typeof matchMosto === "function" ? matchMosto(sku, MOSTO_CATALOG) : null;
+      if (!m || m !== mostoTexto) return;
+      if (variante && ponyVariante(sku) !== variante) return;
+      encontrados[envaseDeSKU(sku)] = true;
+    });
+  });
+  const lista = Object.keys(encontrados);
+  return lista.length ? lista : [envaseDeSKU(texto)];
+}
+
+// Clases de BBT que sirven para guardar este producto.
 function clasesProductoBBT(mostoId, nombreEnvasado) {
   // El mosto no siempre viene: los tramos del Gantt de filtración solo llevan la
   // marca. Si falta, se deduce del texto — si no, todo se tomaba por cerveza y
@@ -261,16 +299,17 @@ function clasesProductoBBT(mostoId, nombreEnvasado) {
   if (!mid && typeof matchMosto === "function")
     mid = matchMosto(nombreEnvasado, MOSTO_CATALOG);
   if (!esMostoPony(mid)) return ["cerveza"];
-  const env = envaseDeSKU(nombreEnvasado);
-  if (env === "pet") return ["ponypet"];
-  if (env === "vidrio") return ["ponyvidrio"];
-  return ["ponyvidrio", "ponypet"];
+  return envasesDeMarca(nombreEnvasado).map((e) =>
+    e === "pet" ? "ponypet" : "ponyvidrio",
+  );
 }
 
 // ¿Este BBT puede recibir este producto?
 function bbtAdmiteProducto(tanque, mostoId, nombreEnvasado) {
-  const lista = tanque && tanque.admite;
-  if (!Array.isArray(lista) || !lista.length) return true; // sin restricción
+  if (!tanque || tanque.disponible === false) return false; // no existe / fuera
+  const lista = tanque.admite;
+  if (!Array.isArray(lista)) return true; // sin restricción declarada
+  if (!lista.length) return false; // declarado explícitamente como que no admite nada
   return clasesProductoBBT(mostoId, nombreEnvasado).some(
     (c) => lista.indexOf(c) >= 0,
   );
