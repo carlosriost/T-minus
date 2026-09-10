@@ -955,45 +955,32 @@ function renderGanttFiltracion(plan) {
     FIL_PX_PER_HOUR = Math.min(140, Math.ceil(px));
   }
 
-  // El eje tiene que arrancar EN FASE con el Gantt de envasado.
-  // El de envasado no empieza a medianoche sino en el instante real en que
-  // arranca la producción (la hora de la primera columna del instructivo, p. ej.
-  // las 17:00 del primer día), así que sus celdas de día van de 17:00 a 17:00.
-  // El de filtración empezaba en la medianoche del I0, o sea desfasado 7 h. Con
-  // orígenes distintos, un mismo instante caía en celdas rotuladas con días
-  // distintos en cada Gantt, y el cursor compartido —que sí marcaba la misma
-  // hora en los dos— parecía señalar días diferentes.
-  // Ahora se toma el origen del Gantt de envasado y se corre de día COMPLETO en
-  // día completo hasta la posición más tardía que siga cubriendo el inicio de la
-  // filtración: mismo minuto de corte en los dos ejes y celdas alineadas 1 a 1.
-  // Sin Gantt de envasado cargado se usa la medianoche del I0. Todo en
-  // componentes UTC, que es como esta app maneja la hora de planta (las fechas
-  // llegan de SheetJS con la hora del Excel en los componentes UTC, y fmtDate /
-  // fmtDateTime las leen así).
-  const envContainer = document.getElementById("ganttContainer");
-  const envRangeStart = envContainer
-    ? Number(envContainer.dataset.rangeStart)
-    : NaN;
+  // El eje arranca en la MEDIANOCHE del día en que empieza la filtración, para
+  // que cada celda sea un día de calendario completo y su rótulo sea la fecha
+  // real. Antes arrancaba en fase con el Gantt de envasado, que no empieza a
+  // medianoche sino en el instante real en que arranca la producción (la hora de
+  // la primera columna del instructivo, p. ej. las 22:00): con esa fase, la celda
+  // rotulada "Sáb 12/09" abarcaba en realidad del 12/09 22:00 al 13/09 22:00, y
+  // un I0 del 13/09 a las 00:00 aparecía bajo el rótulo del 12.
+  // Los dos Gantt siguen sincronizados minuto a minuto: cada bloque se ubica por
+  // su instante absoluto y el cursor compartido convierte la posición con el
+  // rangeStart de cada contenedor, así que un mismo instante cae en el mismo
+  // punto de la línea de tiempo en ambos. Lo que cambia es solo dónde se parten
+  // las celdas de día, que ahora coinciden con el calendario.
+  // El Gantt de envasado NO se toca: es fijo.
+  // Todo en componentes UTC, que es como esta app maneja la hora de planta.
   const primerInicio = segments.reduce(
     (min, s) => Math.min(min, s.start.getTime()),
     plan.i0.getTime(),
   );
-  let rangeStart;
-  if (Number.isFinite(envRangeStart) && envRangeStart > 0) {
-    const DIA_MS = 24 * 3600000;
-    let t = envRangeStart;
-    while (t > primerInicio) t -= DIA_MS;
-    while (t + DIA_MS <= primerInicio) t += DIA_MS;
-    rangeStart = new Date(t);
-  } else {
-    rangeStart = new Date(
-      Date.UTC(
-        plan.i0.getUTCFullYear(),
-        plan.i0.getUTCMonth(),
-        plan.i0.getUTCDate(),
-      ),
-    );
-  }
+  const primerDia = new Date(primerInicio);
+  const rangeStart = new Date(
+    Date.UTC(
+      primerDia.getUTCFullYear(),
+      primerDia.getUTCMonth(),
+      primerDia.getUTCDate(),
+    ),
+  );
   const lastEndTime = plan.end.getTime();
   const totalHours = Math.max(
     24,
