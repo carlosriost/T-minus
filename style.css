@@ -892,6 +892,28 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      /* Pestañita bajo cada BBT: fijar a mano si está enviando o por llenar. */
+      .bbt-gauge .bbt-modo {
+        width: 100%;
+        margin-top: 3px;
+        padding: 1px 2px;
+        font-size: 9.5px;
+        font-family: var(--mono);
+        color: var(--muted);
+        background: var(--input-bg);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .bbt-gauge .bbt-modo:hover {
+        border-color: var(--btn-border-hover);
+        color: var(--text);
+      }
+      /* Fijado a mano: se resalta para distinguirlo del automático. */
+      .bbt-gauge .bbt-modo:not([data-modo="auto"]) {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
       /* Marca del instante en que los BBTs se llenan + zona sin espacio */
       .fil-fill-mark {
         position: absolute;

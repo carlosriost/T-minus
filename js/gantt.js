@@ -707,6 +707,12 @@ const FILTRACION_STATE = {
   // true = se oculta la configuración (parámetros + tabla) para dejar el Gantt
   // de filtración pegado debajo del de envasado y poder compararlos.
   cfgOculta: false,
+  // Modo manual de cada BBT, por nombre de equipo:
+  //   "auto"     — lo decide la simulación (por defecto)
+  //   "enviando" — está enviando a envasado: NO se llena
+  //   "llenar"   — disponible para llenar: NO envía
+  // Son excluyentes porque un BBT no envía mientras se está llenando.
+  bbtModo: {},
 };
 (function loadFiltracionState() {
   try {
@@ -721,6 +727,8 @@ const FILTRACION_STATE = {
       FILTRACION_STATE.restanteCicloHL = Number(raw.restanteCicloHL) || 0;
       FILTRACION_STATE.desalojoHLh = Number(raw.desalojoHLh) || 0;
       FILTRACION_STATE.cfgOculta = !!raw.cfgOculta;
+      FILTRACION_STATE.bbtModo =
+        raw.bbtModo && typeof raw.bbtModo === "object" ? raw.bbtModo : {};
       const normFilas = (arr) =>
         (Array.isArray(arr) ? arr : []).map((f, i) => ({
           orden: f.orden === "" || f.orden == null ? i + 1 : Number(f.orden),
@@ -1468,7 +1476,16 @@ function simulateBBTLifecycle(plan) {
       ? p.nkey.includes(slot.brandKey) || slot.brandKey.includes(p.nkey)
       : !!slot.mostoId && p.mostoId === slot.mostoId;
 
+  // Modo manual de cada BBT (ver FILTRACION_STATE.bbtModo). "enviando" impide
+  // llenarlo y "llenar" impide que envíe: un BBT no envía mientras se llena.
+  const modoDe = (equipo) => {
+    const m = (FILTRACION_STATE.bbtModo || {})[String(equipo || "").trim()];
+    return m === "enviando" || m === "llenar" ? m : "auto";
+  };
   const estadoVis = (s, drained) => {
+    const modo = modoDe(s.equipo);
+    if (modo === "llenar" && s.estado !== "llenando" && s.estado !== "aseo")
+      return s.hL > 1e-6 ? "por llenar" : "vacío";
     if (s.estado === "vacio") return "vacío";
     if (s.estado === "llenando") return "llenando";
     if (s.estado === "postllenado") return "lleno";
@@ -1510,6 +1527,8 @@ function simulateBBTLifecycle(plan) {
         const s = slots[i];
         if (out <= 1e-6) break;
         if (s.estado !== "envase" || s.hL <= 1e-6) continue;
+        // Marcado a mano como "disponible para llenar": no envía.
+        if (modoDe(s.equipo) === "llenar") continue;
         if (!p.global && !packMatches(s, p)) continue;
         const take = Math.min(out, s.hL);
         s.hL -= take;
@@ -1545,10 +1564,16 @@ function simulateBBTLifecycle(plan) {
             );
           };
           const conHueco = (s) => s.cap - s.hL > 1e-6;
+          // Marcado a mano como "enviando": no se llena.
+          const libreParaLlenar = (s) => modoDe(s.equipo) !== "enviando";
           llenando =
             // 1) el que ya se está llenando con esta misma marca
             slots.find(
-              (s) => s.estado === "llenando" && mismaMarca(s) && conHueco(s),
+              (s) =>
+                s.estado === "llenando" &&
+                mismaMarca(s) &&
+                conHueco(s) &&
+                libreParaLlenar(s),
             ) ||
             // 2) uno que YA TIENE esta misma marca y todavía le cabe: se sigue
             // llenando hasta completar su capacidad. Antes solo se miraban los
@@ -1559,11 +1584,16 @@ function simulateBBTLifecycle(plan) {
                 s.estado === "envase" &&
                 mismaMarca(s) &&
                 conHueco(s) &&
-                sirve(s),
+                sirve(s) &&
+                libreParaLlenar(s),
             ) ||
             // 3) uno vacío que admita el producto
             slots.find(
-              (s) => s.estado === "vacio" && s.libreEn <= ms && sirve(s),
+              (s) =>
+                s.estado === "vacio" &&
+                s.libreEn <= ms &&
+                sirve(s) &&
+                libreParaLlenar(s),
             ) ||
             null;
           if (llenando) {
@@ -1697,6 +1727,9 @@ function bbtScrubTo(sliderVal) {
       const pct = t.cap > 0 ? Math.max(0, Math.min(100, (n.hL / t.cap) * 100)) : 0;
       if (n.hL > 0) conProd++;
       else libres++;
+      const modo =
+        (FILTRACION_STATE.bbtModo || {})[String(t.equipo || "").trim()] ||
+        "auto";
       const fillBg =
         n.estadoVis === "aseo"
           ? "repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px)"
@@ -1709,10 +1742,34 @@ function bbtScrubTo(sliderVal) {
         <div class="val">${Math.round(n.hL).toLocaleString("es-CO")}/${Math.round(t.cap).toLocaleString("es-CO")}</div>
         <div class="cap-label" title="${escapeHtml(n.marca || "")}">${n.marca ? escapeHtml(n.marca) : "—"}</div>
         <div class="cap-label" style="color:var(--accent2);">${n.estadoVis}</div>
+        <select class="bbt-modo" data-modo="${modo}" data-bbt="${escapeHtml(t.equipo)}" title="Un BBT no envía mientras se llena: aquí se fija a mano cuál de las dos cosas está haciendo.">
+          <option value="auto"${modo === "auto" ? " selected" : ""}>Auto</option>
+          <option value="enviando"${modo === "enviando" ? " selected" : ""}>Envía</option>
+          <option value="llenar"${modo === "llenar" ? " selected" : ""}>Llenar</option>
+        </select>
       </div>`;
     })
     .join("");
-  if (gaugesEl) gaugesEl.innerHTML = cards;
+  if (gaugesEl) {
+    gaugesEl.innerHTML = cards;
+    // Fijar a mano si el BBT está enviando o disponible para llenar. Son
+    // excluyentes: uno marcado como "enviando" no se llena, y uno "por llenar"
+    // no envía.
+    gaugesEl.querySelectorAll(".bbt-modo").forEach((sel) => {
+      // Seguro contra cambios accidentales: al desplazar la página con el cursor
+      // encima, la rueda del ratón cambia el valor de un <select> enfocado. Aquí
+      // eso significaría poner un BBT a enviar o a llenar sin querer, así que se
+      // le quita el foco al primer giro de rueda y la página sigue desplazándose.
+      sel.addEventListener("wheel", () => sel.blur(), { passive: true });
+      sel.addEventListener("change", () => {
+        if (!FILTRACION_STATE.bbtModo) FILTRACION_STATE.bbtModo = {};
+        const eq = sel.dataset.bbt;
+        if (sel.value === "auto") delete FILTRACION_STATE.bbtModo[eq];
+        else FILTRACION_STATE.bbtModo[eq] = sel.value;
+        recomputeFiltracion();
+      });
+    });
+  }
   if (info)
     info.textContent = `${fmtDateTime(new Date(ms))}  ·  ${conProd} con producto · ${libres} libres`;
 }
