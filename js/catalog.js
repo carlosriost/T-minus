@@ -223,6 +223,53 @@ function ponyVariante(texto) {
   return "hg";
 }
 
+/* ---- QUÉ ADMITE CADA BBT --------------------------------------------------
+   No todo BBT sirve para todo. La planta los tiene repartidos así:
+     · cerveza  (800 hL)   BBT1 a BBT8 — solo cerveza
+     · cerveza  (1.300 hL) BBT19, BBT20, BBT22 — cerveza y además Pony vidrio
+                           BBT24 — solo cerveza
+     · Pony PET (1.200 hL) BBT21, BBT25, BBT26 — solo Pony PET
+                           BBT23 — Pony vidrio y Pony PET
+   El campo `admite` de cada tanque lleva esa lista. Un BBT sin `admite` no se
+   restringe, para que un equipo agregado a mano desde «Equipos / Tanques» siga
+   sirviendo mientras no se le indique lo contrario.
+   --------------------------------------------------------------------------- */
+
+// Envase de un texto del plan: PET o vidrio, o null si no se puede saber.
+// Los SKU del instructivo sí lo dicen: los retornables de vidrio vienen como "R"
+// o "RB" ("Pony Malta R 330cc X 30") y los plásticos dicen PET ("Pony Mlta Pet
+// 330cc X 24"). Pero las filas del Gantt de filtración se llenan por MARCA
+// ("Pony GO", "Pony HG"), que es el mosto y no dice nada del envase: ahí se
+// devuelve null y no se restringe entre los dos tipos de Pony.
+function envaseDeSKU(nombre) {
+  const n = normalizeText(nombre || "");
+  // "pet" / "r" / "rb" como palabra suelta, para no confundirse con otra que las
+  // contenga.
+  if (/(^|[^a-z])pet([^a-z]|$)/.test(n)) return "pet";
+  if (/(^|[^a-z])(r|rb)([^a-z]|$)/.test(n)) return "vidrio";
+  return null;
+}
+
+// Clases de BBT que sirven para guardar este producto. Se devuelve una lista
+// porque el envase no siempre se conoce: una fila de filtración que solo dice
+// "Pony HG" puede terminar en vidrio o en PET, y en ese caso valen los dos.
+function clasesProductoBBT(mostoId, nombreEnvasado) {
+  if (!esMostoPony(mostoId)) return ["cerveza"];
+  const env = envaseDeSKU(nombreEnvasado);
+  if (env === "pet") return ["ponypet"];
+  if (env === "vidrio") return ["ponyvidrio"];
+  return ["ponyvidrio", "ponypet"];
+}
+
+// ¿Este BBT puede recibir este producto?
+function bbtAdmiteProducto(tanque, mostoId, nombreEnvasado) {
+  const lista = tanque && tanque.admite;
+  if (!Array.isArray(lista) || !lista.length) return true; // sin restricción
+  return clasesProductoBBT(mostoId, nombreEnvasado).some(
+    (c) => lista.indexOf(c) >= 0,
+  );
+}
+
 // ¿El producto de un BBT sirve para envasar esta marca del plan?
 // El BBT trae la marca terminada tal cual la escribe la planta ("COSTEÑITA",
 // "PILSEN", "PONY GO") y el plan de envasado trae el SKU completo
@@ -1025,6 +1072,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 37.42,
     capacidadHL: 1300,
+    admite: ["cerveza", "ponyvidrio"],
     indiceAguaCapacidad: 0.029,
     prioridad: "A",
     disponible: true,
@@ -1036,6 +1084,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 52.56,
     capacidadHL: 1300,
+    admite: ["cerveza", "ponyvidrio"],
     indiceAguaCapacidad: 0.04,
     prioridad: "A",
     disponible: true,
@@ -1047,6 +1096,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 62.21,
     capacidadHL: 1300,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.048,
     prioridad: "A",
     disponible: true,
@@ -1058,6 +1108,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 75.75,
     capacidadHL: 1300,
+    admite: ["cerveza", "ponyvidrio"],
     indiceAguaCapacidad: 0.058,
     prioridad: "B",
     disponible: true,
@@ -1069,6 +1120,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 53.79,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.067,
     prioridad: "B",
     disponible: true,
@@ -1080,6 +1132,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 57.03,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.071,
     prioridad: "B",
     disponible: true,
@@ -1091,6 +1144,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 57.56,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.072,
     prioridad: "B",
     disponible: true,
@@ -1102,6 +1156,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 60.58,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.076,
     prioridad: "C",
     disponible: true,
@@ -1113,6 +1168,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 62.88,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.079,
     prioridad: "C",
     disponible: true,
@@ -1124,6 +1180,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 63.63,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.08,
     prioridad: "C",
     disponible: true,
@@ -1135,6 +1192,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 71.64,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0.09,
     prioridad: "C",
     disponible: true,
@@ -1152,6 +1210,7 @@ let TANK_CATALOG = [
     tipo: "BBT",
     aguaPromedio: 0,
     capacidadHL: 800,
+    admite: ["cerveza"],
     indiceAguaCapacidad: 0,
     prioridad: "A",
     disponible: true,
@@ -1162,7 +1221,8 @@ let TANK_CATALOG = [
     equipo: "BBT21",
     tipo: "BBT",
     aguaPromedio: 0,
-    capacidadHL: 1300,
+    capacidadHL: 1200,
+    admite: ["ponypet"],
     indiceAguaCapacidad: 0,
     prioridad: "A",
     disponible: true,
@@ -1173,7 +1233,8 @@ let TANK_CATALOG = [
     equipo: "BBT23",
     tipo: "BBT",
     aguaPromedio: 0,
-    capacidadHL: 1300,
+    capacidadHL: 1200,
+    admite: ["ponyvidrio", "ponypet"],
     indiceAguaCapacidad: 0,
     prioridad: "A",
     disponible: true,
@@ -1184,7 +1245,8 @@ let TANK_CATALOG = [
     equipo: "BBT25",
     tipo: "BBT",
     aguaPromedio: 0,
-    capacidadHL: 1300,
+    capacidadHL: 1200,
+    admite: ["ponypet"],
     indiceAguaCapacidad: 0,
     prioridad: "A",
     disponible: true,
@@ -1195,7 +1257,8 @@ let TANK_CATALOG = [
     equipo: "BBT26",
     tipo: "BBT",
     aguaPromedio: 0,
-    capacidadHL: 1300,
+    capacidadHL: 1200,
+    admite: ["ponypet"],
     indiceAguaCapacidad: 0,
     prioridad: "A",
     disponible: true,

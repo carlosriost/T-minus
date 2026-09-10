@@ -1146,12 +1146,11 @@ function renderGanttFiltracion(plan) {
       }
       return niveles[lo];
     };
-    const marcaActivaAt = (ms) => {
+    const segActivoAt = (ms) => {
       for (const s of segments) {
         if (s.tipo !== "fil") continue;
         const a = s.start.getTime();
-        if (ms >= a && ms < a + s.durH * 3600000)
-          return (s.marca || "").trim() || null;
+        if (ms >= a && ms < a + s.durH * 3600000) return s;
       }
       return null;
     };
@@ -1159,7 +1158,8 @@ function renderGanttFiltracion(plan) {
     const brandEq = (a, b) =>
       !!a && !!b && (a === b || a.includes(b) || b.includes(a));
     espacioAt = (ms) => {
-      const brand = marcaActivaAt(ms);
+      const seg = segActivoAt(ms);
+      const brand = seg ? (seg.marca || "").trim() || null : null;
       const bk = brand ? normalizeText(brand) : null;
       let general = 0;
       let marca = 0;
@@ -1168,9 +1168,16 @@ function renderGanttFiltracion(plan) {
         const libre = Math.max(0, t.cap - n.hL);
         general += libre;
         if (!bk) return;
-        // Un BBT VACÍO del todo sirve para cualquier marca: cuenta su capacidad.
-        // Un BBT CON LÍQUIDO solo cuenta si es de ESTA misma marca, y solo su
-        // hueco (cap − hL), porque se puede rellenar con esa misma marca.
+        // El BBT tiene que admitir el producto: uno de Pony PET no cuenta como
+        // espacio para cerveza aunque esté vacío, ni al revés.
+        if (
+          typeof bbtAdmiteProducto === "function" &&
+          !bbtAdmiteProducto(t, seg && seg.mostoId, brand)
+        )
+          return;
+        // Un BBT VACÍO del todo sirve para cualquier marca que admita: cuenta su
+        // capacidad. Un BBT CON LÍQUIDO solo cuenta si es de ESTA misma marca, y
+        // solo su hueco (cap − hL), porque se puede rellenar con esa misma marca.
         // Un BBT con líquido de otra marca no cuenta hasta quedar vacío.
         if (n.hL <= 1e-6 || brandEq(normalizeText(n.marca || ""), bk))
           marca += libre;
@@ -1341,6 +1348,9 @@ function simulateBBTLifecycle(plan) {
 
   const capByKey = {};
   const nameByKey = {};
+  // Qué producto admite cada BBT (cerveza / Pony vidrio / Pony PET). Ver la nota
+  // en catalog.js: no todo BBT sirve para todo.
+  const admiteByKey = {};
   if (typeof TANK_CATALOG !== "undefined") {
     (TANK_CATALOG || [])
       .filter((t) => t.tipo === "BBT" && t.disponible !== false)
@@ -1348,6 +1358,7 @@ function simulateBBTLifecycle(plan) {
         const k = nText(t.equipo);
         capByKey[k] = Number(t.capacidadHL) || 0;
         nameByKey[k] = t.equipo;
+        admiteByKey[k] = Array.isArray(t.admite) ? t.admite : null;
       });
   }
   const capVals = Object.values(capByKey).filter((v) => v > 0);
@@ -1371,6 +1382,7 @@ function simulateBBTLifecycle(plan) {
           mostoId: matchMosto(e.marcaTexto, MOSTO_CATALOG),
           estado: "envase",
           libreEn: i0ms,
+          admite: admiteByKey[k] || null,
         });
       });
   }
@@ -1385,6 +1397,7 @@ function simulateBBTLifecycle(plan) {
       mostoId: null,
       estado: "vacio",
       libreEn: i0ms,
+      admite: admiteByKey[k] || null,
     });
   });
   if (!slots.length) {
@@ -1440,7 +1453,13 @@ function simulateBBTLifecycle(plan) {
   };
 
   const dtMs = 5 * 60000;
-  const tanks = slots.map((s) => ({ equipo: s.equipo, cap: s.cap, hist: [], niveles: [] }));
+  const tanks = slots.map((s) => ({
+    equipo: s.equipo,
+    cap: s.cap,
+    admite: s.admite || null,
+    hist: [],
+    niveles: [],
+  }));
   const prev = slots.map(() => null);
   let llenando = null;
   let fillMs = null;
@@ -1485,9 +1504,17 @@ function simulateBBTLifecycle(plan) {
       let guard = 0;
       while (need > 1e-6 && guard++ < 128) {
         if (!llenando || llenando.estado !== "llenando") {
+          // Un BBT solo recibe lo que admite: los de Pony PET no aceptan cerveza
+          // ni Pony vidrio, y los de cerveza no aceptan Pony PET. Antes se tomaba
+          // el primer tanque vacío que hubiera, sin mirar el producto.
+          const sirve = (s) =>
+            typeof bbtAdmiteProducto !== "function" ||
+            bbtAdmiteProducto(s, f.mostoId, f.marca);
           llenando =
-            slots.find((s) => s.estado === "llenando") ||
-            slots.find((s) => s.estado === "vacio" && s.libreEn <= ms) ||
+            slots.find((s) => s.estado === "llenando" && sirve(s)) ||
+            slots.find(
+              (s) => s.estado === "vacio" && s.libreEn <= ms && sirve(s),
+            ) ||
             null;
           if (llenando) {
             llenando.estado = "llenando";
