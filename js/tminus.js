@@ -40,7 +40,6 @@ function estadoTren(bloques, t) {
   const finCorrida = actual && actual.type === "production" ? actual.end.getTime() : null;
   // Próximo cambio de formato: el próximo producto con otro envase/tamaño.
   // Los DPA no se miran aquí (en T-Minus se omiten; ver renderTminus).
-  // formato (lo que llegue primero).
   let cambio = null;
   for (const b of futuros) {
     if (b.type === "production" && fmtActual && formatoDeSKU(b.name) !== fmtActual) {
