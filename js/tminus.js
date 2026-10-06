@@ -4,7 +4,7 @@
    Toma el plan de envasado cargado y un instante de referencia («ahora»):
    por defecto el I0 de la programación, o la hora actual de la planta. Para
    cada tren dice qué está haciendo, cuánto falta para terminar la corrida,
-   para el próximo cambio de formato (DPA) y para el próximo paro (NST), y qué
+   para el próximo cambio de formato y para el próximo paro (NST), y qué
    viene después. Abajo, la secuencia de las próximas 12 horas y los eventos
    en orden. También muestra qué equipos de Utilities pide ese momento.
    ========================================================================= */
@@ -38,31 +38,28 @@ function estadoTren(bloques, t) {
   const futuros = bloques.filter((b) => b.start.getTime() > t);
   const fmtActual = actual && actual.type === "production" ? formatoDeSKU(actual.name) : null;
   const finCorrida = actual && actual.type === "production" ? actual.end.getTime() : null;
-  // Próximo cambio de formato: el próximo DPA, o el próximo producto con otro
+  // Próximo cambio de formato: el próximo producto con otro envase/tamaño.
+  // Los DPA no se miran aquí (en T-Minus se omiten; ver renderTminus).
   // formato (lo que llegue primero).
   let cambio = null;
   for (const b of futuros) {
-    if (b.type === "changeover") {
-      cambio = { ms: b.start.getTime(), txt: "DPA" };
-      break;
-    }
     if (b.type === "production" && fmtActual && formatoDeSKU(b.name) !== fmtActual) {
       cambio = { ms: b.start.getTime(), txt: formatoDeSKU(b.name) };
       break;
     }
   }
-  if (actual && actual.type === "changeover") cambio = { ms: actual.end.getTime(), txt: "termina DPA" };
   const paro = futuros.find((b) => b.type === "idle");
   // Próxima corrida programada después de la actual (puede ser el mismo SKU
   // si la línea para y vuelve a arrancar con él).
   const proximo = futuros.find((b) => b.type === "production");
+  const anterior = bloques.some((b) => b.end.getTime() <= t);
   const estado = !actual
-    ? { txt: "Sin plan", cls: "" }
+    ? anterior && futuros.length
+      ? { txt: "Entre corridas", cls: "" }
+      : { txt: "Sin plan", cls: "" }
     : actual.type === "production"
       ? { txt: "Envasando", cls: "ok" }
-      : actual.type === "changeover"
-        ? { txt: "Cambio DPA", cls: "warn" }
-        : actual.type === "idle"
+      : actual.type === "idle"
           ? { txt: "Paro NST", cls: "danger" }
           : { txt: actual.name || "Otro", cls: "" };
   return { actual, estado, finCorrida, cambio, paro, proximo };
@@ -82,8 +79,7 @@ function tminusBarras(bloques, desde, hasta) {
         const c = colorForPackagingEvent(b);
         return `<div class="tm-blk" style="left:${left}%;width:${width}%;background:${c.bg};color:${c.fg};" title="${tit}"><span>${escapeHtml(b.name || b.codigo || "")}</span></div>`;
       }
-      const cls = b.type === "changeover" ? "tm-dpa" : "tm-nst";
-      return `<div class="tm-blk ${cls}" style="left:${left}%;width:${width}%;" title="${tit}"><span>${b.type === "changeover" ? "DPA" : "NST"}</span></div>`;
+      return `<div class="tm-blk tm-nst" style="left:${left}%;width:${width}%;" title="${tit}"><span>NST</span></div>`;
     })
     .join("");
 }
@@ -95,7 +91,11 @@ function renderTminus() {
 
   const ref = tminusReferencia();
   const t = ref.getTime();
+  // En T-Minus solo los NST cuentan como parada: los DPA (cambios de formato)
+  // se omiten por completo —no aparecen en la línea de tiempo, en los eventos
+  // ni en los contadores—, como pidió Planeación.
   const porTren = bloquesPorTren();
+  TRAINS.forEach((tr) => (porTren[tr] = porTren[tr].filter((b) => b.type !== "changeover")));
   const estados = {};
   TRAINS.forEach((tr) => (estados[tr] = estadoTren(porTren[tr], t)));
 
@@ -110,11 +110,11 @@ function renderTminus() {
       ).length,
     0,
   );
-  const dpas6h = TRAINS.reduce(
+  const nst6h = TRAINS.reduce(
     (a, tr) =>
       a +
       porTren[tr].filter(
-        (b) => b.type === "changeover" && b.start.getTime() > t && b.start.getTime() <= t + 6 * 3600000,
+        (b) => b.type === "idle" && b.start.getTime() > t && b.start.getTime() <= t + 6 * 3600000,
       ).length,
     0,
   );
@@ -146,7 +146,7 @@ function renderTminus() {
   const kpis =
     modKpi("▶", "Líneas envasando", `${activas} <small>/ ${TRAINS.length}</small>`, `Turno ${turnoDe(t)}`, activas ? "var(--ok)" : "var(--muted)") +
     modKpi("▤", "Corridas que arrancan hoy", String(corridasHoy), fmtDate(ref)) +
-    modKpi("⇄", "Cambios DPA", String(dpas6h), "En las próximas 6 horas", dpas6h ? "var(--warn)" : "var(--muted)") +
+    modKpi("⏸", "Paros NST que arrancan", String(nst6h), "En las próximas 6 horas", nst6h ? "var(--warn)" : "var(--muted)") +
     modKpi("◔", "Utilización de la semana", util == null ? "—" : `${MOD_NF(util)}%`, si >= 0 ? `Horas envasando · ${escapeHtml(semanas[si].label)}` : "") +
     `<div class="acu-kpi"><div class="acu-kpi-ico" style="color:var(--accent);">♨</div><div><div class="acu-kpi-tit">Utilities en este momento</div><div class="tm-util">${utilTxt}</div><div class="acu-kpi-pie">Según las líneas funcionando</div></div></div>`;
 
@@ -201,7 +201,6 @@ function renderTminus() {
       const f = b.end.getTime();
       if (s > t && s <= hasta) {
         if (b.type === "production") eventos.push({ ms: s, tr, tipo: "ini", txt: `Inicio de corrida · ${b.name || b.codigo}` });
-        else if (b.type === "changeover") eventos.push({ ms: s, tr, tipo: "dpa", txt: "Inicio de cambio de formato (DPA)" });
         else if (b.type === "idle") eventos.push({ ms: s, tr, tipo: "nst", txt: "Inicio de paro (NST)" });
       }
       if (b.type === "production" && f > t && f <= hasta)
@@ -251,7 +250,7 @@ function renderTminus() {
             <div class="table-scroll"><table class="acu-tabla tm-tabla"><thead><tr>
               <th>Línea</th><th>Producto actual</th><th class="acu-c">T-Minus<br>fin de corrida</th><th class="acu-c">T-Minus<br>cambio formato</th><th class="acu-c">T-Minus<br>paro (NST)</th><th>Próximo producto</th>
             </tr></thead><tbody>${filas}</tbody></table></div>
-            <div class="tm-nota">T-Minus = tiempo que falta desde la referencia. Cambio de formato = el próximo DPA o el próximo producto con otro envase/tamaño, lo que llegue primero.</div>
+            <div class="tm-nota">T-Minus = tiempo que falta desde la referencia. Cambio de formato = el próximo producto con otro envase/tamaño. Aquí solo los NST cuentan como parada; los DPA se omiten.</div>
           </div>
           <div>
             <div class="acu-card"><div class="acu-card-tit">Próximos eventos (${TMINUS_VENTANA_H} h)</div>${eventosHtml}</div>
