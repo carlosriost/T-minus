@@ -340,17 +340,36 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.idle};"></span>Paro (NST)</div>` +
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.other};"></span>Otro</div>`;
 
+  // Filas de Utilidades (calderas y aire) según las líneas funcionando.
+  const utilRowsHtml =
+    typeof htmlFilasUtilidades === "function"
+      ? htmlFilasUtilidades(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
+      : "";
+
   container.innerHTML = `
     <div id="ganttScroll">
       <div id="ganttWrap" style="width:${labelWidth + totalWidth}px;">
         ${weekHeaderHtml}
         <div class="day-header" style="top:${weekHeaderHtml ? "24px" : "0"};">${dayHeaderHtml}</div>
         ${laneRowsHtml}
+        ${utilRowsHtml}
         <div class="gantt-xcursor" hidden></div>
       </div>
     </div>
-    <div class="legend">${legendItems}</div>
+    ${utilRowsHtml ? htmlControlesUtilidades() : ""}
+    <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}</div>
   `;
+
+  // Apartado Utilidades: al cambiar la caldera alterna o el Elliot se vuelve a
+  // pintar este Gantt (sin recargar el Excel), conservando el scroll.
+  if (utilRowsHtml)
+    conectarControlesUtilidades(() => {
+      const sc = document.getElementById("ganttScroll");
+      const x = sc ? sc.scrollLeft : 0;
+      renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks);
+      const sc2 = document.getElementById("ganttScroll");
+      if (sc2) sc2.scrollLeft = x;
+    });
 
   // Cursor de tiempo enlazado con el Gantt de filtración.
   container.dataset.rangeStart = rangeStart.getTime();
