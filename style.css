@@ -2153,3 +2153,45 @@
         margin-top: 14px;
         align-items: start;
       }
+
+      /* SLA Planta */
+      .sla-tabla td {
+        vertical-align: middle;
+      }
+      .sla-ind {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .sla-hist {
+        display: flex;
+        gap: 2px;
+        flex-wrap: nowrap;
+      }
+      .sla-h {
+        width: 6px;
+        height: 14px;
+        border-radius: 2px;
+        background: var(--line);
+        flex: none;
+      }
+      .sla-h.ok {
+        background: var(--ok);
+      }
+      .sla-h.nok {
+        background: var(--danger);
+      }
+      .sla-h.na {
+        background: var(--muted);
+        opacity: 0.5;
+      }
+
+      .table-scroll.mod-noclip {
+        max-height: none;
+      }

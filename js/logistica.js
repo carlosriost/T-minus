@@ -262,10 +262,47 @@ function colorScore(score) {
   return score == null ? "var(--muted)" : score >= 90 ? "var(--ok)" : score >= 60 ? "var(--warn)" : "var(--danger)";
 }
 
+// Pestaña activa del módulo de acuerdos: SLA Planta o Logística de envasado.
+let ACUERDOS_TAB = (() => {
+  try {
+    return localStorage.getItem("planAcuerdosTab") || "sla";
+  } catch (_) {
+    return "sla";
+  }
+})();
+
+// Vista «Acuerdos de servicio»: dos pestañas —los acuerdos en verde del SLA
+// Planta y los de logística de envasado— cada una con su propio score.
 function renderAcuerdosLogistica() {
-  const cont = document.getElementById("logisticaPanel");
-  if (!cont) return;
-  if (!STATE || !STATE.mergedByTrain) return modSinDatos(cont, "los acuerdos de logística");
+  const raiz = document.getElementById("logisticaPanel");
+  if (!raiz) return;
+  if (!STATE || !STATE.mergedByTrain) return modSinDatos(raiz, "los acuerdos de servicio");
+  const nSla = typeof SLA_PLANTA_VERDES !== "undefined" ? SLA_PLANTA_VERDES.length : 0;
+  raiz.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>Acuerdos de servicio</h3>
+        <div class="filtro-equipos" style="margin:0;">
+          <button data-acu-tab="sla" class="${ACUERDOS_TAB === "sla" ? "active" : ""}">SLA Planta (${nSla})</button>
+          <button data-acu-tab="log" class="${ACUERDOS_TAB === "log" ? "active" : ""}">Logística de envasado (5)</button>
+        </div>
+      </div>
+      <div class="panel-body" id="acuerdosTabBody"></div>
+    </div>`;
+  raiz.querySelectorAll("[data-acu-tab]").forEach((b) =>
+    b.addEventListener("click", () => {
+      ACUERDOS_TAB = b.dataset.acuTab;
+      try {
+        localStorage.setItem("planAcuerdosTab", ACUERDOS_TAB);
+      } catch (_) {}
+      renderAcuerdosLogistica();
+    }),
+  );
+  const body = document.getElementById("acuerdosTabBody");
+  if (ACUERDOS_TAB === "sla" && typeof renderSLAPlanta === "function") return renderSLAPlanta(body);
+  renderLogisticaEnvasado(body);
+}
+
+function renderLogisticaEnvasado(cont) {
   const ev = evaluarAcuerdosLogistica();
   const score = ev.score == null ? null : Math.round(ev.score);
   const col = colorScore(score);
@@ -312,14 +349,11 @@ function renderAcuerdosLogistica() {
 
   const c = ev.cfg;
   cont.innerHTML = `
-    <div class="panel">
-      <div class="panel-head"><h3>Acuerdos de servicio — Logística</h3><span class="sub">Medidos sobre el plan de envasado y el de filtración</span></div>
-      <div class="panel-body">
         <div class="acu-kpis">${kpis}</div>
         <div class="acu-grid">
           <div class="acu-card">
             <div class="acu-card-tit">Detalle de acuerdos de logística</div>
-            <div class="table-scroll"><table class="acu-tabla"><thead><tr><th>Acuerdo</th><th class="acu-c">Ponderación</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th><th class="acu-c">Estado</th></tr></thead>
+            <div class="table-scroll mod-noclip"><table class="acu-tabla"><thead><tr><th>Acuerdo</th><th class="acu-c">Ponderación</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th><th class="acu-c">Estado</th></tr></thead>
             <tbody>${filasHtml}</tbody>
             <tfoot><tr><td><b>Total medible</b></td><td class="acu-c"><b>${MOD_NF(ev.pondTotal)}%</b></td><td class="acu-c">—</td><td class="acu-c"><b>${MOD_NF(ev.puntajeTotal, 1)}</b></td><td class="acu-c"><b style="color:${col};">${score == null ? "—" : score + " / 100"}</b></td></tr></tfoot></table></div>
             <div class="log-umbrales">
@@ -333,9 +367,7 @@ function renderAcuerdosLogistica() {
               <div class="acu-nota">El score se normaliza sobre los acuerdos que sí se pueden medir. Formato de un SKU = envase + tamaño leídos del nombre (p. ej. «Vidrio 330 cc», «PET 1,5 L»).</div></div>
             <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Hallazgos clave</div>${hall || '<p class="empty-note">Sin acuerdos medibles todavía.</p>'}</div>
           </div>
-        </div>
-      </div>
-    </div>`;
+        </div>`;
 
   const rerender = () => {
     renderAcuerdosLogistica();

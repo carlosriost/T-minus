@@ -93,6 +93,14 @@ function recomendacionesPlan() {
     const ev = evaluarAcuerdosLogistica();
     ev.medibles.forEach((f) => acuerdos.push({ ...f, set: "Logística", ir: "view-logistica", nombre: f.texto }));
   }
+  if (typeof evaluarSLA === "function") {
+    // Los SLA que repiten un acuerdo de Elaboración no se duplican.
+    evaluarSLA()
+      .medibles.filter((f) => !(typeof SLA_A_REGLA !== "undefined" && SLA_A_REGLA[f.n]))
+      .forEach((f) =>
+        acuerdos.push({ ...f, set: "SLA Planta", ir: "view-logistica", nombre: `SLA ${f.n}: ${f.texto}`, ponderacion: 100, puntaje: f.cumplimiento }),
+      );
+  }
   acuerdos
     .filter((f) => f.estado === "critico" || f.estado === "parcial")
     .forEach((f) =>
@@ -102,7 +110,7 @@ function recomendacionesPlan() {
         ir: f.ir,
         titulo: `Mejorar el cumplimiento: ${f.nombre}`,
         detalle: f.detalle,
-        impacto: `${MOD_NF(f.cumplimiento)}% → +${MOD_NF(f.ponderacion - f.puntaje, 1)} pts posibles`,
+        impacto: f.set === "SLA Planta" ? `${MOD_NF(f.cumplimiento)}% de cumplimiento` : `${MOD_NF(f.cumplimiento)}% → +${MOD_NF(f.ponderacion - f.puntaje, 1)} pts posibles`,
         origen: `Acuerdo ${f.id}`,
       }),
     );
@@ -211,7 +219,7 @@ function renderRecomendacionesPlan() {
         <div class="acu-kpis">${kpis}</div>
         <div class="acu-grid">
           <div class="acu-card"><div class="acu-card-tit">Recomendaciones priorizadas (${recs.length})</div>
-            <div class="table-scroll"><table class="acu-tabla"><thead><tr><th class="acu-c">Prioridad</th><th>Recomendación</th><th>Impacto</th><th>Área</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
+            <div class="table-scroll mod-noclip"><table class="acu-tabla"><thead><tr><th class="acu-c">Prioridad</th><th>Recomendación</th><th>Impacto</th><th>Área</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
           </div>
           <div>
             <div class="acu-card"><div class="acu-card-tit">Hallazgos por área</div>${areas.length ? modBarras(areas, "") : '<p class="empty-note">Sin hallazgos.</p>'}</div>
