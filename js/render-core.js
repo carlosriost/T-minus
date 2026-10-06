@@ -59,7 +59,7 @@ function render(parsed) {
   if (weeksAlertEl) {
     const sinReconocer = parsed.sheetsSinReconocer || [];
     weeksAlertEl.innerHTML = sinReconocer.length
-      ? `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${sinReconocer.length} hoja(s) "Semana N" quedaron FUERA: ${sinReconocer.map(escapeHtml).join(", ")}.</div>`
+      ? `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${sinReconocer.length} hoja(s) quedaron FUERA de la programación: ${sinReconocer.map(escapeHtml).join(", ")}.</div>`
       : "";
   }
 

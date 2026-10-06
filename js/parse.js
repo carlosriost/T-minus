@@ -437,8 +437,75 @@ function parseSuite360Workbook(workbook, sheetName) {
   };
 }
 
+// Formato heredado (instructivo con FECHA y TREN-x): antes solo se leía la
+// PRIMERA hoja del libro, así que un Excel con una hoja por semana mostraba
+// únicamente la primera semana. Ahora se leen TODAS las hojas que tengan el
+// formato del plan, se ordenan por fecha y se fusionan en una sola línea de
+// tiempo, igual que las hojas "Semana N" de Suite 360.
 function parseLegacyWorkbook(workbook) {
-  const sheetName = workbook.SheetNames[0];
+  const leidas = [];
+  const avisos = [];
+  let primerError = null;
+  let primerErrorNoEsPlan = true;
+  workbook.SheetNames.forEach((name) => {
+    try {
+      const p = parseLegacySheet(workbook, name);
+      const nEventos = TRAINS.reduce(
+        (a, t) => a + ((p.rawEvents && p.rawEvents[t]) || []).length,
+        0,
+      );
+      if (!nEventos && !(p.summary || []).length) {
+        avisos.push(`${name} (sin datos de envasado)`);
+        return;
+      }
+      p.sheetName = name;
+      leidas.push(p);
+    } catch (err) {
+      // Hojas que no son un plan (portadas, tablas auxiliares…) se ignoran;
+      // solo se avisa si la hoja parecía un plan (tenía FECHA) y falló.
+      const noEsPlan = /no se encontr[oó] la celda "FECHA"/i.test(err.message);
+      if (!primerError || (!noEsPlan && primerErrorNoEsPlan)) {
+        primerError = err;
+        primerErrorNoEsPlan = noEsPlan;
+      }
+      if (!noEsPlan) avisos.push(`${name} (${err.message})`);
+    }
+  });
+  if (!leidas.length) throw primerError || new Error("El archivo no tiene hojas con el formato del plan de envasado.");
+
+  // Orden cronológico y sin semanas repetidas (dos hojas con el mismo primer día).
+  leidas.sort((a, b) => a.weekStartDate - b.weekStartDate);
+  const unicas = [];
+  leidas.forEach((p) => {
+    const dup = unicas.find(
+      (u) => u.weekStartDate.getTime() === p.weekStartDate.getTime(),
+    );
+    if (dup) avisos.push(`${p.sheetName} (repite la semana de la hoja "${dup.sheetName}"; se usó esa)`);
+    else unicas.push(p);
+  });
+
+  if (unicas.length === 1) {
+    const unica = unicas[0];
+    return {
+      ...unica,
+      weeks: [{ label: unica.weekLabel, start: unica.weekStartDate, end: unica.explicitWeekEnd }],
+      sheetsSinReconocer: avisos,
+    };
+  }
+  // Con varias semanas, la etiqueta larga de cada hoja ("SEMANA: Del 05 octubre
+  // al 11 octubre Semana: 41") se acorta a "Semana 41" para que quepan todas.
+  unicas.forEach((p) => {
+    const m = normalizeText(p.weekLabel || "").match(/semana\s*:?\s*(\d{1,2})(?!\d|\s*(?:de\s+)?[a-z])/);
+    const num = m ? m[1] : (String(p.sheetName).match(/\d+/) || [""])[0];
+    p.weekLabel = num ? "Semana " + num : p.sheetName;
+  });
+  const merged = mergeSuite360Weeks(unicas);
+  merged.summary = unicas.flatMap((p) => p.summary || []);
+  merged.sheetsSinReconocer = avisos;
+  return merged;
+}
+
+function parseLegacySheet(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(ws, {
     header: 1,
