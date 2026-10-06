@@ -119,6 +119,9 @@ function recompute() {
   // El Gantt de filtración usa la velocidad de las líneas del instructivo para
   // el desalojo de BBTs: recalcularlo cuando cambie el análisis de envasado.
   if (typeof recomputeFiltracion === "function") recomputeFiltracion();
+  // Módulos de seguimiento: volumen, T-Minus, acuerdos de logística, CIP A/B/C,
+  // resumen de fermentadores y recomendaciones. Leen lo que se acaba de calcular.
+  if (typeof renderModulosSeguimiento === "function") renderModulosSeguimiento();
 }
 
 function renderKPIs(plan, seq) {

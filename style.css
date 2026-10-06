@@ -1745,3 +1745,411 @@
         flex-basis: 100%;
         height: 0;
       }
+
+      /* =====================================================================
+         MÓDULOS DE SEGUIMIENTO (Volumen, T-Minus, Logística, CIP, Recomendaciones)
+         ===================================================================== */
+      td.num,
+      th.num {
+        text-align: right;
+        font-family: var(--mono);
+        white-space: nowrap;
+      }
+      .mod-donut-n {
+        font-size: 22px;
+      }
+      .mod-barras {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .mod-barra {
+        display: grid;
+        grid-template-columns: minmax(90px, 140px) 1fr auto;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+      }
+      .mod-barra-l {
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mod-barra-t {
+        height: 12px;
+        background: var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .mod-barra-t span {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+      }
+      .mod-barra-v {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text);
+        text-align: right;
+        min-width: 70px;
+      }
+      .mod-barra-v small {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      /* Volumen */
+      .vol-tabla td,
+      .vol-tabla th {
+        white-space: nowrap;
+      }
+      .vol-tabla tr.vol-total td {
+        border-top: 2px solid var(--line);
+        background: var(--panel);
+      }
+      .vol-dot {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .vol-check {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .vol-check:first-of-type {
+        border-top: none;
+      }
+      .vol-check b {
+        color: var(--text);
+        font-size: 12.5px;
+      }
+      .vol-check-ico {
+        flex: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        color: #fff;
+        font-size: 12px;
+      }
+      .vol-check-ico.ok {
+        background: var(--ok);
+      }
+      .vol-check-ico.bad {
+        background: var(--warn);
+      }
+
+      /* T-Minus */
+      .tm-modo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        color: var(--muted);
+        flex-wrap: wrap;
+      }
+      .tm-ref {
+        font-family: var(--mono);
+        color: var(--accent);
+        margin-left: 4px;
+      }
+      .tm-util {
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.35;
+        color: var(--text);
+        margin: 2px 0;
+      }
+      .tm-tabla td {
+        vertical-align: middle;
+      }
+      .tm-prod {
+        font-family: var(--sans);
+        font-size: 12px;
+        color: var(--text);
+        min-width: 140px;
+      }
+      .tm-sub {
+        display: block;
+        color: var(--muted);
+        font-size: 10.5px;
+        font-family: var(--mono);
+        margin-top: 2px;
+      }
+      .tm-chip {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 5px;
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 12.5px;
+        color: #fff;
+        min-width: 74px;
+      }
+      .tm-fin {
+        background: #2e9d6a;
+      }
+      .tm-cambio {
+        background: #1f3a5f;
+      }
+      .tm-paro {
+        background: #4f6bd8;
+      }
+      .tm-none {
+        background: transparent;
+        color: var(--muted);
+        border: 1px dashed var(--line);
+      }
+      .tm-line-cell {
+        min-width: 300px;
+        width: 34%;
+      }
+      .tm-line {
+        position: relative;
+        height: 30px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .tm-line.tm-axis {
+        height: 18px;
+        background: transparent;
+        border: none;
+        overflow: visible;
+      }
+      .tm-tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-left: 1px dashed var(--line);
+        font-family: var(--mono);
+        font-size: 9.5px;
+        color: var(--muted);
+        padding-left: 2px;
+      }
+      .tm-axis .tm-tick {
+        border-left: none;
+        transform: translateX(-50%);
+        padding: 0;
+      }
+      .tm-blk {
+        position: absolute;
+        top: 3px;
+        bottom: 3px;
+        border-radius: 3px;
+        font-size: 9.5px;
+        font-weight: 650;
+        overflow: hidden;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        padding: 0 4px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+      }
+      .tm-blk span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tm-dpa {
+        background: repeating-linear-gradient(45deg, var(--changeover-c1), var(--changeover-c1) 4px, var(--changeover-c2) 4px, var(--changeover-c2) 8px);
+        color: var(--changeover-text);
+      }
+      .tm-nst {
+        background: #3226e8;
+        color: #fff;
+      }
+      .tm-now {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--accent);
+        box-shadow: 0 0 0 1px var(--panel);
+      }
+      .tm-nota {
+        font-size: 10.5px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      .tm-ev {
+        display: grid;
+        grid-template-columns: 10px 46px 1fr;
+        gap: 8px;
+        align-items: start;
+        padding: 7px 0;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--text);
+      }
+      .tm-ev:first-of-type {
+        border-top: none;
+      }
+      .tm-ev .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-top: 4px;
+      }
+      .tm-ev b {
+        font-family: var(--mono);
+      }
+      .tm-ev small {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10.5px;
+      }
+      .tm-restr {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 9px 10px;
+        margin-top: 8px;
+        border-radius: 5px;
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--warn);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .tm-restr.grave {
+        border-left-color: var(--danger);
+      }
+      .tm-restr b {
+        color: var(--text);
+      }
+
+      /* Logística */
+      .log-umbrales {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .log-umbrales .acu-pond {
+        width: 92px;
+        margin: 0 4px;
+      }
+
+      /* CIP A/B/C */
+      .cip-letra {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 5px;
+        color: #111;
+        font-weight: 800;
+        font-size: 12px;
+      }
+      .cip-res {
+        display: grid;
+        grid-template-columns: 30px minmax(90px, 1fr) 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid var(--line);
+      }
+      .cip-res:first-of-type {
+        border-top: none;
+      }
+      .cip-res-txt b {
+        display: block;
+        font-size: 12.5px;
+        color: var(--text);
+      }
+      .cip-res-txt small,
+      .cip-res-v small {
+        display: block;
+        color: var(--muted);
+        font-size: 10.5px;
+      }
+      .cip-res-bar {
+        height: 10px;
+        background: var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .cip-res-bar span {
+        display: block;
+        height: 100%;
+      }
+      .cip-res-v {
+        font-family: var(--mono);
+        font-weight: 700;
+        text-align: right;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .cip-total {
+        display: flex;
+        justify-content: space-between;
+        border-top: 2px solid var(--line);
+        padding-top: 9px;
+        margin-top: 4px;
+        font-size: 12.5px;
+        color: var(--text);
+      }
+      .cip-total b {
+        font-family: var(--mono);
+        font-size: 15px;
+      }
+
+      .tm-seq {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tm-seq-row {
+        display: grid;
+        grid-template-columns: 70px 1fr;
+        align-items: center;
+        gap: 8px;
+      }
+      .tm-seq-l {
+        font-family: var(--mono);
+        font-weight: 650;
+        font-size: 12px;
+        color: var(--text);
+      }
+      .tm-seq .tm-line {
+        height: 34px;
+      }
+      .tm-seq .tm-line.tm-axis {
+        height: 16px;
+      }
+      .tm-seq .tm-blk {
+        font-size: 10.5px;
+      }
+
+      .rec-imp {
+        font-family: var(--sans);
+        font-size: 11.5px;
+        color: var(--text);
+        min-width: 110px;
+      }
+
+      .vol-grid3 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 14px;
+        margin-top: 14px;
+        align-items: start;
+      }
