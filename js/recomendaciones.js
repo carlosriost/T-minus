@@ -256,6 +256,7 @@ function alAbrirVista(view) {
     "view-logistica": renderAcuerdosLogistica,
     "view-recomendaciones": renderRecomendacionesPlan,
     "view-cip": renderCipABC,
+    "view-programa-cocinas": typeof renderProgramaCocinas === "function" ? renderProgramaCocinas : null,
   }[view];
   if (m)
     try {
