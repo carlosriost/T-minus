@@ -247,6 +247,7 @@ function renderModulosSeguimiento() {
   seguro(renderAcuerdosLogistica);
   seguro(renderCipABC);
   seguro(renderRecomendacionesPlan);
+  if (typeof renderPlanVsReal === "function") seguro(renderPlanVsReal);
 }
 // Al abrir una vista del menú se repinta su módulo, para que tome cambios
 // hechos en otras pantallas (p. ej. el plan de filtración o el catálogo).

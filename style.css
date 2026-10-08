@@ -2628,3 +2628,132 @@
       }
       .sp-tabla td { white-space: nowrap; }
       .sp-conf .sp-in { width: 64px; }
+
+      /* =====================================================================
+         PLAN VS. REAL DE COCINAS
+         Colores de mosto = paleta categórica validada del Programa de cocinas.
+         ===================================================================== */
+      .pvr-falta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 14px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        border: 1px solid var(--warn);
+        border-left-width: 4px;
+        border-radius: 6px;
+        background: var(--panel2);
+        font-size: 12.5px;
+        color: var(--text);
+      }
+      .pvr-falta b { color: var(--warn); }
+      .pvr-falta .btn { margin-left: auto; }
+      .pvr-tol { width: 70px; }
+      .pvr-kpis .acu-kpi-val { font-size: 20px; white-space: nowrap; }
+      .pc-dl .pvr-no, .pc-dl .pvr-ok { color: inherit; }
+      .pc-dl span.pvr-no { color: var(--danger); }
+      .pvr-grid2 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+      .pvr-linea { width: 100%; }
+      .pvr-tl { display: grid; grid-template-columns: 104px minmax(0, 1fr); }
+      .pvr-labs { border-right: 1px solid var(--line); }
+      .pvr-lab {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 10px 0 0;
+        text-align: right;
+        font-size: 12px;
+      }
+      .pvr-lab b { color: var(--text); font-weight: 650; }
+      .pvr-lab small { color: var(--muted); font-size: 10.5px; }
+      .pvr-lab-h small { font-style: italic; }
+      .pvr-svgwrap { overflow-x: auto; overflow-y: hidden; }
+      .pvr-svg { display: block; }
+      svg .pvr-carril { fill: var(--panel); stroke: var(--line); stroke-width: 1; rx: 4; }
+      svg .pvr-nada { fill: transparent; }
+      svg .pvr-grid-h { stroke-dasharray: 1 3; }
+      svg .pvr-i0 { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+      svg .pvr-i0-t { fill: var(--accent); font-weight: 700; }
+      svg .pvr-par { stroke: var(--pc-ax); stroke-width: 1; opacity: 0.55; }
+      svg .pvr-par.mal { stroke: var(--danger); stroke-width: 1.4; opacity: 0.9; }
+      svg .pvr-par.sel { stroke: var(--accent); stroke-width: 2.5; opacity: 1; }
+      svg .pc-pt { cursor: pointer; }
+      svg .pc-pt.pvr-solo { stroke: var(--text); stroke-width: 1.4; stroke-dasharray: 2 2; }
+      svg .pvr-bv { font-size: 9px; }
+      svg .pvr-ray-fondo { fill: var(--panel); }
+      .pvr-ley-solo { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.4px dashed var(--text); }
+      .pvr-ley-par { display: inline-block; width: 16px; height: 0; border-top: 1.5px solid var(--pc-ax); }
+      .pvr-ley-par.mal { border-top-color: var(--danger); }
+      .pvr-sw-plan { background: var(--pc-c1); }
+      .pvr-sw-real { background: repeating-linear-gradient(45deg, var(--pc-c1), var(--pc-c1) 2px, var(--panel) 2px, var(--panel) 5px); border: 1px solid var(--pc-c1); }
+      .pvr-seg { float: right; display: inline-flex; gap: 4px; font-weight: 400; }
+      #pvrDetalle { position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto; }
+      .pvr-desf {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: baseline;
+        gap: 2px 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        margin-bottom: 4px;
+      }
+      .pvr-desf span { font-size: 11.5px; color: var(--muted); }
+      .pvr-desf b { font-family: var(--mono); font-size: 22px; color: var(--text); }
+      .pvr-desf small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+      .pvr-desf.ok { border-color: var(--ok); }
+      .pvr-desf.ok b { color: var(--ok); }
+      .pvr-desf.mal { border-color: var(--danger); }
+      .pvr-desf.mal b { color: var(--danger); }
+      .pvr-ir-pc { margin-top: 10px; }
+      .pvr-ok { color: var(--ok); font-weight: 650; }
+      .pvr-no { color: var(--danger); font-weight: 650; }
+      .pvr-mas { color: var(--warn); font-size: 11px; }
+      .pvr-menos { color: var(--danger); font-size: 11px; }
+      .pvr-tsem td, .pvr-tsem th { white-space: nowrap; }
+      .pvr-sev {
+        display: inline-block;
+        min-width: 46px;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+        border: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .pvr-sev3 { background: var(--danger); border-color: var(--danger); color: #fff; }
+      .pvr-sev2 { border-color: var(--warn); color: var(--warn); }
+      .pvr-sev1 { border-color: var(--line); color: var(--text); }
+      .pvr-disc td { vertical-align: middle; }
+      .pvr-seq + .pvr-seq { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+      .pvr-seq-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; font-size: 12px; }
+      .pvr-seq-t span { color: var(--muted); font-size: 11.5px; }
+      .pvr-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+      .pvr-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 2px 8px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        font-size: 11.5px;
+        font-family: var(--mono);
+        background: var(--panel);
+        cursor: pointer;
+      }
+      .pvr-chip:hover { border-color: var(--btn-border-hover); }
+      .pvr-chip-aseo { cursor: default; color: var(--muted); border-style: dashed; }
+      .pvr-flecha { color: var(--muted); font-size: 12px; }
+      .pvr-mejor-plan, .pvr-mejor-real { color: var(--accent); }
+      .pvr-mejor-empate { color: var(--muted); }
+      .pvr-cob-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px; }
+      .pvr-cob-l { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+      .pvr-cob-l span { color: var(--muted); font-size: 11.5px; }
+      .pvr-fila-riesgo td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+      .pvr-cob td, .pvr-pares td { white-space: nowrap; }
+      .pvr-pares .pvr-fila { cursor: pointer; }
+      .pvr-pares .pvr-fila:hover td { background: var(--btn-bg-hover); }
+      .pvr-fila-sel td { background: var(--tab-active-bg) !important; }

@@ -63,6 +63,9 @@
           <button class="sb-item" data-view="view-programa-cocinas">
             <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="16" cy="14" r="1"/><circle cx="8" cy="18" r="1"/><circle cx="12" cy="18" r="1"/></svg></span><span class="sb-txt">Programa de cocinas (Excel)</span>
           </button>
+          <button class="sb-item" data-view="view-plan-vs-real">
+            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 17h18"/><circle cx="7" cy="7" r="1.6"/><circle cx="14" cy="7" r="1.6"/><circle cx="9" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/><path d="M7 8.6l2 6.8M14 8.6l3 6.8"/></svg></span><span class="sb-txt">Plan vs. real de cocinas</span>
+          </button>
 
           <div class="sb-group" data-group="prog">
             <button class="sb-head" type="button">
@@ -233,6 +236,7 @@
           <section class="view" id="view-gantt-filtracion" data-view-el></section>
 
           <section class="view" id="view-programa-cocinas" data-view-el><div id="programaCocinasPanel"></div></section>
+          <section class="view" id="view-plan-vs-real" data-view-el><div id="planVsRealPanel"></div></section>
           <section class="view" id="view-tminus" data-view-el><div id="tminusPanel"></div></section>
           <section class="view" id="view-logistica" data-view-el><div id="logisticaPanel"></div></section>
           <section class="view" id="view-recomendaciones" data-view-el><div id="recomendacionesPanel"></div></section>
@@ -592,6 +596,7 @@
     <script src="js/recomendaciones.js"></script>
     <script src="js/programa-cocinas.js"></script>
     <script src="js/setpoints.js"></script>
+    <script src="js/plan-vs-real.js"></script>
     <script src="js/ui.js"></script>
     <script>
       /* =====================================================================
@@ -609,6 +614,7 @@
           "configTabs",
           "results",
           "view-programa-cocinas",
+          "view-plan-vs-real",
           "view-tminus",
           "view-logistica",
           "view-recomendaciones",
@@ -670,6 +676,7 @@
             panel: "tab-aseo-periodico",
           },
           "view-programa-cocinas": { show: ["view-programa-cocinas"] },
+          "view-plan-vs-real": { show: ["view-plan-vs-real"] },
           "view-tminus": { show: ["view-tminus"] },
           "view-logistica": { show: ["view-logistica"] },
           "view-recomendaciones": { show: ["view-recomendaciones"] },
