@@ -108,7 +108,7 @@ function evaluarSLA() {
       Math.round(((arranques.length - conMalta.length) / arranques.length) * 100),
       `${conMalta.length} de ${arranques.length} arranques con malta`,
       conMalta.length
-        ? `Arrancan con malta: ${conMalta.map((r) => fmtDateTime(r.start)).join(", ")}. Ojo: la recomendación del motor de abrir la semana con Pony va en contra de este acuerdo.`
+        ? `Arrancan con malta: ${conMalta.map((r) => fmtDateTime(r.start)).join(", ")}.`
         : `Los ${arranques.length} arranques de cocina (inicio y después de paradas de 12 h o más) son con cerveza.`,
     );
   }

@@ -675,7 +675,7 @@ const RECOMENDACIONES = [
   {
     id: "r1",
     texto:
-      "Iniciar la producción semanal con Pony para aprovechar los aseos semanales y optimizar los consumos asociados a arranques y cambios de proceso.",
+      "Iniciar la producción semanal y los arranques después de paradas de cocina con mostos de cerveza, no con malta (acuerdo SLA Planta n.º 1).",
     impacto: "EE/HEAT/AGUA",
   },
   {
@@ -1747,7 +1747,8 @@ function sequenceWeek(
     // para repartirlas por la semana y NO dejarlas todas al final. Se aplica
     // cuando el bloque anterior no es Pony y hay una corrida de Pony que ya
     // puede arrancar dentro de su ventana de BBT sin parar la cocina.
-    if (!esMostoPony(prevMostoId)) {
+    // (Solo después de un bloque de cerveza: la APERTURA va con cerveza, ver abajo.)
+    if (prevMostoId && !esMostoPony(prevMostoId)) {
       let pIdx = -1;
       let pBest = Infinity;
       for (let i = 0; i < pending.length; i++) {
@@ -1784,6 +1785,39 @@ function sequenceWeek(
       ) {
         idx = pIdx;
         best = pBest;
+      }
+    }
+    // ARRANQUE CON CERVEZA (acuerdo SLA Planta n.º 1, prioridad definida por
+    // Planeación): la apertura de la programación y todo arranque después de
+    // una parada de la cocina (12 h o más sin cargar) se hace con cerveza, no
+    // con malta. Si el elegido es Pony y hay una marca de cerveza que pueda
+    // arrancar, entra la cerveza; la Pony sigue después. Solo se abre con malta
+    // si no queda ningún bloque de cerveza.
+    // Se compara de cargue a cargue, igual que lo mide el SLA. Si la cerveza
+    // no puede arrancar dentro de las 24 h siguientes (no tiene volumen que
+    // salga a tiempo), se deja la Pony: se prioriza la cerveza sin parar la
+    // cocina días enteros ni romper el máximo de la Pony en BBT.
+    const ultimoCargue = (() => {
+      for (let k = rows.length - 1; k >= 0; k--)
+        if (rows[k].tipo === "cocimiento") return rows[k].start.getTime();
+      return null;
+    })();
+    const esArranque =
+      !prevMostoId || (ultimoCargue != null && best - ultimoCargue >= 12 * HORA);
+    if (esArranque && esMostoPony(pending[idx].mostoId)) {
+      let c = -1;
+      let cbest = Infinity;
+      pending.forEach((b, i) => {
+        if (esMostoPony(b.mostoId)) return;
+        const a = arranqueDe(b);
+        if (a < cbest) {
+          cbest = a;
+          c = i;
+        }
+      });
+      if (c >= 0 && (!prevMostoId || cbest <= best + HORA24)) {
+        idx = c;
+        best = cbest;
       }
     }
     // LLENAR LA CORRIDA DE PONY hasta PONY_MAX antes de soltarla. Volver a
@@ -1932,6 +1966,8 @@ function sequenceWeek(
         ? new Date(cursorCadencia.getTime())
         : null;
     } else if (!prevMostoId && esMostoPony(block.mostoId)) {
+      // (Solo llega aquí si NO hay ningún bloque de cerveza que abrir: la
+      // apertura se hace con cerveza. Ver «ARRANQUE CON CERVEZA».)
       // APERTURA: la primera corrida de Pony va ANTES DE TODO — incluso antes
       // de la pre-carga de cerveza y aunque el lote se pase del máx. en BBT
       // (se marcará en rojo). Se ancla justo antes del inicio ideal más
@@ -2454,7 +2490,7 @@ function sequenceWeek(
     reglaWarnings,
     capacityWarnings,
     recomendaciones: {
-      // La secuencia abre con Pony (después de un aseo), antes de todo.
+      // ¿La secuencia abre con Pony? Lo deseado es que NO (abre con cerveza).
       iniciaConPony: esMostoPony(
         (rows.find((r) => r.tipo === "cocimiento") || {}).mostoId,
       ),

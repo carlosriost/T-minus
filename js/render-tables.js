@@ -234,15 +234,15 @@ function renderRecomendaciones(seq) {
       cls = "warn";
       detalle = "Carga un archivo para evaluar esta recomendación.";
     } else if (r.id === "r1") {
-      if (rec.iniciaConPony) {
+      if (!rec.iniciaConPony) {
         estado = "Aplicada";
         cls = "ok";
-        detalle = "La secuencia calculada inicia con el bloque de Pony.";
+        detalle = "La secuencia calculada abre con cerveza.";
       } else {
         estado = "No aplicada";
         cls = "warn";
         detalle =
-          "No fue posible ubicar a Pony al inicio de la semana sin incumplir alguna fecha límite de envasado (o no hay producción de Pony esta semana).";
+          "La secuencia abre con Pony porque no hay ningún bloque de cerveza que pueda arrancar primero.";
       }
     } else {
       if (rec.ponyJuntoAseo === null) {
