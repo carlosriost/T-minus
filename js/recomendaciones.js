@@ -257,6 +257,11 @@ function alAbrirVista(view) {
     "view-recomendaciones": renderRecomendacionesPlan,
     "view-cip": renderCipABC,
     "view-programa-cocinas": typeof renderProgramaCocinas === "function" ? renderProgramaCocinas : null,
+    // Setpoints: si cambió el plan de cocinas desde el último dibujo, se redibuja el Gantt.
+    "view-gantt-plan": () => {
+      if (typeof spNecesitaRedibujar === "function" && typeof redibujarGanttEnvasado === "function" && spNecesitaRedibujar()) redibujarGanttEnvasado();
+    },
+    "view-plan-vs-real": typeof renderPlanVsReal === "function" ? renderPlanVsReal : null,
   }[view];
   if (m)
     try {

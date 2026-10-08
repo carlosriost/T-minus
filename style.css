@@ -2470,3 +2470,161 @@
       svg.pc-compacto .pc-ev { stroke: none; fill-opacity: 0.22; }
       svg.pc-compacto .pc-ev.pc-paro { fill-opacity: 0.6; }
       svg.pc-compacto .pc-pt { stroke: none; }
+
+      /* =====================================================================
+         SETPOINTS DE VAPOR Y AIRE (filas bajo Utilidades en el Gantt de envasado)
+         Escala secuencial de un solo tono: más oscuro = más PSI. El valor va
+         siempre escrito encima, así que el color nunca es la única pista.
+         ===================================================================== */
+      :root {
+        --sp-0: #b7d3f6; --sp-0t: #0b0b0b;
+        --sp-1: #6da7ec; --sp-1t: #0b0b0b;
+        --sp-2: #2a78d6; --sp-2t: #ffffff;
+        --sp-3: #184f95; --sp-3t: #ffffff;
+        --sp-borde: rgba(255, 255, 255, 0.22);
+      }
+      body.theme-light {
+        --sp-0: #cfe2fa; --sp-0t: #0b0b0b;
+        --sp-1: #7fb2ee; --sp-1t: #0b0b0b;
+        --sp-2: #2a78d6; --sp-2t: #ffffff;
+        --sp-3: #184f95; --sp-3t: #ffffff;
+        --sp-borde: rgba(0, 0, 0, 0.28);
+      }
+      .sp-n0 { background: var(--sp-0); color: var(--sp-0t); }
+      .sp-n1 { background: var(--sp-1); color: var(--sp-1t); }
+      .sp-n2 { background: var(--sp-2); color: var(--sp-2t); }
+      .sp-n3 { background: var(--sp-3); color: var(--sp-3t); }
+      /* Sin requerimiento definido: rayado tenue. */
+      .sp-nada {
+        background: repeating-linear-gradient(45deg, var(--changeover-c1), var(--changeover-c1) 6px, var(--changeover-c2) 6px, var(--changeover-c2) 12px);
+        color: var(--changeover-text);
+      }
+      /* Sin plan de cocinas para ese tramo: no se inventa el setpoint. */
+      .sp-desc {
+        background: repeating-linear-gradient(-45deg, transparent, transparent 5px, var(--line) 5px, var(--line) 7px);
+        color: var(--muted);
+      }
+      .sp-row .lane-track { height: 46px; }
+      .block.sp-block {
+        top: 6px;
+        height: 34px;
+        border-radius: 4px;
+        border: 1px solid var(--sp-borde);
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        padding: 0 8px;
+      }
+      .block.sp-desc { border-style: dashed; box-shadow: none; }
+      .block.sp-block b {
+        color: inherit;
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .block.sp-block b { flex: none; }
+      .block.sp-block span {
+        min-width: 0;
+        color: inherit;
+        opacity: 0.9;
+        font-family: var(--sans);
+        font-size: 10.5px;
+      }
+      .block.sp-block:hover b { text-shadow: none; }
+      .sp-rombo {
+        position: absolute;
+        top: 0;
+        width: 10px;
+        height: 10px;
+        margin-left: -5px;
+        transform: rotate(45deg);
+        background: var(--accent);
+        border: 1px solid var(--bg);
+        z-index: 3;
+      }
+      .legend .sw.sp-desc { border: 1px dashed var(--muted); }
+      .sp-rombo-ley {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        transform: rotate(45deg);
+        background: var(--accent);
+      }
+      .legend .sw.sp-sw {
+        width: auto;
+        height: auto;
+        min-width: 26px;
+        padding: 1px 5px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .sp-sep-track {
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .sp-sep-track span { position: sticky; left: 106px; white-space: nowrap; }
+      .sp-panel {
+        padding: 12px 20px 18px;
+        border-top: 1px solid var(--line);
+      }
+      .sp-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 22px;
+        margin-bottom: 12px;
+        font-size: 12px;
+      }
+      .sp-aviso {
+        color: var(--warn);
+        font-size: 12px;
+      }
+      .sp-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+      @media (max-width: 1100px) {
+        .sp-grid { grid-template-columns: minmax(0, 1fr); }
+      }
+      .sp-filtros {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: auto;
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .sp-panel .acu-card-tit {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .sp-psi {
+        display: inline-block;
+        min-width: 30px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-weight: 700;
+        text-align: center;
+      }
+      .sp-turno {
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--muted);
+      }
+      .sp-tabla td { white-space: nowrap; }
+      .sp-conf .sp-in { width: 64px; }

@@ -160,9 +160,23 @@ function medianochePlanta(ms) {
   );
 }
 
+// Últimos argumentos con que se pintó el Gantt de envasado: permiten volver a
+// pintarlo sin recalcular el plan (p. ej. al cargar el Excel de Cocinas, que
+// cambia los setpoints de aire si se eligió el plan real).
+let GANTT_ENV_ARGS = null;
+function redibujarGanttEnvasado() {
+  if (!GANTT_ENV_ARGS) return;
+  const sc = document.getElementById("ganttScroll");
+  const x = sc ? sc.scrollLeft : 0;
+  renderGanttEnvasado(...GANTT_ENV_ARGS);
+  const sc2 = document.getElementById("ganttScroll");
+  if (sc2) sc2.scrollLeft = x;
+}
+
 function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   const container = document.getElementById("ganttContainer");
   if (!container) return;
+  GANTT_ENV_ARGS = [mergedByTrain, weekStartRaw, weeks];
   const allBlocks = TRAINS.flatMap((t) =>
     (mergedByTrain[t] || []).map((b) => ({ ...b, train: t })),
   );
@@ -345,6 +359,11 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     typeof htmlFilasUtilidades === "function"
       ? htmlFilasUtilidades(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
       : "";
+  // Filas de setpoints de vapor y aire (js/setpoints.js), debajo de Utilidades.
+  const spRowsHtml =
+    typeof htmlFilasSetpoints === "function"
+      ? htmlFilasSetpoints(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
+      : "";
 
   container.innerHTML = `
     <div id="ganttScroll">
@@ -353,23 +372,21 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
         <div class="day-header" style="top:${weekHeaderHtml ? "24px" : "0"};">${dayHeaderHtml}</div>
         ${laneRowsHtml}
         ${utilRowsHtml}
+        ${spRowsHtml}
         <div class="gantt-xcursor" hidden></div>
       </div>
     </div>
     ${utilRowsHtml ? htmlControlesUtilidades() : ""}
-    <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}</div>
+    <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}${spRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaSetpoints() : ""}</div>
+    ${spRowsHtml ? htmlPanelSetpoints(mergedByTrain) : ""}
   `;
 
   // Apartado Utilidades: al cambiar la caldera alterna o el Elliot se vuelve a
   // pintar este Gantt (sin recargar el Excel), conservando el scroll.
-  if (utilRowsHtml)
-    conectarControlesUtilidades(() => {
-      const sc = document.getElementById("ganttScroll");
-      const x = sc ? sc.scrollLeft : 0;
-      renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks);
-      const sc2 = document.getElementById("ganttScroll");
-      if (sc2) sc2.scrollLeft = x;
-    });
+  const redibujarGantt = redibujarGanttEnvasado;
+  if (utilRowsHtml) conectarControlesUtilidades(redibujarGantt);
+  // Panel de setpoints: fuente de cocinas, PSI editables y filtros de la tabla.
+  if (spRowsHtml) conectarPanelSetpoints(mergedByTrain, redibujarGantt);
 
   // Cursor de tiempo enlazado con el Gantt de filtración.
   container.dataset.rangeStart = rangeStart.getTime();
