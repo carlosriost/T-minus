@@ -382,10 +382,28 @@ function cocimientosDeDemanda(piezas, m) {
 // Cocimientos → campañas (corridas seguidas). Una campaña se cocina de corrido,
 // un cargue tras otro; entra el siguiente cocimiento del mosto mientras ninguno
 // quede adelantado más que la ventana del mosto (y la Pony, de a 5 como mucho).
+// Cocimientos que se planea juntar en un mismo FV. El lote fermenta desde su
+// ÚLTIMO llenado, así que el primero del lote tiene que esperar a los demás:
+// para que el lote completo quede listo a tiempo, cada cocimiento del lote debe
+// cargar antes de «necesidad del primero − proceso − los cargues que faltan».
+// 8 cocimientos = un FV de 4.800 hL (los de 7.200 reciben 12).
+const FV_LOTE_PLAN = 8;
+
 function agruparEnCampanas(cocs, m, mostoId) {
   const H = 3600000;
   if (!cocs.length) return [];
   const gap = (Number(m.tiempoEntreCarguesHoras) || 0) * H;
+  if ((Number(m.tiempoFermentacionHoras) || 0) > 0) {
+    const procMs =
+      ((Number(m.tiempoCocinaHoras) || 0) + (Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * H;
+    for (let i = 0; i < cocs.length; i += FV_LOTE_PLAN) {
+      const lote = cocs.slice(i, i + FV_LOTE_PLAN);
+      const limite = Math.min(...lote.map((c) => c.need)) - procMs;
+      lote.forEach((c, p) => {
+        c.latest = Math.min(c.latest, limite - (lote.length - 1 - p) * gap);
+      });
+    }
+  }
   const pony = esMostoPony(mostoId);
   const ventana =
     (pony
@@ -393,7 +411,7 @@ function agruparEnCampanas(cocs, m, mostoId) {
       : CAMPANA_VENTANA_HORAS[mostoId] != null
         ? CAMPANA_VENTANA_HORAS[mostoId]
         : 48) * H;
-  // Tope de tamaño: Pony de a 5 (acuerdo). Estándar y Pilsen de a 12: entre
+  // Tope de tamaño: Pony de a 5 (acuerdo). Estándar y Pilsen de a 6: entre
   // ellas no hay aseo, así que cortar la corrida no cuesta nada y deja meter a
   // tiempo la otra cerveza (una corrida de 20 Estándar dejaba la Pilsen 2 días
   // tarde). Light sí paga aseo al entrar, así que va completa.
@@ -416,8 +434,8 @@ function agruparEnCampanas(cocs, m, mostoId) {
   // Una Pony suelta (1 cocimiento) NO se junta a la fuerza con la siguiente:
   // para eso habría que cocinarla hasta 3 días antes y dejarla 72 h en el BBT,
   // que es justo el error que se veía (Pony en fechas que no tocaban). Si sale
-  // suelta es porque el envasado pide poca Pony en esa ventana; el acuerdo de
-  // corridas de 2 lo marca para que se revise el plan de envasado.
+  // suelta es porque el envasado pide poca Pony en esa ventana; la secuencia lo
+  // avisa en Conflictos de capacidad para que se revise el plan de envasado.
   const factor = Number(m.factorDilucion) || 1;
   return grupos.map((g) => {
     const r = rango(g);
@@ -1090,11 +1108,18 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
       if (!lote || lote.transferida || t.loteCerrado || !(t.volumenAsignado > 1e-9)) return;
       if (lote.ultimoLlenado == null) return;
       const viejo = ahora.getTime() - lote.ultimoLlenado > FV_MAX_ESPERA_LLENADO_HORAS * 3600000;
+      // Solo si HOY el lote llega a tiempo y con este cocimiento dejaría de
+      // llegar. Un lote que ya va tarde no se cierra por eso: cerrarlo no lo
+      // adelanta y dejaba cada FV con un solo cocimiento (se acababan los FV).
+      const listoHoy = lote.fermentEnd ? lote.fermentEnd.getTime() + (madH || 0) * 3600000 : null;
+      const listoCon = r ? r.end.getTime() + ((fermH || 0) + (madH || 0)) * 3600000 : null;
       const atrasaria =
         r &&
         lote.mostoId === r.mostoId &&
         lote.necesidadMin != null &&
-        r.end.getTime() + ((fermH || 0) + (madH || 0)) * 3600000 > lote.necesidadMin + 60000;
+        listoHoy != null &&
+        listoHoy <= lote.necesidadMin + 60000 &&
+        listoCon > lote.necesidadMin + 60000;
       if (!viejo && !atrasaria) return;
       t.releaseTime = lote.fermentEnd;
       t.loteCerrado = true;
@@ -1568,7 +1593,10 @@ function sequenceWeek(
   // 25 Pony seguidas. Con esta holgura corta, la cerveza cae dentro de la
   // ventana de Pony y sirve de separador.
   const MAX_ADELANTO_CERVEZA = 2 * DIA;
-  const aplicaTopeAdelanto = (id) => id === "estandar" || id === "pilsen";
+  const aplicaTopeAdelanto = (id) => id === "estandar" || id === "pilsen" || id === "light";
+  // Light: 3 días (la levadura manda, pero tampoco se cocina semanas antes;
+  // sin este tope, con la apertura desde el I0 se cocinaba toda el primer día).
+  const topeAdelantoMs = (id) => (id === "light" ? 3 * DIA : MAX_ADELANTO_CERVEZA);
   // Pony: el máximo REAL en BBT es tiempoMaxBBTHoras (48 h). La programación
   // puede estirarlo hasta 72 h como tope absoluto; entre el máximo y las 72 h el
   // bloque sale en ROJO para que el equipo lo revise. Nunca más de 72 h.
@@ -1922,7 +1950,7 @@ function sequenceWeek(
           : b.idealStarts[0].getTime();
       if (i0Ms != null) t = Math.max(t, i0Ms); // nunca antes del I0
       if (aplicaTopeAdelanto(b.mostoId))
-        t = Math.max(t, refAdel(b) - MAX_ADELANTO_CERVEZA);
+        t = Math.max(t, refAdel(b) - topeAdelantoMs(b.mostoId));
       if (prevMostoId && prevMostoId !== b.mostoId) {
         const info = getAseoDuracion(
           prevMostoId,
@@ -2016,6 +2044,45 @@ function sequenceWeek(
         best = pBest;
       }
     }
+    // NO DEJAR LA PONY TARDE POR COCINAR CERVEZA CON HOLGURA. Si cocinar
+    // primero el bloque elegido hace que una Pony pendiente pase de su «a más
+    // tardar», y meter antes esa Pony no deja tarde al elegido, entra la Pony.
+    // (La Pony no se puede adelantar: su BBT aguanta 48 h; la cerveza sí tiene
+    // holgura de días.)
+    if (!esMostoPony(pending[idx].mostoId)) {
+      const X = pending[idx];
+      const durX = Math.max(0, X.numCocimientos - 1) * X.gapHoras * HORA + X.cocinaHoras * HORA;
+      let cand = -1;
+      let candUrg = Infinity;
+      pending.forEach((b, i) => {
+        if (!esMostoPony(b.mostoId)) return;
+        const u = urgencia(b);
+        if (u < candUrg) {
+          candUrg = u;
+          cand = i;
+        }
+      });
+      if (cand >= 0) {
+        const P = pending[cand];
+        const aP = getAseoDuracion(X.mostoId, P.mostoId, resolvedAseo, aseoDefaultHoras);
+        const ponyDespues = best + durX + (!aP.sinAseo && aP.horas > 0 ? aP.horas * HORA : 0);
+        const arrP = arranqueDe(P);
+        const durP = Math.max(0, P.numCocimientos - 1) * P.gapHoras * HORA + P.cocinaHoras * HORA;
+        const aX = getAseoDuracion(P.mostoId, X.mostoId, resolvedAseo, aseoDefaultHoras);
+        const xDespues = arrP + durP + (!aX.sinAseo && aX.horas > 0 ? aX.horas * HORA : 0);
+        if (
+          arrP < ponyDespues &&
+          ponyDespues > candUrg + 3 * 60000 &&
+          arrP <= candUrg + 3 * 60000 &&
+          // …y al elegido no le pasa nada, o ya iba tarde de todas formas
+          // (atrasarlo unas horas más no cambia nada; dejar sin Pony la línea sí).
+          (xDespues <= urgencia(X) + 3 * 60000 || best > urgencia(X) + 3 * 60000)
+        ) {
+          idx = cand;
+          best = arrP;
+        }
+      }
+    }
     // ARRANQUE CON CERVEZA (acuerdo SLA Planta n.º 1, prioridad definida por
     // Planeación): la apertura de la programación y todo arranque después de
     // una parada de la cocina (12 h o más sin cargar) se hace con cerveza, no
@@ -2074,7 +2141,7 @@ function sequenceWeek(
           cbest + Math.max(0, cb.numCocimientos - 1) * cb.gapHoras * HORA + cb.cocinaHoras * HORA;
         const aseoVuelta = getAseoDuracion(cb.mostoId, pb.mostoId, resolvedAseo, aseoDefaultHoras);
         const vuelta = finCerveza + (!aseoVuelta.sinAseo && aseoVuelta.horas > 0 ? aseoVuelta.horas * HORA : 0);
-        ponyAtrasada = vuelta > limitePony + HORA;
+        ponyAtrasada = vuelta > limitePony + 3 * 60000;
       }
       if (c >= 0 && !ponyAtrasada && (!prevMostoId || cbest <= best + HORA24)) {
         idx = c;
@@ -2294,9 +2361,9 @@ function sequenceWeek(
     const refBloque = refAdel(block);
     if (
       aplicaTopeAdelanto(block.mostoId) &&
-      actualFirst.getTime() < refBloque - MAX_ADELANTO_CERVEZA
+      actualFirst.getTime() < refBloque - topeAdelantoMs(block.mostoId)
     )
-      actualFirst = new Date(refBloque - MAX_ADELANTO_CERVEZA);
+      actualFirst = new Date(refBloque - topeAdelantoMs(block.mostoId));
     if (
       yeastUsed &&
       yeastUsed.fechaDisponible.getTime() > actualFirst.getTime()
@@ -2506,14 +2573,28 @@ function sequenceWeek(
       }
     }
 
-    if (llegaTarde) {
+    // Con demanda por cocimiento el atraso se mide solo sobre los cocimientos
+    // que de verdad quedaron en este tramo (si el aseo periódico partió el
+    // bloque, el resto se juzga cuando se programe).
+    const colocados = rows.slice(rowStartIdx).filter((x) => x.tipo === "cocimiento");
+    const llegaTardeReal = block.cocs
+      ? colocados.some((x) => x.latestStart && (x.start - x.latestStart) / HORA > 0.05)
+      : llegaTarde;
+    if (llegaTardeReal) {
       const finReal = new Date(
         rows[rows.length - 1].end.getTime() +
           (block.fermentacionHoras + block.maduracionHoras) * HORA,
       );
-      const retraso = block.fechaEnvasado
-        ? (finReal.getTime() - block.fechaEnvasado.getTime()) / HORA
-        : retrasoRealHoras;
+      const retraso = block.cocs
+        ? Math.max(...colocados.map((x) => (x.start - x.latestStart) / HORA))
+        : block.fechaEnvasado
+          ? (finReal.getTime() - block.fechaEnvasado.getTime()) / HORA
+          : retrasoRealHoras;
+      // Con demanda por cocimiento, el aviso se cuenta con el cocimiento MÁS
+      // atrasado: cuándo queda listo y desde cuándo lo necesita su envasado.
+      const peor = block.cocs
+        ? colocados.reduce((a, x) => (!a || x.start - x.latestStart > a.start - a.latestStart ? x : a), null)
+        : null;
       capacityWarnings.push({
         tipo: "deadline",
         mostoId: block.mostoId,
@@ -2521,8 +2602,10 @@ function sequenceWeek(
         tren: block.tren,
         blockLabel: block.blockLabel,
         blockStart: rows[rowStartIdx].start,
-        blockEnd: finReal,
-        deadline: block.fechaEnvasado,
+        blockEnd: peor
+          ? new Date(peor.end.getTime() + (block.fermentacionHoras + block.maduracionHoras) * HORA)
+          : finReal,
+        deadline: peor && peor.necesidad ? peor.necesidad : block.fechaEnvasado,
         retrasoHoras: Math.max(0, retraso),
         detalle: `El bloque arrancó ${shiftHoras.toFixed(
           1,
@@ -2613,7 +2696,9 @@ function sequenceWeek(
     let racha = [];
     const cerrarRacha = () => {
       if (racha.length > PONY_MAX) {
-        racha.forEach((r) => (r.violaDeadline = true));
+        // Se avisa, pero NO se pinta como «llega tarde»: estos cocimientos
+        // pueden estar a tiempo; el problema es de secuencia, no de fecha.
+        racha.forEach((r) => (r.ponySeguidas = true));
         capacityWarnings.push({
           tipo: "ponyseguidas",
           mostoId: racha[0].mostoId,
@@ -2633,6 +2718,32 @@ function sequenceWeek(
       else cerrarRacha();
     });
     cerrarRacha();
+  }
+
+  // CORRIDAS DE PONY DE UN SOLO COCIMIENTO (acuerdo: mínimo 2 seguidos). Una
+  // corrida termina cuando entra otra marca o la cocina para 12 h o más.
+  {
+    const cocs = rows.filter((r) => r.tipo === "cocimiento");
+    const sueltas = [];
+    cocs.forEach((r, i) => {
+      if (!esMostoPony(r.mostoId)) return;
+      const ant = cocs[i - 1];
+      const sig = cocs[i + 1];
+      const pegada = (a, b) => a && b && esMostoPony(a.mostoId) && esMostoPony(b.mostoId) && b.start - a.start < 12 * HORA;
+      if (!pegada(ant, r) && !pegada(r, sig)) sueltas.push(r);
+    });
+    if (sueltas.length)
+      capacityWarnings.push({
+        tipo: "ponysuelta",
+        mostoId: "pony",
+        nombre: "Pony",
+        blockLabel: `${sueltas.length} corrida(s) de Pony de un solo cocimiento`,
+        blockStart: sueltas[0].start,
+        blockEnd: sueltas[sueltas.length - 1].end,
+        deadline: null,
+        retrasoHoras: sueltas.length,
+        detalle: `${sueltas.length} cocimiento(s) de Pony quedan solos (el acuerdo pide corridas de 2 o más): ${sueltas.map((r) => fmtDateTime(r.start)).join(", ")}. El envasado pide poca Pony en esas ventanas y juntarlos obligaría a dejarla más de 48 h en BBT; conviene revisar el plan de envasado de Pony.`,
+      });
   }
 
   // PONY QUE HUBO QUE CORRER POR FALTA DE MADURADOR.

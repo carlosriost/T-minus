@@ -111,19 +111,23 @@ function calcularTrazabilidad(cfg) {
   }));
   const svRows = (ta.rows || []).filter((t) => /^SV/.test(t.etapa || "") && t.tanque);
   cocs.forEach((c) => {
-    const fv = c.fv && c.fv[0];
-    const tr = fv
-      ? trasiegos.filter((x) => x.fv === fv.tanque && x.ms >= fv.desde - 60000).sort((a, b) => a.ms - b.ms)[0]
-      : trasiegos.filter((x) => x.pony && Math.abs(x.ms - c.fin) < 60000)[0];
-    if (tr) {
+    // Un cocimiento puede quedar repartido en dos FV: cuenta el lote que
+    // termine más tarde (el producto completo está listo cuando lo está el último).
+    const trs = c.fv && c.fv.length
+      ? c.fv
+          .map((fv) => trasiegos.filter((x) => x.fv === fv.tanque && x.ms >= fv.desde - 60000).sort((a, b) => a.ms - b.ms)[0])
+          .filter(Boolean)
+      : trasiegos.filter((x) => x.pony && Math.abs(x.ms - c.fin) < 60000).slice(0, 1);
+    if (trs.length) {
+      const tr = trs.reduce((a, b) => (b.ms + b.madH * TRZ_H > a.ms + a.madH * TRZ_H ? b : a));
       c.trasiego = tr.ms;
-      c.sv = [...new Set(svRows.filter((s) => s.mostoId === c.mostoId && Math.abs(s.start.getTime() - tr.ms) < 60000).map((s) => s.tanque))];
+      c.sv = [...new Set(svRows.filter((s) => s.mostoId === c.mostoId && trs.some((t) => Math.abs(s.start.getTime() - t.ms) < 60000)).map((s) => s.tanque))];
       c.listo = tr.ms + tr.madH * TRZ_H;
     }
     // El lote del FV fermenta desde su ÚLTIMO llenado: si el producto queda
     // listo después de que arranca su envasado, se avisa aunque el cargue
     // del cocimiento haya sido a tiempo.
-    const iniEnv = c.consumo.length ? Math.min(...c.consumo.map((x) => x.desde)) : null;
+    const iniEnv = c.consumo.length ? Math.min(...c.consumo.map((x) => x.desde)) : c.necesidad;
     c.tardeTanque = c.listo != null && iniEnv != null && c.listo > iniEnv + 60000;
     c.atrasoH = c.tardeTanque ? (c.listo - iniEnv) / TRZ_H : 0;
   });
@@ -149,11 +153,14 @@ function calcularTrazabilidad(cfg) {
   const F = cfg.frio;
   const tramos = [];
   cocs.forEach((c) => tramos.push({ a: c.fin, z: c.fin + F.mostoHoras * TRZ_H, w: F.mosto, motivo: `Enfriar mosto · ${trzNombreMosto(c.mostoId)} n.º ${c.n}` }));
+  // Lote de FV = lo que entra a un tanque hasta su trasiego (fermenta junto).
   const fvLotes = new Map();
   (ta.rows || []).forEach((t) => {
     if (!/^FV/.test(t.etapa || "") || !t.tanque) return;
-    const k = `${t.tanque}|${t.end.getTime()}`;
-    const o = fvLotes.get(k) || { tanque: t.tanque, a: t.start.getTime(), z: t.end.getTime(), mostoId: t.mostoId };
+    const tr = trasiegos.filter((x) => x.fv === t.tanque && x.ms >= t.start.getTime() - 60000).sort((a, b) => a.ms - b.ms)[0];
+    const fin = tr ? tr.ms : t.end.getTime();
+    const k = `${t.tanque}|${fin}`;
+    const o = fvLotes.get(k) || { tanque: t.tanque, a: t.start.getTime(), z: fin, mostoId: t.mostoId };
     o.a = Math.min(o.a, t.start.getTime());
     fvLotes.set(k, o);
   });

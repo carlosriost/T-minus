@@ -307,7 +307,8 @@ function asHtmlReglas() {
     <li>Cargue a más tardar de cada cocimiento = necesidad − maduración − fermentación − cocina.</li>
     <li>Los junta en campañas: Pony de a 5 y sin pasar 48 h en BBT; Estándar y Pilsen de a 6; Light completa (paga aseo al entrar). Cerveza máximo 2 días adelantada.</li>
     <li>Secuencia en la cocina única (2:50 entre cargues), con aseos de cambio de marca al entrar a Light o Pony (4:40) y aseo periódico cada 16–20 cocimientos; arranque con cerveza después de una parada; ≥ 24 h entre corridas de Pony; Light solo con levadura Light.</li>
-    <li>Asigna FV y SV; un FV no espera abierto más de 24 h ni recibe un cocimiento que atrase a los que ya tiene.</li></ol>
+    <li>Cuenta con que la cerveza se junta en FV de a 8 cocimientos y el lote fermenta desde su último llenado: el lote completo tiene que quedar listo antes del envasado de su primer cocimiento.</li>
+    <li>Asigna FV y SV; un FV no espera abierto más de 24 h ni recibe un cocimiento que atrase a un lote que iba a tiempo.</li></ol>
     <p>Catálogo:</p><ul>${cat}</ul>`;
 }
 
