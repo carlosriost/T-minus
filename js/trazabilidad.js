@@ -456,7 +456,10 @@ function trzDibujarLinea(d, t) {
   cont.innerHTML = `<div class="pvr-tl"><div class="pvr-labs">${labs}</div><div class="pvr-svgwrap" id="trzSvgWrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="pvr-svg">${s.join("")}</svg></div></div>`;
   const wrap = document.getElementById("trzSvgWrap");
   if (wrap) {
-    if (prev != null) wrap.scrollLeft = prev;
+    if (TRZ.irA) {
+      wrap.scrollLeft = Math.max(0, x(TRZ.irA) - wrap.clientWidth / 3);
+      TRZ.irA = null;
+    } else if (prev != null) wrap.scrollLeft = prev;
     else wrap.scrollLeft = Math.max(0, x(Math.min(Math.max(t, d.desde), d.hasta)) - wrap.clientWidth / 3);
   }
   TRZ._x = x;

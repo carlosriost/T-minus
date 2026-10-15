@@ -2801,3 +2801,50 @@
       .trz-tabla td { white-space: nowrap; vertical-align: top; }
       .trz-tabla td.trz-dest-c { white-space: normal; min-width: 280px; }
       .trz-tsub .trz-pasado td { opacity: 0.5; }
+
+      /* =====================================================================
+         ASISTENTE FerIA (chatbot)
+         ===================================================================== */
+      .as-fab {
+        position: fixed; right: 22px; bottom: 22px; z-index: 900;
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 11px 16px; border-radius: 24px; border: 1px solid var(--accent);
+        background: var(--panel); color: var(--text); font-weight: 650; font-size: 13px;
+        box-shadow: 0 8px 24px var(--shadow); cursor: pointer;
+      }
+      .as-fab:hover { background: var(--btn-bg-hover); }
+      .as-panel {
+        position: fixed; right: 22px; bottom: 76px; z-index: 901;
+        width: min(420px, calc(100vw - 32px)); height: min(620px, calc(100vh - 110px));
+        display: flex; flex-direction: column;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+        box-shadow: 0 16px 40px var(--shadow); overflow: hidden;
+      }
+      .as-panel[hidden] { display: none; }
+      .as-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+      .as-head b { color: var(--accent); }
+      .as-modo { font-size: 11px; color: var(--muted); margin-right: auto; }
+      .as-icon { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; }
+      .as-icon:hover { border-color: var(--btn-border-hover); }
+      .as-conf { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; background: var(--panel2); }
+      .as-conf[hidden] { display: none; }
+      .as-check { display: flex; gap: 6px; align-items: center; font-size: 12.5px; }
+      .as-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+      .as-msg { max-width: 92%; padding: 9px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.45; }
+      .as-msg p { margin: 0 0 6px; }
+      .as-msg p:last-child { margin-bottom: 0; }
+      .as-msg ul, .as-msg ol { margin: 4px 0 8px; padding-left: 18px; }
+      .as-msg li { margin: 2px 0; }
+      .as-yo { align-self: flex-end; background: var(--tab-active-bg); border: 1px solid var(--accent); }
+      .as-bot { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); }
+      .as-pensando { color: var(--muted); font-style: italic; }
+      .as-sub { color: var(--muted); font-size: 11.5px; }
+      .as-fuente { margin-top: 6px; font-size: 10.5px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+      .as-ver { margin-top: 6px; }
+      .as-ejemplos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+      .as-chip { text-align: left; padding: 5px 9px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 11.5px; cursor: pointer; }
+      .as-chip:hover { border-color: var(--accent); }
+      .as-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--panel2); }
+      .as-form input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--input-bg); color: var(--text); font-size: 13px; }
+      .as-tabla td, .as-tabla th { padding: 4px 6px; font-size: 12px; }
+      .as-det summary { cursor: pointer; color: var(--muted); font-size: 11px; margin-top: 6px; }
