@@ -278,6 +278,8 @@ const PONY_MIN_COCIMIENTOS = 2;
 // juntan en uno solo en vez de programarse por separado, y un bloque solo se
 // parte si de la partida salen dos corridas que sigan llegando a este mínimo.
 const MIN_CORRIDA_CERVEZA = 14;
+// Máximo de horas que un FV espera abierto el siguiente cocimiento de su marca.
+const FV_MAX_ESPERA_LLENADO_HORAS = 24;
 
 function ponyMaxCocimientosSeguidos(tankCatalog, volumenPorCocimiento) {
   const capHL = (tankCatalog || [])
@@ -1072,6 +1074,45 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
     };
   }
 
+  // Un FV no se queda abierto días esperando la siguiente corrida de su marca:
+  // si pasan más de FV_MAX_ESPERA_LLENADO_HORAS sin que le entre mosto, se
+  // cierra con lo que tenga y empieza a fermentar. Antes se quedaba abierto
+  // hasta llenarse, y el primer cocimiento de una Pilsen del lunes podía quedar
+  // esperando a otro de la semana siguiente: llegaba al envasado días tarde.
+  // También se cierra si meterle ESTE cocimiento atrasaría a los que ya tiene:
+  // el lote fermenta desde el último llenado, así que si el nuevo cocimiento
+  // deja el lote listo después del envasado del primero, ese FV se cierra ya y
+  // el nuevo va a otro equipo.
+  function cerrarLotesViejos(ahora, r, fermH, madH) {
+    if (!ahora) return;
+    tanks.forEach((t) => {
+      const lote = t.__loteFV;
+      if (!lote || lote.transferida || t.loteCerrado || !(t.volumenAsignado > 1e-9)) return;
+      if (lote.ultimoLlenado == null) return;
+      const viejo = ahora.getTime() - lote.ultimoLlenado > FV_MAX_ESPERA_LLENADO_HORAS * 3600000;
+      const atrasaria =
+        r &&
+        lote.mostoId === r.mostoId &&
+        lote.necesidadMin != null &&
+        r.end.getTime() + ((fermH || 0) + (madH || 0)) * 3600000 > lote.necesidadMin + 60000;
+      if (!viejo && !atrasaria) return;
+      t.releaseTime = lote.fermentEnd;
+      t.loteCerrado = true;
+      transferencias.push({
+        fecha: lote.fermentEnd,
+        mostoId: lote.mostoId,
+        nombre: lote.nombre,
+        volumenHL: lote.volumenHL,
+        origen: t,
+        cocimientoNumero: lote.cocimientoNumero,
+        fermentEnd: lote.fermentEnd,
+        maduracionHoras: lote.maduracionHoras,
+        parcial: true,
+      });
+      lote.transferida = true;
+    });
+  }
+
   function releaseFinished(now) {
     tanks.forEach((t) => {
       if (t.releaseTime && now && now.getTime() >= t.releaseTime.getTime()) {
@@ -1172,6 +1213,7 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
       return;
     }
 
+    cerrarLotesViejos(r.start, r, fermentHoras, Number(m && m.tiempoMaduracionHoras) || 0);
     releaseFinished(r.start);
     const asignaciones = [];
 
@@ -1308,6 +1350,12 @@ function assignTanks(seq, plan, tankCatalog, catalog) {
         };
       }
       t.__loteFV.volumenHL += a.carga;
+      t.__loteFV.ultimoLlenado = r.end.getTime();
+      if (r.necesidad)
+        t.__loteFV.necesidadMin = Math.min(
+          t.__loteFV.necesidadMin == null ? Infinity : t.__loteFV.necesidadMin,
+          r.necesidad.getTime(),
+        );
       t.__loteFV.fermentEnd = a.fermentEnd;
       t.__loteFV.cocimientoNumero = idx + 1;
       t.__loteFV.maduracionHoras = Number(m && m.tiempoMaduracionHoras) || 0;

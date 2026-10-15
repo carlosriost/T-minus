@@ -248,6 +248,7 @@ function renderModulosSeguimiento() {
   seguro(renderCipABC);
   seguro(renderRecomendacionesPlan);
   if (typeof renderPlanVsReal === "function") seguro(renderPlanVsReal);
+  if (typeof renderTrazabilidad === "function") seguro(renderTrazabilidad);
 }
 // Al abrir una vista del menú se repinta su módulo, para que tome cambios
 // hechos en otras pantallas (p. ej. el plan de filtración o el catálogo).
@@ -263,6 +264,7 @@ function alAbrirVista(view) {
       if (typeof spNecesitaRedibujar === "function" && typeof redibujarGanttEnvasado === "function" && spNecesitaRedibujar()) redibujarGanttEnvasado();
     },
     "view-plan-vs-real": typeof renderPlanVsReal === "function" ? renderPlanVsReal : null,
+    "view-trazabilidad": typeof renderTrazabilidad === "function" ? renderTrazabilidad : null,
   }[view];
   if (m)
     try {

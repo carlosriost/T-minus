@@ -2757,3 +2757,47 @@
       .pvr-pares .pvr-fila { cursor: pointer; }
       .pvr-pares .pvr-fila:hover td { background: var(--btn-bg-hover); }
       .pvr-fila-sel td { background: var(--tab-active-bg) !important; }
+
+      /* =====================================================================
+         DEL COCIMIENTO AL ENVASADO
+         ===================================================================== */
+      .trz-linea { width: 100%; }
+      svg .trz-coc, svg .trz-env { cursor: pointer; stroke: var(--panel); stroke-width: 0.6; }
+      svg .trz-otro { fill: var(--line); }
+      svg .trz-atenuado { opacity: 0.18; }
+      svg .trz-sel { stroke: var(--accent); stroke-width: 2.5; }
+      svg .trz-encurso { stroke: var(--text); stroke-width: 2; }
+      svg .trz-tarde { stroke: var(--danger); stroke-width: 1.5; }
+      svg .trz-link { fill: none; stroke: var(--pc-ax); stroke-width: 0.8; opacity: 0.16; pointer-events: none; }
+      svg .trz-l-estandar { stroke: var(--pc-c1); }
+      svg .trz-l-pilsen { stroke: var(--pc-c2); }
+      svg .trz-l-light { stroke: var(--pc-c3); }
+      svg .trz-l-pony { stroke: var(--pc-c4); }
+      svg .trz-link-sel { opacity: 1; stroke-width: 2; }
+      svg .trz-frio { fill: var(--accent2); fill-opacity: 0.28; stroke: var(--accent2); stroke-width: 1; }
+      svg .trz-sube { fill: var(--accent2); font-size: 10px; cursor: default; }
+      svg .trz-ahora { stroke: var(--accent); stroke-width: 2; }
+      svg .trz-ahora-t { fill: var(--accent); font-weight: 700; }
+      .trz-sw-otro { background: var(--line); }
+      .trz-sw-frio { background: var(--accent2); opacity: 0.6; }
+      .trz-ley-sube { color: var(--accent2); font-size: 11px; }
+      .trz-ley-ahora { display: inline-block; width: 2px; height: 12px; background: var(--accent); }
+      #trzDetalle { position: sticky; top: 150px; max-height: calc(100vh - 170px); overflow: auto; }
+      .trz-estado { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); font-weight: 650; font-size: 13px; }
+      .trz-estado small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+      .trz-e1 { border-color: var(--accent); color: var(--accent); }
+      .trz-e2, .trz-e3 { border-color: var(--accent2); color: var(--accent2); }
+      .trz-e4 { border-color: var(--ok); color: var(--ok); }
+      .trz-e5 { color: var(--muted); }
+      .trz-estado-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); font-size: 11px; white-space: nowrap; }
+      .trz-dest { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
+      .trz-dest b { display: block; color: var(--text); font-weight: 600; }
+      .trz-dest small { color: var(--muted); font-size: 11px; }
+      .trz-tren { font-family: var(--mono); font-size: 11px; text-align: center; padding: 2px 0; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); color: var(--text); }
+      .trz-tren.pc-c1 { background: var(--pc-c1); color: #fff; border-color: transparent; }
+      .trz-tren.pc-c2 { background: var(--pc-c2); color: #fff; border-color: transparent; }
+      .trz-tren.pc-c3 { background: var(--pc-c3); color: #fff; border-color: transparent; }
+      .trz-tren.pc-c4 { background: var(--pc-c4); color: #111; border-color: transparent; }
+      .trz-tabla td { white-space: nowrap; vertical-align: top; }
+      .trz-tabla td.trz-dest-c { white-space: normal; min-width: 280px; }
+      .trz-tsub .trz-pasado td { opacity: 0.5; }

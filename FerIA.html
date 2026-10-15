@@ -66,6 +66,9 @@
           <button class="sb-item" data-view="view-plan-vs-real">
             <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 17h18"/><circle cx="7" cy="7" r="1.6"/><circle cx="14" cy="7" r="1.6"/><circle cx="9" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/><path d="M7 8.6l2 6.8M14 8.6l3 6.8"/></svg></span><span class="sb-txt">Plan vs. real de cocinas</span>
           </button>
+          <button class="sb-item" data-view="view-trazabilidad">
+            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v3a3 3 0 0 0 3 3h5a3 3 0 0 1 3 3v-1"/></svg></span><span class="sb-txt">Del cocimiento al envasado</span>
+          </button>
 
           <div class="sb-group" data-group="prog">
             <button class="sb-head" type="button">
@@ -237,6 +240,7 @@
 
           <section class="view" id="view-programa-cocinas" data-view-el><div id="programaCocinasPanel"></div></section>
           <section class="view" id="view-plan-vs-real" data-view-el><div id="planVsRealPanel"></div></section>
+          <section class="view" id="view-trazabilidad" data-view-el><div id="trazabilidadPanel"></div></section>
           <section class="view" id="view-tminus" data-view-el><div id="tminusPanel"></div></section>
           <section class="view" id="view-logistica" data-view-el><div id="logisticaPanel"></div></section>
           <section class="view" id="view-recomendaciones" data-view-el><div id="recomendacionesPanel"></div></section>
@@ -597,6 +601,7 @@
     <script src="js/programa-cocinas.js"></script>
     <script src="js/setpoints.js"></script>
     <script src="js/plan-vs-real.js"></script>
+    <script src="js/trazabilidad.js"></script>
     <script src="js/ui.js"></script>
     <script>
       /* =====================================================================
@@ -615,6 +620,7 @@
           "results",
           "view-programa-cocinas",
           "view-plan-vs-real",
+          "view-trazabilidad",
           "view-tminus",
           "view-logistica",
           "view-recomendaciones",
@@ -677,6 +683,7 @@
           },
           "view-programa-cocinas": { show: ["view-programa-cocinas"] },
           "view-plan-vs-real": { show: ["view-plan-vs-real"] },
+          "view-trazabilidad": { show: ["view-trazabilidad"] },
           "view-tminus": { show: ["view-tminus"] },
           "view-logistica": { show: ["view-logistica"] },
           "view-recomendaciones": { show: ["view-recomendaciones"] },
