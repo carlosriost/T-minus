@@ -26,6 +26,7 @@ const AS_EJEMPLOS = [
   "¿Qué setpoint de vapor y aire hay el 07/10 a las 19:00?",
   "¿Cuántos cocimientos y hL hay por mosto?",
   "¿Qué reglas usa el plan de cocinas?",
+  "¿Por qué no aparece el plan real de cocinas?",
 ];
 let AS = { abierto: false, msgs: [], cargando: false };
 
@@ -279,6 +280,37 @@ function asResponderLocal(q) {
           return `<li><b>${asEsc(asF(u.cocs[0].ms))}</b>${u.cocs.length > 1 ? ` → ${asEsc(asF(u.cocs[u.cocs.length - 1].ms))}` : ""}: ${u.cocs.length} × ${asEsc(asNom(u.mostoId))} (n.º ${u.cocs.map((c) => c.n).join(", ")}) → ${asEsc(dest || "—")}</li>`;
         })
         .join("")}${corridas.length > 10 ? `<li>… y ${corridas.length - 10} corridas más</li>` : ""}</ul>${extra}`,
+    };
+  }
+
+  // ¿Por qué no aparece el plan real de cocinas? Diagnóstico con lo cargado.
+  if (/(plan real|real de cocina|programa de cocina|excel de cocina|programa_cocinas)/.test(n) || (/real/.test(n) && /(no aparece|no sale|no hay|falta|cargo|cargar|subi|por que)/.test(n))) {
+    if (typeof PC !== "undefined" && !PC && typeof pcRecuperar === "function") pcRecuperar();
+    const pc = typeof PC !== "undefined" ? PC : null;
+    const inv = typeof INVENTORY_BALANCE !== "undefined" && Array.isArray(INVENTORY_BALANCE) && INVENTORY_BALANCE.length;
+    const nota = inv
+      ? "<p>Ojo: el archivo «PRODUCTO EN PROCESO» es el <b>inventario</b> de FV, SV y BBT (lo que ya está fermentando, madurando o listo). FerIA lo usa para descontar lo que no hay que cocinar, pero no es el plan de cocinas.</p>"
+      : "";
+    const coc = pc && pc.filas ? pc.filas.filter((x) => x.tipo === "coc" && x.inicio != null) : [];
+    if (!coc.length)
+      return {
+        html: `<p>No aparece porque el <b>plan real de cocinas</b> sale de otro archivo: el Excel «Programa_Cocinas.xlsx» del área de Cocinas, que se carga en el módulo «Programa de cocinas (Excel)». En este navegador todavía no hay ninguno cargado.</p>${nota}<p>Lo que sí está: el plan de cocinas que FerIA calcula desde el instructivo de envasado (${d.cocs.length} cocimientos).</p><button class="btn small" data-goto="view-programa-cocinas">Ir a Programa de cocinas (Excel) →</button>`,
+      };
+    const ini = Math.min(...coc.map((x) => x.inicio));
+    const fin = Math.max(...coc.map((x) => x.inicio));
+    const i0d = typeof getI0Date === "function" ? getI0Date() : null;
+    const i0 = i0d ? i0d.getTime() : d.desde;
+    const ultFeria = Math.max(...d.cocs.map((c) => c.ms));
+    const enVentana = coc.filter((x) => x.inicio >= i0 && x.inicio <= ultFeria + 9 * AS_H).length;
+    return {
+      html: `<p>Sí hay un plan real cargado: <b>${asEsc(pc.archivo || "Programa de cocinas")}</b>, con cargues del ${asEsc(asF(ini))} de ${new Date(ini).getUTCFullYear()} al ${asEsc(asF(fin))}.</p>
+        <p>Plan vs. real compara desde el I0 (${asEsc(asF(i0))}) hasta el último cocimiento de FerIA (${asEsc(asF(ultFeria))}). En esa ventana el Excel real tiene <b>${enVentana}</b> cocimiento(s).${
+          enVentana
+            ? ""
+            : fin < i0
+              ? " El Excel real termina antes del I0: hay que cargar el Programa de cocinas actualizado (que llegue al menos hasta esas fechas)."
+              : " Revisa el I0."
+        }</p>${nota}<button class="btn small" data-goto="view-plan-vs-real">Ver Plan vs. real →</button>`,
     };
   }
 

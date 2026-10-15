@@ -396,8 +396,15 @@ function agruparEnCampanas(cocs, m, mostoId) {
   if ((Number(m.tiempoFermentacionHoras) || 0) > 0) {
     const procMs =
       ((Number(m.tiempoCocinaHoras) || 0) + (Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * H;
-    for (let i = 0; i < cocs.length; i += FV_LOTE_PLAN) {
-      const lote = cocs.slice(i, i + FV_LOTE_PLAN);
+    // El lote se llena con los cocimientos que se envasan cerca del primero
+    // (dentro de la ventana de adelanto del mosto): con una marca de poca
+    // demanda no se cocinan 8 de una vez para que esperen días en el tanque.
+    const ventLote = (CAMPANA_VENTANA_HORAS[mostoId] != null ? CAMPANA_VENTANA_HORAS[mostoId] : 48) * H;
+    for (let i = 0; i < cocs.length; ) {
+      let fin = i + 1;
+      while (fin < cocs.length && fin - i < FV_LOTE_PLAN && cocs[fin].need - cocs[i].need <= ventLote) fin++;
+      const lote = cocs.slice(i, fin);
+      i = fin;
       const limite = Math.min(...lote.map((c) => c.need)) - procMs;
       lote.forEach((c, p) => {
         c.latest = Math.min(c.latest, limite - (lote.length - 1 - p) * gap);

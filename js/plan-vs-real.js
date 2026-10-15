@@ -50,6 +50,7 @@ const PVR_PONY_MIN = 2;
 const PVR_PONY_MAX = 5;
 const PVR_PONY_SEP_H = 24; // día de por medio entre corridas de Pony
 
+const HORA_PVR_MARGEN = 3600000; // 1 h después del último cargue real
 let PVR_F = null; // filtros: {desde, hasta, mostos:Set, tol, unidad, firma}
 let PVR_SEL = null; // clave del cocimiento elegido ("p…" plan / "r…" real)
 let PVR_ULTIMO = null; // último resultado (para el detalle y los «Ver»)
@@ -459,8 +460,14 @@ function renderPlanVsReal() {
   }
 
   // Filtros: la ventana se reinicia cuando cambian los planes.
-  const finFeria = Math.max(...src.cocF.map((r) => r.end.getTime()));
+  const finFeriaPlan = Math.max(...src.cocF.map((r) => r.end.getTime()));
   const ini = src.i0 != null ? Math.min(src.i0, src.cocF[0].start.getTime()) : src.cocF[0].start.getTime();
+  // Si el Excel real se acaba antes que el plan FerIA, la ventana se corta en
+  // su último cargue: de ahí en adelante no hay contra qué comparar, y contar
+  // esos cocimientos como «faltantes» del real sería falso.
+  const ultReal = Math.max(...src.real.filter((x) => x.tipo === "coc" && x.inicio != null).map((x) => x.inicio));
+  const cortadaPorReal = ultReal > ini && ultReal + HORA_PVR_MARGEN < finFeriaPlan;
+  const finFeria = cortadaPorReal ? ultReal + HORA_PVR_MARGEN : finFeriaPlan;
   const firma = `${ini}|${finFeria}|${src.cocF.length}|${src.pc.archivo || ""}|${src.real.length}`;
   if (!PVR_F || PVR_F.firma !== firma) {
     const pr = pvrPrefs();
@@ -468,6 +475,8 @@ function renderPlanVsReal() {
     PVR_F = {
       firma,
       ventana: [ini, finFeria],
+      cortadaPorReal,
+      finFeriaPlan,
       desde: ini,
       hasta: finFeria,
       mostos: new Set(Array.isArray(pr.mostos) && pr.mostos.some((m) => ids.includes(m)) ? pr.mostos.filter((m) => ids.includes(m)) : ids),
@@ -483,6 +492,10 @@ function renderPlanVsReal() {
   const rIni = Math.min(...realCoc.map((x) => x.inicio));
   const rFin = Math.max(...realCoc.map((x) => x.inicio));
   const sinReal = !res.realTodos.some((c) => c.ms >= PVR_F.desde && c.ms <= PVR_F.hasta);
+  const avisoCorte =
+    PVR_F.cortadaPorReal && !sinReal
+      ? `<div class="pvr-falta"><b>El Excel real llega hasta el ${escapeHtml(pvrFmt(ultReal))}.</b> El plan FerIA sigue hasta el ${escapeHtml(pvrFmt(PVR_F.finFeriaPlan))}, así que la comparación se corta en el último cargue real. Para comparar más días, carga el Programa de cocinas actualizado.</div>`
+      : "";
   const avisoSolape = sinReal
     ? `<div class="pvr-falta"><b>El Excel real no tiene cocimientos en esta ventana.</b> Cubre del ${escapeHtml(pvrFmt(rIni))} de ${new Date(rIni).getUTCFullYear()} al ${escapeHtml(pvrFmt(rFin))} de ${new Date(rFin).getUTCFullYear()}; la ventana va del ${escapeHtml(pvrFmt(PVR_F.desde))} al ${escapeHtml(pvrFmt(PVR_F.hasta))}. Revisa el I0 o carga el programa de Cocinas de estas fechas.</div>`
     : "";
@@ -492,7 +505,7 @@ function renderPlanVsReal() {
       ${titulo(`FerIA: ${src.cocF.length} cocimientos desde el I0 · Real: ${escapeHtml(src.pc.archivo || "Excel")} (${realCoc.length.toLocaleString("es-CO")} cocimientos)`)}
       <div class="panel-body">
         ${pvrHtmlFiltros(res)}
-        ${avisoSolape}
+        ${avisoSolape}${avisoCorte}
         <div class="acu-kpis pvr-kpis">${pvrHtmlKpis(res)}</div>
         <div class="pc-layout">
           <div class="acu-card">
