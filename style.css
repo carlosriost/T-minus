@@ -2848,3 +2848,10 @@
       .as-form input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--input-bg); color: var(--text); font-size: 13px; }
       .as-tabla td, .as-tabla th { padding: 4px 6px; font-size: 12px; }
       .as-det summary { cursor: pointer; color: var(--muted); font-size: 11px; margin-top: 6px; }
+      svg .trz-inv { fill: url(#trzRayInv); }
+      svg .trz-noalc { fill: url(#trzRayNo); stroke: var(--danger); stroke-width: 1; }
+      .trz-sw-inv { background: repeating-linear-gradient(45deg, rgba(255,255,255,.75), rgba(255,255,255,.75) 2px, var(--pc-c1) 2px, var(--pc-c1) 5px); }
+      .trz-sw-noalc { background: repeating-linear-gradient(45deg, var(--danger), var(--danger) 2px, transparent 2px, transparent 5px); border: 1px solid var(--danger); }
+      svg .trz-link.trz-link-tarde { stroke: var(--danger); stroke-dasharray: 4 3; opacity: 0.55; }
+      svg .trz-link.trz-link-tarde.trz-link-sel { opacity: 1; }
+      svg .trz-pasado { opacity: 0.25; }

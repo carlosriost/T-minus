@@ -190,8 +190,33 @@ function calcularTrazabilidad(cfg) {
     }
   }
 
-  const desde = Math.min(...cocs.map((c) => c.ms), ...envasado.map((e) => e.ms));
+  // Lo envasado antes del I0 ya pasó: la línea de tiempo arranca un día antes
+  // del I0 (o del primer cocimiento) y lo anterior se atenúa.
+  const i0d = typeof getI0Date === "function" ? getI0Date() : null;
+  const i0 = i0d && !isNaN(i0d) ? i0d.getTime() : null;
+  const desde = Math.max(
+    Math.min(...cocs.map((c) => c.ms), ...envasado.map((e) => e.ms)),
+    Math.min(i0 != null ? i0 - 24 * TRZ_H : Infinity, ...cocs.map((c) => c.ms - 24 * TRZ_H)),
+  );
+  envasado.forEach((e) => (e.antesI0 = i0 != null && e.fin <= i0));
   const hasta = Math.max(...cocs.map((c) => c.fin), ...envasado.map((e) => e.fin));
+  // De dónde sale cada bloque de envasado que NO alimenta un cocimiento del
+  // plan: del inventario (producto en proceso) o de nada (no alcanzable desde
+  // el I0 con el tiempo de proceso). Así todo bloque queda «anclado» a algo.
+  const plan = STATE.plan || {};
+  const solapa = (lista, e) =>
+    (lista || [])
+      .filter((z) => String(z.train) === String(e.train) && z.desde < e.fin && z.hasta > e.ms)
+      .map((z) => {
+        const a = Math.max(z.desde, e.ms);
+        const b = Math.min(z.hasta, e.fin);
+        return { desde: a, hasta: b, hL: z.hL * ((b - a) / Math.max(1, z.hasta - z.desde)), listoDesde: z.listoDesde };
+      });
+  envasado.forEach((e) => {
+    if (e.tipo !== "production") return;
+    e.inv = solapa(plan.cubiertoPorInvTramos, e);
+    e.noAlc = solapa(plan.noAlcanzable, e);
+  });
   return { cocs, envasado, trasiegos, curva, subidas, desde, hasta };
 }
 
@@ -269,7 +294,7 @@ function renderTrazabilidad() {
           <div class="acu-card">
             <div class="acu-card-tit">Línea de tiempo <small class="pc-sub">· arriba la cocina, abajo las líneas de envasado · cada curva une un cocimiento con lo que alimenta · la línea amarilla es el momento elegido · clic en un cocimiento o en un bloque de envasado</small></div>
             <div id="trzLinea" class="trz-linea"></div>
-            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-frio"></span>Índice de frío (estimado)</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
+            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-inv"></span>Sale del inventario</div><div class="item"><span class="sw trz-sw-noalc"></span>No alcanzable desde el I0</div><div class="item"><span class="sw trz-sw-frio"></span>Índice de frío (estimado)</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
           </div>
           <div class="acu-card" id="trzDetalle">${trzHtmlDetalle(d)}</div>
         </div>
@@ -324,15 +349,22 @@ function trzHtmlDetalle(d) {
   const fuentes = d.cocs
     .map((c) => ({ c, x: c.consumo.filter((z) => String(z.train) === tr && z.desde < b.fin && z.hasta > b.ms) }))
     .filter((o) => o.x.length);
+  if (b.antesI0)
+    return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[b.mostoId] || "pc-otro"}"></span>L${escapeHtml(tr)} · ${escapeHtml(b.name)}</div>${fila("Envasa", `${escapeHtml(trzF(b.ms))} → ${escapeHtml(trzF(b.fin))}`)}<p class="empty-note">Se envasa antes del I0: ya no es demanda del plan.</p>`;
+  const invHL = (b.inv || []).reduce((a, z) => a + z.hL, 0);
+  const noHL = (b.noAlc || []).reduce((a, z) => a + z.hL, 0);
+  const listo = (b.noAlc || []).map((z) => z.listoDesde).filter(Boolean)[0];
   return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[b.mostoId] || "pc-otro"}"></span>L${escapeHtml(tr)} · ${escapeHtml(b.name)}</div>
     ${fila("Envasa", `${escapeHtml(trzF(b.ms))} → ${escapeHtml(trzF(b.fin))}`)}${fila("Volumen", b.hL ? trzHL(b.hL) : "—")}${fila("Mosto", escapeHtml(trzNombreMosto(b.mostoId)))}
+    ${invHL > 1 ? fila("Del inventario", `${trzHL(invHL)} <small class="pc-sub">(producto en proceso: FV/SV/BBT)</small>`) : ""}
+    ${noHL > 1 ? fila("No alcanzable", `<span class="pvr-no">${trzHL(noHL)}</span> <small class="pc-sub">un cocimiento cargado desde el I0 estaría listo hasta el ${escapeHtml(trzF(listo))}</small>`) : ""}
     <div class="pc-sec">Sale de estos cocimientos (${fuentes.length})</div>
     ${
       fuentes.length
         ? fuentes
             .map((o) => `<div class="trz-dest"><span class="trz-tren ${TRZ_MOSTO_CLS[o.c.mostoId] || ""}">${o.c.n}</span><div><b>Cargue ${escapeHtml(trzF(o.c.ms))}</b><small>${escapeHtml(trzEstado(o.c, TRZ.ahora).txt)} · ${trzHL(o.x.reduce((a, z) => a + z.hL, 0))} para este bloque</small></div><button class="pc-mini" data-trz-ver="${o.c.key}">ver</button></div>`)
             .join("")
-        : `<p class="empty-note">${b.tipo === "production" ? "Ningún cocimiento del plan alimenta este bloque: lo cubre el inventario o quedó antes del I0." : "Es un DPA o NST: no envasa."}</p>`
+        : `<p class="empty-note">${b.tipo !== "production" ? "Es un DPA o NST: no envasa." : invHL > 1 || noHL > 1 ? "Ningún cocimiento nuevo: ver arriba de dónde sale." : "Ningún cocimiento del plan alimenta este bloque (quedó antes del I0)."}</p>`
     }`;
 }
 
@@ -392,6 +424,7 @@ function trzDibujarLinea(d, t) {
   const H = yTren0 + trenes.length * hTren + 10;
   const yTren = (tr) => yTren0 + trenes.indexOf(String(tr)) * hTren;
   const s = [];
+  s.push(`<defs><pattern id="trzRayInv" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.2" height="6" fill="rgba(255,255,255,0.75)"></rect></pattern><pattern id="trzRayNo" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(0,0,0,0.35)"></rect><rect width="2.4" height="6" fill="var(--danger)"></rect></pattern></defs>`);
   // Días.
   const D = 86400000;
   for (let dd = Math.floor(d.desde / D) * D; dd <= d.hasta; dd += D) {
@@ -429,10 +462,17 @@ function trzDibujarLinea(d, t) {
   }
   // Envasado.
   d.envasado.forEach((e) => {
-    const cls = e.tipo === "production" ? TRZ_MOSTO_CLS[e.mostoId] || "pc-otro" : "trz-otro";
+    if (e.fin <= d.desde) return;
+    const cls = (e.tipo === "production" ? TRZ_MOSTO_CLS[e.mostoId] || "pc-otro" : "trz-otro") + (e.antesI0 ? " trz-pasado" : "");
     const atenuado = TRZ.mosto !== "todos" && e.mostoId !== TRZ.mosto ? "trz-atenuado" : "";
     const key = `e${e.train}|${e.ms}`;
-    s.push(`<rect class="${cls} trz-env ${atenuado} ${TRZ.sel === key ? "trz-sel" : ""}" x="${x(e.ms)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(e.fin) - x(e.ms))}" height="${hTren - 14}" rx="2" data-trz-key="${key}" data-trz-tip="${escapeHtml(`L${e.train} · ${e.name} · ${trzF(e.ms)} → ${trzF(e.fin)}${e.hL ? " · " + trzHL(e.hL) : ""}`)}"></rect>`);
+    const invHL = (e.inv || []).reduce((a, z) => a + z.hL, 0);
+    const noHL = (e.noAlc || []).reduce((a, z) => a + z.hL, 0);
+    const extra = `${invHL > 1 ? ` · ${trzHL(invHL)} del inventario` : ""}${noHL > 1 ? ` · ⚠ ${trzHL(noHL)} no alcanzables desde el I0` : ""}`;
+    s.push(`<rect class="${cls} trz-env ${atenuado} ${TRZ.sel === key ? "trz-sel" : ""}" x="${x(e.ms)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(e.fin) - x(e.ms))}" height="${hTren - 14}" rx="2" data-trz-key="${key}" data-trz-tip="${escapeHtml(`L${e.train} · ${e.name} · ${trzF(e.ms)} → ${trzF(e.fin)}${e.hL ? " · " + trzHL(e.hL) : ""}${extra}`)}"></rect>`);
+    // Encima: rayado claro = sale del inventario; rayado rojo = no alcanzable.
+    (e.inv || []).forEach((z) => s.push(`<rect class="trz-inv" x="${x(z.desde)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(z.hasta) - x(z.desde))}" height="${hTren - 14}" pointer-events="none"></rect>`));
+    (e.noAlc || []).forEach((z) => s.push(`<rect class="trz-noalc" x="${x(z.desde)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(z.hasta) - x(z.desde))}" height="${hTren - 14}" pointer-events="none"></rect>`));
   });
   // Curvas cocimiento → envasado.
   const selC = TRZ.sel && TRZ.sel.startsWith("c") ? TRZ.sel : null;
@@ -446,7 +486,10 @@ function trzDibujarLinea(d, t) {
       const y2 = yTren(z.train) + 7;
       const marcada = selC === c.key || (selE && String(z.train) === selE[0] && z.desde < Number(selE[1]) + 1 && z.hasta > Number(selE[1]) - 1);
       const ym = (y1 + y2) / 2;
-      s.push(`<path class="trz-link ${TRZ_MOSTO_CLS[c.mostoId] ? "trz-l-" + c.mostoId : ""} ${marcada ? "trz-link-sel" : ""}" d="M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"></path>`);
+      // Si el producto queda listo después de que arranca ese envasado, la
+      // curva va en rojo: es un cocimiento tarde (no respeta el proceso).
+      const tardeAqui = c.listo != null ? c.listo > z.desde + 60000 : c.tarde;
+      s.push(`<path class="trz-link ${TRZ_MOSTO_CLS[c.mostoId] ? "trz-l-" + c.mostoId : ""} ${tardeAqui ? "trz-link-tarde" : ""} ${marcada ? "trz-link-sel" : ""}" d="M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"></path>`);
     });
   });
   // Cocimientos.

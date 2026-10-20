@@ -64,7 +64,9 @@ function renderConflictos(seq) {
                   ? "Pony corrida por falta de madurador"
                   : w.tipo === "ponysuelta"
                     ? "Pony de un solo cocimiento"
-                    : "Conflicto de secuencia";
+                    : w.tipo === "noalcanzable"
+                      ? "Envasado que ningún cocimiento nuevo alcanza"
+                      : "Conflicto de secuencia";
       const detalle = formatCapacityWarning(w);
       return `<tr style="background:${bg}22;">
       <td style="border-left:4px solid var(--danger); color:var(--text); font-family:var(--sans);"><b>${escapeHtml(w.nombre)}</b><span style="display:block;color:var(--muted);font-size:10px;">${titulo}</span></td>
@@ -558,7 +560,9 @@ function renderCocinaPlan(plan, assignment) {
     .map((r) => {
       const startsHtml = r.starts.length
         ? `<div class="starts-list">${r.starts.map((s, i) => `<span>#${i + 1}: ${fmtDateTime(s)} <small style="color:var(--muted);">(${fmtI0Offset(s)})</small></span>`).join("")}</div>`
-        : r.cubiertoTotalPorInventario
+        : r.noAlcanzable
+          ? `<span class="empty-note" style="color:var(--danger)">No alcanzable desde el I0: un cocimiento nuevo estaría listo hasta el ${fmtDateTime(r.listoDesde)}. Debe salir de producto en proceso.</span>`
+          : r.cubiertoTotalPorInventario
           ? '<span class="empty-note">Cubierto totalmente por inventario · no requiere cocinar</span>'
           : '<span class="empty-note">Sin fecha de envasado para calcular inicio</span>';
       const marcasHtml = r.marcas

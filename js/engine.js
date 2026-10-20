@@ -372,6 +372,10 @@ function cocimientosDeDemanda(piezas, m) {
       need,
       needEnd,
       latest: need - procMs,
+      // «A más tardar» propio (sin el ajuste por lote de FV): contra este se
+      // dice si un cocimiento llega tarde. El ajuste por lote solo adelanta la
+      // programación; si al final el FV se cierra antes, el cocimiento llega.
+      latestPropio: need - procMs,
       hLProducto: Math.min(rinde, total - k * rinde),
       consumo,
     });
@@ -495,6 +499,12 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   // marca. Cuenta TODO el inventario como disponible, aunque todavía no esté
   // listo para envasar: estará listo pronto y se puede usar.
   const remainingBatches = {};
+  // Lo que cubre el inventario y lo que ya no alcanza ningún cocimiento nuevo,
+  // tramo por tramo de envasado (para la trazabilidad y los avisos).
+  const cubiertoPorInvTramos = [];
+  const noAlcanzable = [];
+  const i0Plan = typeof getI0Date === "function" ? getI0Date() : null;
+  const i0PlanMs = i0Plan && !isNaN(i0Plan) ? i0Plan.getTime() : null;
   Object.keys(inventoryBatches || {}).forEach((mostoId) => {
     remainingBatches[mostoId] = (inventoryBatches[mostoId] || []).map(
       (lote) => ({
@@ -591,19 +601,33 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       // Lo que esta corrida deja sin cubrir, con el tramo de tiempo en que se
       // envasa (si el inventario cubrió el comienzo, lo pendiente arranca
       // cuando se acaba lo cubierto). Con esto se arma la demanda en el tiempo.
-      if (vol - tomado > 1e-9) {
+      {
         const ini = ev.earliest ? ev.earliest.getTime() : b.earliest ? b.earliest.getTime() : null;
         if (ini != null) {
           let fin = ev.end ? ev.end.getTime() : null;
           if (!(fin > ini)) fin = ini + 3600000;
-          pendientes.push({
-            hL: vol - tomado,
-            desde: ini + (fin - ini) * (tomado / vol),
-            hasta: fin,
-            name: ev.name || b.name,
-            codigo: ev.codigo || b.codigo,
-            train: ev.train || b.train,
-          });
+          const corte = ini + (fin - ini) * (tomado / vol);
+          const base = { name: ev.name || b.name, codigo: ev.codigo || b.codigo, train: ev.train || b.train, mostoId };
+          if (tomado > 1e-9) cubiertoPorInvTramos.push({ ...base, hL: tomado, desde: ini, hasta: corte });
+          if (vol - tomado > 1e-9) {
+            // RESPETAR EL TIEMPO DE PROCESO (12–14 días en cerveza). Lo que se
+            // envasa antes de «I0 + cocina + fermentación + maduración» ya no lo
+            // alcanza ningún cocimiento nuevo: tiene que salir de lo que ya está
+            // en proceso. Antes se cocinaba igual, tarde, y la trazabilidad
+            // quedaba al revés (cocinando después de envasar). Ahora se separa
+            // como «no alcanzable» y se avisa.
+            const procMs =
+              ((Number(m.tiempoCocinaHoras) || 0) + (Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * 3600000;
+            const limite = i0PlanMs != null ? i0PlanMs + procMs : -Infinity;
+            const rate = (vol - tomado) / Math.max(1, fin - corte);
+            if (limite > corte) {
+              const z = Math.min(fin, limite);
+              noAlcanzable.push({ ...base, hL: rate * (z - corte), desde: corte, hasta: z, listoDesde: limite });
+            }
+            const desde = Math.max(corte, limite);
+            if (fin > desde)
+              pendientes.push({ ...base, hL: rate * (fin - desde), desde, hasta: fin });
+          }
         }
       }
       if (primeraDescubierta == null && tomado < vol - 1e-9 && ev.earliest) {
@@ -727,16 +751,52 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
       blockLabel: `${r.blockLabel} — parte cubierta por inventario`,
       cocimientos: [],
     }));
+  // Lo que ya no alcanza ningún cocimiento nuevo (antes de I0 + proceso), por
+  // mosto, para que el volumen a envasar cuadre y se vea qué falta.
+  const noAlcPorMosto = {};
+  noAlcanzable.forEach((x) => {
+    const o = (noAlcPorMosto[x.mostoId] = noAlcPorMosto[x.mostoId] || { hL: 0, desde: x.desde, hasta: x.hasta, listoDesde: x.listoDesde, marcas: [] });
+    o.hL += x.hL;
+    o.desde = Math.min(o.desde, x.desde);
+    o.hasta = Math.max(o.hasta, x.hasta);
+    o.marcas.push(x);
+  });
+  const filasNoAlc = Object.keys(noAlcPorMosto)
+    .filter((k) => noAlcPorMosto[k].hL > 1)
+    .map((k) => {
+      const m = catalog.find((x) => x.id === k) || {};
+      const o = noAlcPorMosto[k];
+      return {
+        mostoId: k,
+        nombre: m.nombre,
+        volumenEnvasar: o.hL,
+        volumenCocinar: 0,
+        numCocimientos: 0,
+        starts: [],
+        fechaEnvasadoMinima: new Date(o.desde),
+        fechaEnvasadoPrimera: new Date(o.desde),
+        fechaEnvasadoFin: new Date(o.hasta),
+        marcas: o.marcas.map((x) => ({ ...x, earliest: new Date(x.desde), end: new Date(x.hasta), volumen: x.hL })),
+        inventarioUsadoHL: 0,
+        asignacionesInventario: [],
+        cubiertoTotalPorInventario: false,
+        noAlcanzable: true,
+        listoDesde: new Date(o.listoDesde),
+        blockLabel: `${m.nombre} — no alcanzable desde el I0 (se envasa antes del ${fmtDateTime(new Date(o.listoDesde))})`,
+        cocimientos: [],
+      };
+    });
   results.length = 0;
   campanas.forEach((c) => results.push(c));
   filasInventario.forEach((r) => results.push(r));
+  filasNoAlc.forEach((r) => results.push(r));
 
   // Lo que sobró de cada lote (no se usó porque no había demanda a tiempo para
   // consumirlo, o porque estará listo después de la última fecha cargada) —
   // se expone para poder explicar el "inventario sobrante" del Balance: no es
   // que "no cuadre", es que ese HL no alcanza a estar listo para ninguno de
   // los envasados que sí se cargaron.
-  return { results, sinHomologar, remainingInventoryBatches: remainingBatches };
+  return { results, sinHomologar, remainingInventoryBatches: remainingBatches, noAlcanzable, cubiertoPorInvTramos };
 }
 
 /* =========================================================================
@@ -1612,6 +1672,22 @@ function sequenceWeek(
     Math.max(Number(b.maxBBTHoras) || 0, PONY_BBT_TOLERANCIA_HORAS);
   const reglaWarnings = [];
   const capacityWarnings = [];
+  // Envasado que ningún cocimiento nuevo alcanza (antes de I0 + proceso).
+  ((plan && plan.results) || [])
+    .filter((r) => r.noAlcanzable && r.volumenEnvasar > 1)
+    .forEach((r) =>
+      capacityWarnings.push({
+        tipo: "noalcanzable",
+        mostoId: r.mostoId,
+        nombre: r.nombre,
+        blockLabel: r.blockLabel,
+        blockStart: r.fechaEnvasadoPrimera,
+        blockEnd: r.fechaEnvasadoFin,
+        deadline: r.listoDesde,
+        retrasoHoras: 0,
+        detalle: `${Math.round(r.volumenEnvasar).toLocaleString("es-CO")} hL de ${r.nombre} se envasan entre el ${fmtDateTime(r.fechaEnvasadoPrimera)} y el ${fmtDateTime(r.fechaEnvasadoFin)}, antes de que un cocimiento cargado desde el I0 alcance a estar listo (${fmtDateTime(r.listoDesde)}: cocina + fermentación + maduración). Tienen que salir de producto que ya esté en proceso: revisa el inventario cargado (Producto en proceso) o el I0.`,
+      }),
+    );
   const yeastEvents = [];
 
   // --- R3: pool de levadura Light ---
@@ -2499,7 +2575,7 @@ function sequenceWeek(
     // Con demanda por cocimiento, cada uno se mide contra SU necesidad: el
     // cocimiento n.º i llega tarde si cargó después de su «a más tardar».
     const retrasoCoc = block.cocs
-      ? block.cocs.map((c, i) => (actualFirst.getTime() + i * block.gapHoras * HORA - c.latest) / HORA)
+      ? block.cocs.map((c, i) => (actualFirst.getTime() + i * block.gapHoras * HORA - (c.latestPropio ?? c.latest)) / HORA)
       : null;
     const retrasoRealHoras = retrasoCoc
       ? Math.max(...retrasoCoc)
@@ -2536,7 +2612,7 @@ function sequenceWeek(
         start,
         end,
         latestStart: new Date(
-          block.cocs ? block.cocs[i].latest : (block.idealStarts[i] || idealFirst).getTime(),
+          block.cocs ? block.cocs[i].latestPropio ?? block.cocs[i].latest : (block.idealStarts[i] || idealFirst).getTime(),
         ),
         shiftHours: shiftHoras,
         firstPackagingStart: block.fechaEnvasado,
@@ -2544,7 +2620,7 @@ function sequenceWeek(
         blockEnd: i === block.numCocimientos - 1,
         deadline: block.cocs ? new Date(block.cocs[i].need) : block.fechaEnvasado,
         violaDeadline: block.cocs
-          ? (start.getTime() - block.cocs[i].latest) / HORA > 0.05 || excedeBBT
+          ? (start.getTime() - (block.cocs[i].latestPropio ?? block.cocs[i].latest)) / HORA > 0.05 || excedeBBT
           : viola,
         // Trazabilidad: desde cuándo se envasa su producto y en qué línea/SKU.
         necesidad: block.cocs ? new Date(block.cocs[i].need) : block.fechaEnvasado,
