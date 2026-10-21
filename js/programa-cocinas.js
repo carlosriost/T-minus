@@ -514,6 +514,9 @@ function pcCargarArchivo(file) {
       PC_PAG = 0;
       pcGuardar();
       renderProgramaCocinas();
+      // Los cocimientos reales que todavía no aparecen en el Producto en
+      // proceso cuentan como cerveza en proceso: el plan cambia con el archivo.
+      if (typeof recompute === "function") recompute();
     } catch (err) {
       console.error(err);
       if (est) {

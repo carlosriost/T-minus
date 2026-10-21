@@ -955,7 +955,9 @@ function parseProductoEnProceso(workbook) {
           // Celda de días en blanco = SIN días, no cero. La levadura guardada se
           // reconoce justamente por venir sin días; leyéndola como 0 pasaba por
           // un equipo recién cargado.
-          diasEnEquipo: dias == null ? null : Math.round(dias),
+          // Con decimales: el Excel trae 2,35 días y redondear a 2 corría la
+          // fecha en que el tanque queda listo hasta 12 horas.
+          diasEnEquipo: dias == null ? null : Math.round(dias * 100) / 100,
           hL: Math.round(num(row[hlCol])),
           hLSinDiluir: Math.round(num(row[hlSinDilCol])),
         });
@@ -1002,6 +1004,95 @@ function parseProductoEnProceso(workbook) {
     });
   }
 
+  // Hoja «Control diario»: la hora en que se tomó la foto (celda A1, la misma
+  // contra la que se cuentan los días de cada equipo), cuándo se cocinó lo que
+  // hay en cada tanque y los tiempos mínimos de fermentación de la planta.
+  const ctl = leerControlDiario(sheet("Control diario"));
+  if (ctl) {
+    out.forEach((e) => {
+      const c = ctl.porEquipo[normalizeText(e.equipo)];
+      if (!c || e.vacio) return;
+      if (c.cocinadoEn) {
+        e.cocinadoEn = c.cocinadoEn;
+        e.cocinadoNota = c.nota;
+      }
+      if (c.vacioMinEn && e.tipo === "FV") e.vacioMinEn = c.vacioMinEn;
+    });
+    out.foto = ctl.foto;
+    out.tiemposMinimos = ctl.tiemposMinimos;
+  }
   return out;
+}
+
+function leerControlDiario(ws) {
+  if (!ws) return null;
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  if (!aoa.length) return null;
+  let foto = isDateLike((aoa[0] || [])[0]) ? excelFechaHoraAPlanta(aoa[0][0]) : null;
+  // Al minuto: el I0 se escribe en minutos y los segundos dejaban 43 s de
+  // envasado «sin cubrir» justo en el arranque.
+  if (foto) foto = new Date(Math.floor(foto.getTime() / 60000) * 60000);
+  // Columnas por su encabezado (fila 1), no por posición fija.
+  const head = (aoa[0] || []).map((v) => (v == null ? "" : normalizeText(String(v))));
+  const col = (re) => head.findIndex((h) => re.test(h));
+  const cLlenado = col(/inicio fermentacion/);
+  const cIniMad = col(/inicio maduracion/);
+  const cCubaJoven = col(/menor tiempo de proceso/);
+  const cVacioMin = col(/tanque vacio min/);
+  const fecha = (v) => (isDateLike(v) ? excelFechaHoraAPlanta(v) : null);
+  const porEquipo = {};
+  aoa.forEach((row, r) => {
+    if (r < 2 || !row) return;
+    const eq = row[0];
+    if (typeof eq !== "string" && typeof eq !== "number") return;
+    const key = normalizeText(String(eq));
+    if (!key) return;
+    const llenado = cLlenado >= 0 ? fecha(row[cLlenado]) : null;
+    const cubaJoven = cCubaJoven >= 0 ? fecha(row[cCubaJoven]) : null;
+    const iniMad = cIniMad >= 0 ? fecha(row[cIniMad]) : null;
+    // FV: el llenado desde cocinas es cuando se cocinó (primer cocimiento
+    // del tanque). Madurador: la cuba bombeada más reciente; la Pony no
+    // fermenta y entra al madurador directo de la cocina, así que ahí vale
+    // el inicio de maduración.
+    let cocinadoEn = null;
+    let nota = "";
+    if (llenado) {
+      cocinadoEn = llenado;
+      nota = "llenado desde cocinas";
+    } else if (cubaJoven) {
+      cocinadoEn = cubaJoven;
+      nota = "cocimiento más reciente del madurador";
+    } else if (iniMad) {
+      cocinadoEn = iniMad;
+      nota = "entrada al madurador";
+    }
+    // «FECHA TANQUE VACIO MÍN» de un FV: lo más pronto que la planta lo deja
+    // pasar al madurador. Cuenta la fermentación desde que TERMINA de llenarse
+    // (204 h + las ~18 h de llenado de un EXT), no desde el primer cocimiento.
+    const vacioMin = cVacioMin >= 0 && llenado ? fecha(row[cVacioMin]) : null;
+    porEquipo[key] = {
+      cocinadoEn: cocinadoEn ? cocinadoEn.toISOString() : null,
+      nota,
+      vacioMinEn: vacioMin ? vacioMin.toISOString() : null,
+    };
+  });
+  // «Tiempo mínimo de fermentación»: rótulo arriba, marcas y horas debajo.
+  const tiemposMinimos = {};
+  for (let r = 0; r < aoa.length; r++) {
+    const row = aoa[r] || [];
+    const c = row.findIndex((v) => typeof v === "string" && /tiempo m[ií]nimo de ferm/i.test(v));
+    if (c < 1) continue;
+    for (let k = r + 1; k <= r + 4 && k < aoa.length; k++) {
+      const lab = (aoa[k] || [])[c - 1];
+      const val = Number((aoa[k] || [])[c]);
+      if (typeof lab !== "string" || !(val > 0)) continue;
+      const n = normalizeText(lab);
+      if (/light/.test(n)) tiemposMinimos.light = val;
+      if (/std|estandar/.test(n)) tiemposMinimos.estandar = val;
+      if (/pilsen/.test(n)) tiemposMinimos.pilsen = val;
+    }
+    break;
+  }
+  return { foto: foto ? foto.toISOString() : null, porEquipo, tiemposMinimos };
 }
 

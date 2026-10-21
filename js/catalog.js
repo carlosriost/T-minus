@@ -195,15 +195,22 @@ function inventoryTotalsByMosto(catalog) {
     if (esLevaduraEnMadurador(e)) return; // levadura, no producto: no cubre demanda
     totals[e.mostoId] = (totals[e.mostoId] || 0) + (Number(e.hL) || 0);
   });
+  // Más los cocimientos del Programa de Cocinas que todavía no aparecen en el
+  // Producto en proceso (también son cerveza en proceso).
+  const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
+  cocimientosRealesFueraDelInventario(i0, catalog).lotes.forEach((l) => {
+    totals[l.mostoId] = (totals[l.mostoId] || 0) + l.hL;
+  });
   return totals;
 }
 
 // Lotes de inventario por mosto CON su fecha real en que estarán LISTOS PARA
 // ENVASAR (fin de todo el proceso, igual que la regla 1):
-//   · BBT           → ya listo (I0).
-//   · SV / SV Pony  → I0 + maduración que le falte.
-//   · FV            → I0 + fermentación que le falte + maduración COMPLETA (al
-//                     salir del fermentador todavía pasa por el madurador).
+//   · BBT           → ya listo (desde la foto del inventario).
+//   · SV / SV Pony  → foto + maduración que le falte.
+//   · FV            → foto + fermentación que le falte + maduración COMPLETA
+//                     (al salir del fermentador todavía pasa por el madurador).
+// «foto» = el momento en que se tomó el Producto en proceso (baseInventario).
 // Un lote solo puede cubrir un envasado que ocurra EN O DESPUÉS de esa fecha.
 // Ordenados por fecha de disponibilidad (el que esté listo primero se consume
 // primero). Devuelve { [mostoId]: [{ hL, listoEn: Date }, ...] }.
@@ -345,6 +352,107 @@ function marcaBBTSirvePara(marcaBBT, nombreEnvasado, mostoId) {
   return palabras.every((w) => sku.includes(w));
 }
 
+// Los días de cada equipo del «Producto en proceso» se cuentan hasta el
+// momento en que se tomó esa foto (celda A1 de la hoja «Control diario»), NO
+// hasta el I0. Antes se sumaba lo que faltaba al I0: si el archivo era del
+// 20/10 11:33 y el plan arrancaba el 21/10 07:00, todos los tanques quedaban
+// listos casi 20 h más tarde de lo real. Sin fecha de foto (inventario a mano
+// o un archivo viejo) se usa el I0, como antes.
+function baseInventario(e, i0) {
+  const f = e && e.fotoEn ? new Date(e.fotoEn) : null;
+  return f && !isNaN(f.getTime()) ? f : i0;
+}
+
+// COCIMIENTOS QUE YA SE HICIERON PERO NO ESTÁN EN EL PRODUCTO EN PROCESO.
+// El Producto en proceso no siempre está al día con la hora de su celda A1: el
+// del 20/10 11:33 traía como VACÍOS los SV Pony 1, 2 y 3 y los FV 52 a 58,
+// aunque el Programa de Cocinas los llenó el 19 y el 20/10 (su último llenado
+// registrado era del 19/10 06:35). FerIA no veía esa cerveza y marcaba como
+// «no alcanzable» el envasado que justamente sale de ahí. Ahora, si está
+// cargado el Programa de Cocinas, cada cocimiento suyo anterior al I0 cuenta
+// como cerveza en proceso cuando:
+//   · su tanque de destino sale vacío en el Producto en proceso, o con un
+//     llenado más de 2 días anterior (todavía no tenía ESTE cocimiento), y a
+//     la hora de ese último llenado seguiría en el tanque (si ya habría
+//     salido, el tanque está vacío porque se desocupó), o
+//   · no trae tanque reconocible y es posterior al último llenado registrado.
+// Si el tanque ya muestra ese llenado, el cocimiento ya está contado y se
+// omite (nada se cuenta dos veces). Solo mira los 3 días antes de ese último
+// llenado: lo anterior ya está, sin duda, en el Producto en proceso.
+const PC_ID_A_MOSTO = { estandar: "estandar", pilsen: "pilsen", light: "light", ponygo: "pony", ponyhg: "pony" };
+function cocimientosRealesFueraDelInventario(i0, catalog) {
+  const vacio = { lotes: [], corte: null };
+  if (typeof PC === "undefined" || !PC || !Array.isArray(PC.filas) || !i0) return vacio;
+  const pep = (INVENTORY_BALANCE || []).filter((e) => e && e.fotoEn);
+  if (!pep.length) return vacio;
+  const catById = {};
+  (catalog || MOSTO_CATALOG || []).forEach((m) => (catById[m.id] = m));
+  let corte = null;
+  pep.forEach((e) => {
+    if (!e.cocinadoEn || e.vacio || e.tipo === "BBT") return;
+    const t = Date.parse(e.cocinadoEn);
+    if (isFinite(t) && (corte == null || t > corte)) corte = t;
+  });
+  // Índice de tanques: "41-309" → n41 · "1-209" → n1 · "EXT 5" → te5.
+  const idx = {};
+  pep.forEach((e) => {
+    const k = normalizeText(e.equipo || "");
+    let m = k.match(/^(\d+)\s*-/);
+    if (m) idx["n" + Number(m[1])] = e;
+    m = k.match(/^(?:ext|te)\s*(\d+)$/);
+    if (m) idx["te" + Number(m[1])] = e;
+  });
+  const i0ms = i0.getTime();
+  const desde = (corte != null ? corte : i0ms) - 3 * 86400000;
+  const lotes = [];
+  PC.filas.forEach((x) => {
+    if (!x || x.tipo !== "coc" || !(x.inicio >= desde) || !(x.inicio < i0ms)) return;
+    const mostoId = PC_ID_A_MOSTO[x.id];
+    const m = mostoId && catById[mostoId];
+    if (!m) return;
+    const tanques = String(x.equipo || "")
+      .split("+")
+      .map((t) => normalizeText(t).replace(/\s+/g, ""))
+      .map((t) => (/^\d+$/.test(t) ? idx["n" + Number(t)] : /^(?:te|ext)\d+$/.test(t) ? idx["te" + Number(t.replace(/\D/g, ""))] : null))
+      .filter(Boolean);
+    let cuenta;
+    if (tanques.length) {
+      const yaEsta = tanques.some((e) => {
+        if (e.vacio || !e.cocinadoEn) return false;
+        return Date.parse(e.cocinadoEn) >= x.inicio - 2 * 86400000;
+      });
+      cuenta = !yaEsta;
+    } else {
+      cuenta = corte != null && x.inicio > corte;
+    }
+    const finCocina = x.fin || x.inicio + (Number(m.tiempoCocinaHoras) || 0) * 3600000;
+    // Un tanque vacío también puede ser uno que ya se desocupó: la Pony del
+    // 16/10 ya había pasado del SV al BBT cuando se registró el inventario.
+    // Solo cuenta si, a la hora del último llenado registrado, ese cocimiento
+    // todavía estaría en su tanque (FV: fermentando; Pony: madurando en el SV).
+    const horasEnTanque = esMostoPony(mostoId) ? Number(m.tiempoMaduracionHoras) || 0 : Number(m.tiempoFermentacionHoras) || 0;
+    if (cuenta && corte != null && finCocina + horasEnTanque * 3600000 <= corte) cuenta = false;
+    if (!cuenta) return;
+    const listoMs = finCocina + ((Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * 3600000;
+    lotes.push({
+      mostoId,
+      hL: (Number(m.factorDilucion) || 1) * (Number(m.volumenPorCocimiento) || 0),
+      listoEn: new Date(listoMs),
+      variante: null,
+      esBBT: false,
+      tipo: "Programa",
+      marcaTexto: "",
+      equipo: `Coc. ${x.n}${x.equipo ? " → " + x.equipo : ""}`,
+      tanques: tanques.map((e) => e.equipo),
+      cocinadoEn: new Date(x.inicio).toISOString(),
+      cocinadoNota: `cocimiento n.º ${x.n} del Programa de Cocinas (no aparece en el Producto en proceso)`,
+      n: x.n,
+      pcId: x.id,
+    });
+  });
+  return { lotes, corte };
+}
+
 function inventoryBatchesByMosto(catalog) {
   const i0 = (typeof getI0Date === "function" && getI0Date()) || ahoraPlanta();
   const catById = {};
@@ -370,7 +478,15 @@ function inventoryBatchesByMosto(catalog) {
         e.tipo === "FV"
           ? Math.max(0, fermentDias - dias) + maduracionDias
           : Math.max(0, maduracionDias - dias);
-      listoEn = new Date(i0.getTime() + faltanDias * 86400000);
+      listoEn = new Date(baseInventario(e, i0).getTime() + faltanDias * 86400000);
+      // Si el archivo trae la fecha mínima en que la planta vacía el FV, manda
+      // esa (cuenta el llenado completo): listo = vacío mín. + maduración.
+      if (e.tipo === "FV" && e.vacioMinEn) {
+        const vm = new Date(e.vacioMinEn);
+        if (!isNaN(vm.getTime())) listoEn = new Date(vm.getTime() + maduracionDias * 86400000);
+      }
+    } else {
+      listoEn = baseInventario(e, i0);
     }
     // BBT: producto terminado, disponible desde ya (listoEn = i0).
     // Solo los BBT de Pony llevan variante (go / hg); el resto queda en null y
@@ -390,7 +506,16 @@ function inventoryBatchesByMosto(catalog) {
       // FV/SV todavía es mosto sin marca definida: cubre cualquiera del mosto.
       marcaTexto: e.tipo === "BBT" ? e.marcaTexto || "" : "",
       equipo: e.equipo || "",
+      tipo: e.tipo || "",
+      // Cuándo se cocinó lo que hay en el equipo (hoja «Control diario»):
+      // en un FV, el llenado desde cocinas; en un SV, la cuba más reciente.
+      cocinadoEn: e.cocinadoEn || null,
+      cocinadoNota: e.cocinadoNota || "",
     });
+  });
+  cocimientosRealesFueraDelInventario(i0, catalog).lotes.forEach((l) => {
+    if (!out[l.mostoId]) out[l.mostoId] = [];
+    out[l.mostoId].push(l);
   });
   // Se consume primero lo que está listo antes; a igualdad de fecha, primero el
   // BBT (producto terminado que hay que sacar del tanque) y luego el FV/SV.
@@ -420,7 +545,7 @@ function inventoryOccupancyByEquipo() {
     const dias =
       e.diasEnEquipo === "" || e.diasEnEquipo == null
         ? 0
-        : Math.round(Number(e.diasEnEquipo) || 0);
+        : Number(e.diasEnEquipo) || 0;
 
     // Madurador con levadura guardada (hL sin días): el equipo está ocupado
     // pero no hay reloj de maduración corriendo, así que no se puede calcular
@@ -463,8 +588,12 @@ function inventoryOccupancyByEquipo() {
         diasReq = (Number(m.tiempoFermentacionHoras) || 0) / 24;
       else diasReq = (Number(m.tiempoMaduracionHoras) || 0) / 24; // SV / SV Pony
     }
-    const faltanDias = Math.max(0, diasReq - dias);
-    const fecha = new Date(i0.getTime() + faltanDias * 86400000);
+    let faltanDias = Math.max(0, diasReq - dias);
+    let fecha = new Date(baseInventario(e, i0).getTime() + faltanDias * 86400000);
+    if (e.tipo === "FV" && e.vacioMinEn && !isNaN(new Date(e.vacioMinEn).getTime())) {
+      fecha = new Date(e.vacioMinEn);
+      faltanDias = Math.max(0, (fecha - baseInventario(e, i0)) / 86400000);
+    }
     if (!out[key] || out[key].vacio || faltanDias > out[key].faltanDias) {
       out[key] = {
         mostoId: e.mostoId || null,
@@ -475,6 +604,30 @@ function inventoryOccupancyByEquipo() {
         vacio: false,
       };
     }
+  });
+  // Tanques que el Programa de Cocinas ya llenó y que el Producto en proceso
+  // todavía muestra vacíos (ver cocimientosRealesFueraDelInventario): siguen
+  // ocupados hasta que esa cerveza termine de fermentar (o la Pony de madurar).
+  cocimientosRealesFueraDelInventario(i0, MOSTO_CATALOG).lotes.forEach((l) => {
+    const m = catById[l.mostoId];
+    if (!m || !l.cocinadoEn) return;
+    const pony = esMostoPony(l.mostoId);
+    const horas = (Number(m.tiempoCocinaHoras) || 0) + (pony ? Number(m.tiempoMaduracionHoras) || 0 : Number(m.tiempoFermentacionHoras) || 0);
+    const fecha = new Date(new Date(l.cocinadoEn).getTime() + horas * 3600000);
+    (l.tanques || []).forEach((tq) => {
+      const key = normalizeText(tq);
+      const o = out[key];
+      if (o && !o.vacio && o.fecha >= fecha) return;
+      out[key] = {
+        mostoId: l.mostoId,
+        tipo: pony ? "SV Pony" : "FV",
+        faltanDias: Math.max(0, (fecha - i0) / 86400000),
+        fecha,
+        hL: Math.round((o && !o.vacio ? o.hL : 0) + l.hL),
+        vacio: false,
+        delPrograma: true,
+      };
+    });
   });
   return out;
 }
@@ -584,7 +737,7 @@ function computedYeastHarvests(tankAssignment) {
       mostoId: e.mostoId,
       tipo: yeastTypeForMosto(e.mostoId),
       fuente: "Inventario · " + e.equipo,
-      fechaDisponible: new Date(i0.getTime() + falta * 86400000),
+      fechaDisponible: new Date(baseInventario(e, i0).getTime() + falta * 86400000),
     });
   });
 

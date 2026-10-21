@@ -494,10 +494,8 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
   // Balance Semanal: copia consumible del inventario por mosto, POR LOTE, cada
   // uno con la fecha en la que de verdad estará listo (inventoryBatchesByMosto:
   // BBT ya listo, FV/SV según lo que les falte de fermentación/maduración). Se
-  // va descontando en el orden en que aparecen los bloques del plan de
-  // envasado, así que el inventario cubre primero el bloque más próximo de esa
-  // marca. Cuenta TODO el inventario como disponible, aunque todavía no esté
-  // listo para envasar: estará listo pronto y se puede usar.
+  // va descontando en orden cronológico de envasado, y cada lote cubre solo lo
+  // que se envasa desde que está listo (ver cubrirEnElTiempo).
   const remainingBatches = {};
   // Lo que cubre el inventario y lo que ya no alcanza ningún cocimiento nuevo,
   // tramo por tramo de envasado (para la trazabilidad y los avisos).
@@ -509,48 +507,106 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     remainingBatches[mostoId] = (inventoryBatches[mostoId] || []).map(
       (lote) => ({
         hL: lote.hL,
+        hLInicial: lote.hL,
         listoEn: lote.listoEn,
         variante: lote.variante || null,
         esBBT: !!lote.esBBT,
+        tipo: lote.tipo || (lote.esBBT ? "BBT" : ""),
         marcaTexto: lote.marcaTexto || "",
         equipo: lote.equipo || "",
+        cocinadoEn: lote.cocinadoEn || null,
+        cocinadoNota: lote.cocinadoNota || "",
       }),
     );
   });
-  // TODO el inventario cuenta como DISPONIBLE, esté o no listo ya para envasar:
-  // un FV que aún fermenta o un SV que aún madura igual va a estar listo pronto
-  // y se puede usar. No se descarta un lote por su fecha de disponibilidad; los
-  // lotes se toman en orden de disponibilidad (los que ya están listos primero).
+
+  // UN LOTE SOLO CUBRE LO QUE SE ENVASA DESDE QUE ESTÁ LISTO. Antes todo el
+  // inventario contaba como disponible desde el I0 («va a estar listo pronto»):
+  // un FV llenado el 19/10, que termina de madurar el 30/10, tapaba la
+  // Costeñita del 22/10. En la planta eso no se puede envasar. Ahora cada
+  // corrida de envasado se cubre en el tiempo: desde el momento en que el lote
+  // está listo y hasta donde le alcance el volumen. Lo que se envasa antes de
+  // que haya un lote listo queda descubierto (lo cubre un cocimiento nuevo, o
+  // se avisa si ya no alcanza).
   //
   // Un lote de BBT es producto TERMINADO de una marca concreta: solo se puede
   // asignar a la línea que envasa ESA marca (el BBT de Costeñita no cubre un
   // envasado de Poker aunque los dos sean Mosto Estandar). Los FV/SV todavía no
   // tienen marca definida y cubren cualquier envasado de su mosto.
-  function tomarDeInventario(mostoId, necesario, nombreEnvasado, asignaciones) {
-    const lotes = remainingBatches[mostoId];
-    if (!lotes || necesario <= 1e-9) return 0;
-    let tomado = 0;
-    for (const lote of lotes) {
-      if (tomado >= necesario - 1e-9) break;
-      if (lote.hL <= 1e-9) continue;
-      if (
-        lote.esBBT &&
-        !marcaBBTSirvePara(lote.marcaTexto, nombreEnvasado, mostoId)
-      )
-        continue;
-      const take = Math.min(lote.hL, necesario - tomado);
-      lote.hL -= take;
-      tomado += take;
-      if (asignaciones && take > 1e-9)
-        asignaciones.push({
-          equipo: lote.equipo,
-          tipo: lote.esBBT ? "BBT" : "FV/SV",
-          marcaLote: lote.marcaTexto,
-          marcaEnvasado: nombreEnvasado,
-          hL: take,
-        });
+  //
+  // El reparto se hace en ORDEN CRONOLÓGICO de envasado sobre TODAS las
+  // corridas del mosto (no bloque por bloque, que no siempre van en orden de
+  // fecha ni de línea): lo que está listo primero cubre lo que se envasa
+  // primero.
+  function cubrirEnElTiempo(mostoId, ev, nombreEnvasado) {
+    const vol = Number(ev.volumen) || 0;
+    const res = { tomado: 0, cubiertos: [], descubiertos: [], asignaciones: [] };
+    const lotes = remainingBatches[mostoId] || [];
+    const ini = ev.earliest ? ev.earliest.getTime() : null;
+    let fin = ev.end ? ev.end.getTime() : null;
+    if (ini == null) {
+      // Sin horario no se puede cubrir en el tiempo: se reparte por volumen.
+      for (const lote of lotes) {
+        if (res.tomado >= vol - 1e-9) break;
+        if (lote.hL <= 1e-9) continue;
+        if (lote.esBBT && !marcaBBTSirvePara(lote.marcaTexto, nombreEnvasado, mostoId)) continue;
+        const take = Math.min(lote.hL, vol - res.tomado);
+        lote.hL -= take;
+        res.tomado += take;
+        res.asignaciones.push({ lote, hL: take });
+      }
+      return res;
     }
-    return tomado;
+    if (!(fin > ini)) fin = ini + 3600000;
+    const rate = vol / (fin - ini); // hL por ms
+    let cursor = ini;
+    for (const lote of lotes) {
+      if (cursor >= fin - 1) break;
+      if (lote.hL <= 1e-9) continue;
+      if (lote.esBBT && !marcaBBTSirvePara(lote.marcaTexto, nombreEnvasado, mostoId)) continue;
+      // 2 min de tolerancia: los minutos sueltos entre la foto y el I0 no son
+      // envasado sin cubrir.
+      const listo = lote.listoEn ? new Date(lote.listoEn).getTime() - 2 * 60000 : -Infinity;
+      // Los lotes van ordenados por fecha de listo: si este no alcanza a estar
+      // listo antes de que termine la corrida, los siguientes tampoco.
+      if (listo >= fin - 1) break;
+      const desde = Math.max(cursor, listo);
+      if (desde > cursor + 1) {
+        res.descubiertos.push({ desde: cursor, hasta: desde, hL: rate * (desde - cursor) });
+        cursor = desde;
+      }
+      const dur = Math.min(fin - cursor, lote.hL / rate);
+      const take = Math.min(lote.hL, rate * dur);
+      if (take <= 1e-9) continue;
+      lote.hL -= take;
+      res.tomado += take;
+      res.cubiertos.push({ desde: cursor, hasta: cursor + dur, hL: take, lote });
+      res.asignaciones.push({ lote, hL: take });
+      cursor += dur;
+    }
+    if (fin - cursor > 1) res.descubiertos.push({ desde: cursor, hasta: fin, hL: rate * (fin - cursor) });
+    return res;
+  }
+
+  // Reparto previo, en orden de fecha, de todas las corridas de cada mosto.
+  const coberturaPorCorrida = new Map();
+  {
+    const corridas = [];
+    (brands || []).forEach((b) => {
+      const mostoId = matchMosto(b.name, catalog);
+      if (!mostoId || !(Number(b.volumen) > 0)) return;
+      const evs = Array.isArray(b.marcas) && b.marcas.length ? b.marcas : [{ name: b.name, volumen: Number(b.volumen) || 0 }];
+      evs.forEach((ev) => {
+        if (!(Number(ev.volumen) > 0)) return;
+        const t = ev.earliest ? ev.earliest.getTime() : b.earliest ? b.earliest.getTime() : Infinity;
+        corridas.push({ ev, b, mostoId, t });
+      });
+    });
+    corridas.sort((x, y) => x.t - y.t);
+    corridas.forEach((c) => {
+      const ev = c.ev.earliest ? c.ev : { ...c.ev, earliest: c.b.earliest, end: c.ev.end || c.b.end };
+      coberturaPorCorrida.set(c.ev, cubrirEnElTiempo(c.mostoId, ev, c.ev.name || c.b.name));
+    });
   }
 
   // IMPORTANTE: no se agrupan todos los registros de una misma marca/mosto.
@@ -581,65 +637,59 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
         : [{ name: b.name, volumen: volumenEnvasar }];
     let cubiertoPorInventario = 0;
     const pendientes = [];
-    // HASTA DÓNDE ALCANZA EL INVENTARIO. Las corridas del bloque se cubren en
-    // orden cronológico, así que si el inventario tapa las primeras, el
-    // cocimiento no hace falta para ESAS sino para la primera que queda
-    // descubierta. Esa es la fecha contra la que se calcula el inicio y la que
-    // decide si el bloque llega tarde. Sin esto un bloque salía en rojo por una
-    // corrida que el inventario ya tenía cubierta.
+    // Primera corrida (o parte de corrida) que el inventario NO cubre: es la
+    // fecha contra la que se calcula el inicio y la que decide si el bloque
+    // llega tarde.
     let primeraDescubierta = null;
+    const procMs =
+      ((Number(m.tiempoCocinaHoras) || 0) + (Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * 3600000;
+    // RESPETAR EL TIEMPO DE PROCESO (12–14 días en cerveza). Lo que se envasa
+    // antes de «I0 + cocina + fermentación + maduración» ya no lo alcanza
+    // ningún cocimiento nuevo: tiene que salir de lo que ya está en proceso.
+    // Se separa como «no alcanzable» y se avisa, en vez de cocinarlo tarde.
+    const limite = i0PlanMs != null ? i0PlanMs + procMs : -Infinity;
     eventos.forEach((ev) => {
       const vol = Number(ev.volumen) || 0;
       if (!(vol > 0)) return;
-      const tomado = tomarDeInventario(
-        mostoId,
-        vol,
-        ev.name || b.name,
-        asignacionesInv,
+      const cob =
+        coberturaPorCorrida.get(ev) ||
+        cubrirEnElTiempo(mostoId, ev.earliest ? ev : { ...ev, earliest: b.earliest, end: ev.end || b.end }, ev.name || b.name);
+      cubiertoPorInventario += cob.tomado;
+      const base = { name: ev.name || b.name, codigo: ev.codigo || b.codigo, train: ev.train || b.train, mostoId };
+      cob.asignaciones.forEach((a) =>
+        asignacionesInv.push({
+          equipo: a.lote.equipo,
+          tipo: a.lote.esBBT ? "BBT" : a.lote.tipo || "FV/SV",
+          marcaLote: a.lote.marcaTexto,
+          marcaEnvasado: ev.name || b.name,
+          hL: a.hL,
+        }),
       );
-      cubiertoPorInventario += tomado;
-      // Lo que esta corrida deja sin cubrir, con el tramo de tiempo en que se
-      // envasa (si el inventario cubrió el comienzo, lo pendiente arranca
-      // cuando se acaba lo cubierto). Con esto se arma la demanda en el tiempo.
-      {
-        const ini = ev.earliest ? ev.earliest.getTime() : b.earliest ? b.earliest.getTime() : null;
-        if (ini != null) {
-          let fin = ev.end ? ev.end.getTime() : null;
-          if (!(fin > ini)) fin = ini + 3600000;
-          const corte = ini + (fin - ini) * (tomado / vol);
-          const base = { name: ev.name || b.name, codigo: ev.codigo || b.codigo, train: ev.train || b.train, mostoId };
-          if (tomado > 1e-9) cubiertoPorInvTramos.push({ ...base, hL: tomado, desde: ini, hasta: corte });
-          if (vol - tomado > 1e-9) {
-            // RESPETAR EL TIEMPO DE PROCESO (12–14 días en cerveza). Lo que se
-            // envasa antes de «I0 + cocina + fermentación + maduración» ya no lo
-            // alcanza ningún cocimiento nuevo: tiene que salir de lo que ya está
-            // en proceso. Antes se cocinaba igual, tarde, y la trazabilidad
-            // quedaba al revés (cocinando después de envasar). Ahora se separa
-            // como «no alcanzable» y se avisa.
-            const procMs =
-              ((Number(m.tiempoCocinaHoras) || 0) + (Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * 3600000;
-            const limite = i0PlanMs != null ? i0PlanMs + procMs : -Infinity;
-            const rate = (vol - tomado) / Math.max(1, fin - corte);
-            if (limite > corte) {
-              const z = Math.min(fin, limite);
-              noAlcanzable.push({ ...base, hL: rate * (z - corte), desde: corte, hasta: z, listoDesde: limite });
-            }
-            const desde = Math.max(corte, limite);
-            if (fin > desde)
-              pendientes.push({ ...base, hL: rate * (fin - desde), desde, hasta: fin });
-          }
+      cob.cubiertos.forEach((c) =>
+        cubiertoPorInvTramos.push({
+          ...base,
+          hL: c.hL,
+          desde: c.desde,
+          hasta: c.hasta,
+          equipo: c.lote.equipo,
+          tipoLote: c.lote.esBBT ? "BBT" : c.lote.tipo || "",
+          marcaLote: c.lote.marcaTexto,
+          listoEn: c.lote.listoEn ? new Date(c.lote.listoEn).getTime() : null,
+          cocinadoEn: c.lote.cocinadoEn ? new Date(c.lote.cocinadoEn).getTime() : null,
+          cocinadoNota: c.lote.cocinadoNota || "",
+        }),
+      );
+      cob.descubiertos.forEach((d) => {
+        if (d.hL <= 1e-9) return;
+        if (primeraDescubierta == null || d.desde < primeraDescubierta.getTime()) primeraDescubierta = new Date(d.desde);
+        const rate = d.hL / Math.max(1, d.hasta - d.desde);
+        if (limite > d.desde) {
+          const z = Math.min(d.hasta, limite);
+          noAlcanzable.push({ ...base, hL: rate * (z - d.desde), desde: d.desde, hasta: z, listoDesde: limite });
         }
-      }
-      if (primeraDescubierta == null && tomado < vol - 1e-9 && ev.earliest) {
-        // Si la corrida quedó cubierta a medias, el mosto nuevo se necesita
-        // cuando se acabe lo cubierto, no al empezar la corrida.
-        const ini = ev.earliest.getTime();
-        const fin = ev.end ? ev.end.getTime() : null;
-        const frac = tomado / vol;
-        primeraDescubierta = new Date(
-          fin && fin > ini ? ini + (fin - ini) * frac : ini,
-        );
-      }
+        const desde = Math.max(d.desde, limite);
+        if (d.hasta > desde) pendientes.push({ ...base, hL: rate * (d.hasta - desde), desde, hasta: d.hasta });
+      });
     });
     // Si el inventario cubre TODO el bloque no hay fecha de necesidad; y si no
     // se llegó a tocar ninguna corrida, manda la primera del bloque.

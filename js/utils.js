@@ -111,6 +111,12 @@ function excelPartesHora(v) {
   if (!isDateLike(v) || isNaN(v.getTime())) return null;
   return { h: v.getHours(), m: v.getMinutes(), s: v.getSeconds() };
 }
+// Celda de Excel con FECHA Y HORA → instante en la convención de la planta.
+function excelFechaHoraAPlanta(v) {
+  const p = excelPartesFecha(v);
+  const h = excelPartesHora(v);
+  return p && h ? new Date(Date.UTC(p.y, p.mo, p.d, h.h, h.m, h.s)) : null;
+}
 // Celda de Excel con FECHA (se ignora la hora) → fecha de planta a medianoche.
 function excelFechaAPlanta(v) {
   const p = excelPartesFecha(v);

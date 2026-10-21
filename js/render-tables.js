@@ -751,10 +751,10 @@ function renderInventoryBalance(plan) {
     const disponible = disponibleByMosto[m.id] || 0;
     const t = totalsByMosto[m.id] || { envasar: 0, cubierto: 0, cocinar: 0 };
     const sobrante = Math.max(0, disponible - t.cubierto);
-    // Todo el inventario cuenta como disponible, esté o no listo ya para
-    // envasar. Si aun así sobra inventario Y falta por cocinar, es porque ese
-    // HL no puede cubrir la demanda que queda: en Pony, un lote de BBT de una
-    // variante (Go / HG) no sirve para la otra.
+    // Cada lote cubre solo lo que se envasa desde que está listo. Si sobra
+    // inventario Y falta por cocinar, es porque ese HL no puede cubrir la
+    // demanda que queda: está listo después de ella, o (en Pony) un lote de
+    // BBT de una variante (Go / HG) no sirve para la otra.
     let notaHtml = "";
     if (sobrante > 1 && t.cocinar > 1e-6) {
       const lotesSobrantes = (remainingBatches[m.id] || []).filter(
@@ -766,7 +766,7 @@ function renderInventoryBalance(plan) {
         ];
         const motivo = variantes.length
           ? `es de otra variante (${variantes.join(" / ").toUpperCase()}) y no cubre el envasado que falta`
-          : `no hay más envasado cargado que lo consuma`;
+          : `queda listo después del envasado que falta, o no hay más envasado cargado que lo consuma`;
         notaHtml = `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;">Hay ${Math.round(t.cocinar).toLocaleString("es-CO")} HL por cocinar Y a la vez ${Math.round(sobrante).toLocaleString("es-CO")} HL sobrantes: no se contradicen — ese inventario ${motivo}.</div>`;
       }
     }
@@ -792,8 +792,31 @@ function renderInventoryBalance(plan) {
   const sinHomHtml = sinHom.length
     ? `<div style="border:1px solid rgba(237,28,43,.4); background:rgba(237,28,43,.08); border-radius:4px; padding:8px 14px; margin-bottom:10px; color:var(--danger); font-size:12.5px;">⚠️ ${Math.round(sinHomTotal).toLocaleString("es-CO")} HL pedidos en el Gantt de envasado NO están en este balance porque su marca no homologó a ningún mosto: ${sinHom.map((b) => `${escapeHtml(b.name)} (${Math.round(b.volumen).toLocaleString("es-CO")} HL)`).join(", ")}. Ajusta las palabras clave en el Catálogo de mostos o revisa la pestaña "Sin homologar".</div>`
     : "";
+  // Cocimientos del Programa de Cocinas que el Producto en proceso todavía no
+  // muestra: se cuentan como cerveza en proceso y se dice cuáles son.
+  const pcFuera =
+    typeof cocimientosRealesFueraDelInventario === "function"
+      ? cocimientosRealesFueraDelInventario(getI0Date() || ahoraPlanta(), MOSTO_CATALOG)
+      : { lotes: [] };
+  const pcFueraHtml = pcFuera.lotes.length
+    ? `<div style="border:1px solid rgba(255,193,7,.4); background:rgba(255,193,7,.07); border-radius:4px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;">ℹ️ El Producto en proceso llega hasta el último llenado del ${pcFuera.corte ? fmtDateTime(new Date(pcFuera.corte)) : "—"}. Del Programa de Cocinas se cuentan además <b>${pcFuera.lotes.length} cocimientos</b> que ya se hicieron y que el Producto en proceso todavía muestra en tanques vacíos: ${(() => {
+        const g = {};
+        pcFuera.lotes.forEach((l) => {
+          const k = l.mostoId;
+          (g[k] = g[k] || []).push(l);
+        });
+        return Object.keys(g)
+          .map((k) => {
+            const ls = g[k];
+            const nom = (MOSTO_CATALOG.find((m) => m.id === k) || {}).nombre || k;
+            const tq = [...new Set(ls.flatMap((l) => l.tanques || []))];
+            return `${escapeHtml(nom)} n.º ${ls[0].n}${ls.length > 1 ? "–" + ls[ls.length - 1].n : ""} (${fmtDateTime(new Date(ls[0].cocinadoEn))}${tq.length ? " · " + escapeHtml(tq.join(", ")) : ""})`;
+          })
+          .join("; ");
+      })()}.</div>`
+    : "";
   const resumenHtml = resumenRows
-    ? `${alcanceHtml}${sinHomHtml}<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar (total cargado)</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
+    ? `${alcanceHtml}${pcFueraHtml}${sinHomHtml}<table><thead><tr><th>Mosto</th><th>Inventario disponible (HL)</th><th>Volumen a envasar (total cargado)</th><th>Cubierto por inventario</th><th>Pendiente por cocinar</th><th>Inventario sobrante</th></tr></thead><tbody>${resumenRows}</tbody></table>`
     : '<p class="empty-note">Agrega al menos un mosto en el Catálogo de mostos para poder registrar inventario.</p>';
 
   // ---- Detalle por lote: equipo, marca, días en el equipo y HL normalizados ----
@@ -818,7 +841,7 @@ function renderInventoryBalance(plan) {
       const dias =
         entry.diasEnEquipo === "" || entry.diasEnEquipo == null
           ? null
-          : Math.round(Number(entry.diasEnEquipo) || 0);
+          : Number(entry.diasEnEquipo) || 0;
       const hLnum = Math.round(Number(entry.hL) || 0);
 
       // Un equipo con 0 hL y 0 (o ningún) día está vacío → cuenta como
@@ -867,6 +890,15 @@ function renderInventoryBalance(plan) {
         } else {
           estadoHtml = `<span class="tag ok">Listo · quedan ${Math.round(restanBBT)} h</span>`;
         }
+      } else if (tipo === "FV" && entry.vacioMinEn && !isNaN(new Date(entry.vacioMinEn).getTime())) {
+        // Fecha mínima de vaciado que trae el Producto en proceso (cuenta el
+        // llenado completo del FV): manda sobre el cálculo con los días.
+        const base = baseInventario(entry, getI0Date() || ahoraPlanta());
+        const faltan = (new Date(entry.vacioMinEn) - base) / 86400000;
+        estadoHtml =
+          faltan <= 0
+            ? '<span class="tag ok">Listo para madurar</span>'
+            : `<span class="tag warn">En proceso · faltan ${faltan.toFixed(1)} d</span>`;
       } else if (dias != null && diasReq != null) {
         if (dias >= diasReq) {
           const listoTxt =
@@ -895,19 +927,27 @@ function renderInventoryBalance(plan) {
           liberaHtml = '<span class="tag ok">Listo para envase</span>';
         } else {
           // Hora tope para envasarlo antes de pasarse del máximo en BBT.
-          const base = getI0Date() || ahoraPlanta();
+          const base = baseInventario(entry, getI0Date() || ahoraPlanta());
           const tope = new Date(base.getTime() + restanBBT * 3600000);
           liberaHtml =
             restanBBT <= 0
               ? `<span style="color:var(--danger);">Debió envasarse ${fmtDateTime(tope)}</span>`
               : `Envasar antes de ${fmtDateTime(tope)}`;
         }
+      } else if (tipo === "FV" && entry.vacioMinEn && !isNaN(new Date(entry.vacioMinEn).getTime())) {
+        const base = baseInventario(entry, getI0Date() || ahoraPlanta());
+        const vm = new Date(entry.vacioMinEn);
+        const faltanD = (vm - base) / 86400000;
+        liberaHtml =
+          faltanD <= 0
+            ? '<span class="tag ok">Listo para liberar</span>'
+            : `${faltanD.toFixed(1)} d · ${fmtDateTime(vm)} <span style="color:var(--muted); font-size:10.5px;">(vacío mín. del archivo)</span>`;
       } else if (dias != null && diasReq != null) {
         const faltanD = Math.max(0, diasReq - dias);
         if (faltanD <= 0) {
           liberaHtml = '<span class="tag ok">Listo para liberar</span>';
         } else {
-          const base = getI0Date() || ahoraPlanta();
+          const base = baseInventario(entry, getI0Date() || ahoraPlanta());
           const fecha = new Date(base.getTime() + faltanD * 86400000);
           liberaHtml = `${faltanD.toFixed(1)} d · ${fmtDate(fecha)}`;
         }
@@ -927,7 +967,11 @@ function renderInventoryBalance(plan) {
         ).join("");
 
       return `<tr data-inv-idx="${idx}">
-        <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22"></td>
+        <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22">${
+          entry.cocinadoEn
+            ? `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;" title="${escapeHtml(entry.cocinadoNota || "")}">Cocinado: ${fmtDateTime(new Date(entry.cocinadoEn))}</div>`
+            : ""
+        }</td>
         <td><select class="cat-input" data-inv-field="tipo" style="width:70px;">${TIPOS.map(
           (t) => `<option value="${t}" ${t === tipo ? "selected" : ""}>${t}</option>`,
         ).join("")}</select></td>
@@ -958,7 +1002,7 @@ function renderInventoryBalance(plan) {
                 horasBBT == null ? "" : Math.round(horasBBT)
               }" placeholder="horas" title="Horas que el lote lleva en el BBT (columna TIEMPO DE ALMACENAMIENTO)" style="width:80px;">
                <span style="color:var(--muted); font-size:10.5px;"> h</span>`
-            : `<input type="number" min="0" step="1" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias)}" placeholder="días">`
+            : `<input type="number" min="0" step="0.01" class="cat-input" data-inv-field="diasEnEquipo" value="${dias == null ? "" : Math.round(dias * 100) / 100}" placeholder="días">`
         }</td>
         <td style="color:var(--muted);">${
           tipo === "BBT"
@@ -1000,7 +1044,12 @@ function renderInventoryBalance(plan) {
       const field = e.target.dataset.invField;
       let val = e.target.value;
       if (field === "diasEnEquipo" || field === "almacenBBTHoras") {
-        val = val === "" ? "" : Math.max(0, Math.round(parseFloat(val) || 0));
+        val =
+          val === ""
+            ? ""
+            : field === "diasEnEquipo"
+              ? Math.max(0, Math.round((parseFloat(val) || 0) * 100) / 100)
+              : Math.max(0, Math.round(parseFloat(val) || 0));
         if (field === "almacenBBTHoras" && val === "") val = null;
       } else if (field === "hL") {
         val = Math.max(0, Math.round(parseFloat(val) || 0));
@@ -1085,6 +1134,7 @@ renderInventoryBalance(STATE && STATE.plan);
 // Reemplaza TODO el inventario con lo que traiga el archivo (hojas "Reporte"
 // y "BBTs"): equipo, tipo (FV/SV/BBT), marca homologada a mosto, días en el
 // equipo y HL diluidos. Los BBTs entran como producto terminado (sin días).
+let PP_AVISO_TIEMPOS = "";
 (function initProductoEnProcesoUpload() {
   const input = document.getElementById("ppFileInput");
   const status = document.getElementById("ppStatus");
@@ -1118,7 +1168,13 @@ renderInventoryBalance(STATE && STATE.plan);
           diasEnEquipo:
             p.tipo === "BBT" || p.diasEnEquipo == null
               ? ""
-              : Math.max(0, Math.round(Number(p.diasEnEquipo) || 0)),
+              : Math.max(0, Math.round((Number(p.diasEnEquipo) || 0) * 100) / 100),
+          // Hora de la foto del inventario y cuándo se cocinó lo del equipo
+          // (hoja «Control diario»). Los días se cuentan hasta la foto.
+          fotoEn: filas.foto || null,
+          cocinadoEn: p.cocinadoEn || null,
+          cocinadoNota: p.cocinadoNota || "",
+          vacioMinEn: p.vacioMinEn || null,
           hL: Math.max(0, Math.round(Number(p.hL) || 0)),
           // Volumen SIN diluir. Hace falta para reconocer la levadura guardada
           // en un madurador: esas filas traen hL sin diluir y la diluida en 0,
@@ -1130,6 +1186,39 @@ renderInventoryBalance(STATE && STATE.plan);
               : null,
         }));
         saveInventoryBalance();
+        // EL PLAN ARRANCA CUANDO SE TOMÓ LA FOTO. Si el I0 queda después, lo
+        // que se cocinó entre la foto y el I0 no aparece ni en el inventario
+        // ni en el plan, y FerIA ve envasado «sin cubrir» que en realidad ya
+        // se cocinó. Se puede mover a mano después.
+        let avisoI0 = "";
+        if (filas.foto) {
+          const foto = new Date(filas.foto);
+          const inp = document.getElementById("programI0Input");
+          const actual = typeof getI0Date === "function" ? getI0Date() : null;
+          if (inp && (!actual || Math.abs(actual - foto) > 60000)) {
+            inp.value = toInputDateTimeUTC(foto);
+            try {
+              localStorage.setItem("planCocinasI0", inp.value);
+            } catch (_) {}
+            if (typeof refreshI0Badge === "function") refreshI0Badge();
+            avisoI0 = ` · I0 = hora de la foto (${fmtDateTime(foto)})`;
+          }
+        }
+        // Tiempos mínimos de fermentación que trae el archivo vs. el catálogo.
+        const tm = filas.tiemposMinimos || {};
+        const difs = Object.keys(tm)
+          .map((id) => {
+            const m = MOSTO_CATALOG.find((x) => x.id === id);
+            if (!m) return null;
+            const cat = Number(m.tiempoFermentacionHoras) || 0;
+            return Math.abs(cat - tm[id]) > 0.5
+              ? `${m.nombre}: archivo ${tm[id]} h, catálogo ${Math.round(cat)} h`
+              : null;
+          })
+          .filter(Boolean);
+        PP_AVISO_TIEMPOS = difs.length
+          ? "Fermentación mínima distinta al catálogo — " + difs.join(" · ")
+          : "";
         renderInventoryBalance(STATE && STATE.plan);
         if (typeof renderTankCatalog === "function") renderTankCatalog();
       if (typeof renderYeastConfig === "function") renderYeastConfig();
@@ -1139,7 +1228,7 @@ renderInventoryBalance(STATE && STATE.plan);
           status.style.color = "var(--ok)";
           const nBBT = filas.filter((x) => x.tipo === "BBT").length;
           const nVac = filas.filter((x) => x.vacio).length;
-          status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}`;
+          status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}${filas.foto ? " · foto del " + fmtDateTime(new Date(filas.foto)) : ""}${avisoI0}${PP_AVISO_TIEMPOS ? " · ⚠ " + PP_AVISO_TIEMPOS : ""}`;
         }
       } catch (err) {
         console.error(err);
