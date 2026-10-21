@@ -247,7 +247,8 @@ function trzFuentesInventario(inv) {
 function trzTextoCocinado(f) {
   if (!f.cocinadoEn) return f.tipo === "BBT" ? "producto terminado en BBT (el Excel no trae la fecha de cocimiento)" : "sin fecha de cocimiento en el Excel";
   const dias = (f.desde - f.cocinadoEn) / (24 * TRZ_H);
-  return `cocinado ${trzF(f.cocinadoEn)} · ${MOD_NF(dias, 1)} días antes de envasarse`;
+  const verbo = /llenado/.test(f.nota || "") ? "terminó de llenarse desde cocinas" : "cocinado";
+  return `${verbo} ${trzF(f.cocinadoEn)} · ${MOD_NF(dias, 1)} días antes de envasarse`;
 }
 
 // Estado de un cocimiento en un instante dado.
@@ -515,7 +516,7 @@ function trzDibujarLinea(d, t) {
       ? ` · ${trzHL(invHL)} del inventario: ` +
         fuentesInv
           .slice(0, 3)
-          .map((f) => `${f.equipo} (${f.cocinadoEn ? "cocinado " + trzF(f.cocinadoEn) : f.tipo === "BBT" ? "BBT, sin fecha de cocimiento" : "sin fecha de cocimiento"})`)
+          .map((f) => `${f.equipo} (${f.cocinadoEn ? (/llenado/.test(f.nota || "") ? "llenado " : "cocinado ") + trzF(f.cocinadoEn) : f.tipo === "BBT" ? "BBT, sin fecha de cocimiento" : "sin fecha de cocimiento"})`)
           .join(", ") +
         (fuentesInv.length > 3 ? ` y ${fuentesInv.length - 3} más` : "")
       : "";

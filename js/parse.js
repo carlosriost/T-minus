@@ -1050,15 +1050,16 @@ function leerControlDiario(ws) {
     const llenado = cLlenado >= 0 ? fecha(row[cLlenado]) : null;
     const cubaJoven = cCubaJoven >= 0 ? fecha(row[cCubaJoven]) : null;
     const iniMad = cIniMad >= 0 ? fecha(row[cIniMad]) : null;
-    // FV: el llenado desde cocinas es cuando se cocinó (primer cocimiento
-    // del tanque). Madurador: la cuba bombeada más reciente; la Pony no
+    // FV: «inicio fermentación / fecha llenado desde cocinas» es cuando el
+    // tanque TERMINÓ de llenarse (unas 10 h después del arranque del último
+    // cocimiento que recibió). Madurador: la cuba bombeada más reciente; la Pony no
     // fermenta y entra al madurador directo de la cocina, así que ahí vale
     // el inicio de maduración.
     let cocinadoEn = null;
     let nota = "";
     if (llenado) {
       cocinadoEn = llenado;
-      nota = "llenado desde cocinas";
+      nota = "fin del llenado desde cocinas";
     } else if (cubaJoven) {
       cocinadoEn = cubaJoven;
       nota = "cocimiento más reciente del madurador";

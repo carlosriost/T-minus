@@ -969,7 +969,7 @@ function renderInventoryBalance(plan) {
       return `<tr data-inv-idx="${idx}">
         <td><input type="text" list="tankEquipoListInv" class="cat-input" data-inv-field="equipo" value="${escapeHtml(entry.equipo || "")}" placeholder="ej: EXT 9 / BBT22">${
           entry.cocinadoEn
-            ? `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;" title="${escapeHtml(entry.cocinadoNota || "")}">Cocinado: ${fmtDateTime(new Date(entry.cocinadoEn))}</div>`
+            ? `<div style="color:var(--muted); font-size:10.5px; margin-top:2px;" title="${escapeHtml(entry.cocinadoNota || "")}">${/llenado/.test(entry.cocinadoNota || "") ? "Llenado" : "Cocinado"}: ${fmtDateTime(new Date(entry.cocinadoEn))}</div>`
             : ""
         }</td>
         <td><select class="cat-input" data-inv-field="tipo" style="width:70px;">${TIPOS.map(
@@ -1055,6 +1055,14 @@ function renderInventoryBalance(plan) {
         val = Math.max(0, Math.round(parseFloat(val) || 0));
       }
       INVENTORY_BALANCE[idx][field] = val;
+      // Una edición a mano manda sobre las fechas que trajo el archivo: si no,
+      // el «vacío mín.» guardado seguiría decidiendo y el cambio no se vería.
+      if (["diasEnEquipo", "tipo", "mostoId", "marcaTexto", "equipo"].includes(field))
+        INVENTORY_BALANCE[idx].vacioMinEn = null;
+      if (field === "equipo" || field === "tipo") {
+        INVENTORY_BALANCE[idx].cocinadoEn = null;
+        INVENTORY_BALANCE[idx].cocinadoNota = "";
+      }
       if (field === "hL" || field === "diasEnEquipo") {
         // dejó de estar vacío si le ponen producto/días manualmente
         INVENTORY_BALANCE[idx].vacio = false;

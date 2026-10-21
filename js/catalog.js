@@ -404,6 +404,14 @@ function cocimientosRealesFueraDelInventario(i0, catalog) {
   });
   const i0ms = i0.getTime();
   const desde = (corte != null ? corte : i0ms) - 3 * 86400000;
+  // Hora de la foto (A1 de «Control diario»): a esa hora el archivo dice qué
+  // tanques están vacíos.
+  let fotoMs = null;
+  pep.forEach((e) => {
+    const t = Date.parse(e.fotoEn);
+    if (isFinite(t) && (fotoMs == null || t > fotoMs)) fotoMs = t;
+  });
+  const refVacio = Math.max(corte != null ? corte : -Infinity, fotoMs != null ? fotoMs : -Infinity);
   const lotes = [];
   PC.filas.forEach((x) => {
     if (!x || x.tipo !== "coc" || !(x.inicio >= desde) || !(x.inicio < i0ms)) return;
@@ -428,10 +436,12 @@ function cocimientosRealesFueraDelInventario(i0, catalog) {
     const finCocina = x.fin || x.inicio + (Number(m.tiempoCocinaHoras) || 0) * 3600000;
     // Un tanque vacío también puede ser uno que ya se desocupó: la Pony del
     // 16/10 ya había pasado del SV al BBT cuando se registró el inventario.
-    // Solo cuenta si, a la hora del último llenado registrado, ese cocimiento
-    // todavía estaría en su tanque (FV: fermentando; Pony: madurando en el SV).
+    // Solo cuenta si, a la hora de la foto, ese cocimiento todavía estaría en
+    // su tanque (FV: fermentando; Pony: madurando en el SV). Si ya habría
+    // salido, lo que hay de él está en otro equipo (p. ej. un BBT) y ya está
+    // contado: sumarlo otra vez sería contarlo doble.
     const horasEnTanque = esMostoPony(mostoId) ? Number(m.tiempoMaduracionHoras) || 0 : Number(m.tiempoFermentacionHoras) || 0;
-    if (cuenta && corte != null && finCocina + horasEnTanque * 3600000 <= corte) cuenta = false;
+    if (cuenta && isFinite(refVacio) && finCocina + horasEnTanque * 3600000 <= refVacio) cuenta = false;
     if (!cuenta) return;
     const listoMs = finCocina + ((Number(m.tiempoFermentacionHoras) || 0) + (Number(m.tiempoMaduracionHoras) || 0)) * 3600000;
     lotes.push({
@@ -448,6 +458,20 @@ function cocimientosRealesFueraDelInventario(i0, catalog) {
       cocinadoNota: `cocimiento n.º ${x.n} del Programa de Cocinas (no aparece en el Producto en proceso)`,
       n: x.n,
       pcId: x.id,
+    });
+  });
+  // Un FV fermenta desde que TERMINA de llenarse: los cocimientos de la
+  // cerveza que comparten tanque quedan listos todos con el último de ellos
+  // (igual que la «fecha tanque vacío mín.» de la planta). La Pony no fermenta.
+  const porTanque = {};
+  lotes.forEach((l) => {
+    if (esMostoPony(l.mostoId)) return;
+    (l.tanques || []).forEach((tq) => (porTanque[tq] = porTanque[tq] || []).push(l));
+  });
+  Object.values(porTanque).forEach((ls) => {
+    const ultimo = Math.max(...ls.map((l) => l.listoEn.getTime()));
+    ls.forEach((l) => {
+      if (l.listoEn.getTime() < ultimo) l.listoEn = new Date(ultimo);
     });
   });
   return { lotes, corte };
@@ -482,8 +506,11 @@ function inventoryBatchesByMosto(catalog) {
       // Si el archivo trae la fecha mínima en que la planta vacía el FV, manda
       // esa (cuenta el llenado completo): listo = vacío mín. + maduración.
       if (e.tipo === "FV" && e.vacioMinEn) {
+        // Si el vacío mín. ya pasó a la hora de la foto, la cerveza sigue en
+        // el FV: la maduración empieza a contar desde la foto, no antes.
         const vm = new Date(e.vacioMinEn);
-        if (!isNaN(vm.getTime())) listoEn = new Date(vm.getTime() + maduracionDias * 86400000);
+        const desdeMs = Math.max(vm.getTime(), baseInventario(e, i0).getTime());
+        if (!isNaN(vm.getTime())) listoEn = new Date(desdeMs + maduracionDias * 86400000);
       }
     } else {
       listoEn = baseInventario(e, i0);

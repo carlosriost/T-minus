@@ -590,12 +590,21 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
 
   // Reparto previo, en orden de fecha, de todas las corridas de cada mosto.
   const coberturaPorCorrida = new Map();
+  // Corrida única de un bloque que no trae «marcas»: el mismo objeto en el
+  // reparto previo y en el recorrido por bloques (si no, la búsqueda en el
+  // Map fallaba y el inventario se repartía dos veces).
+  const corridaUnica = new Map();
+  const corridasDe = (b) => {
+    if (Array.isArray(b.marcas) && b.marcas.length) return b.marcas;
+    if (!corridaUnica.has(b)) corridaUnica.set(b, [{ name: b.name, volumen: Number(b.volumen) || 0 }]);
+    return corridaUnica.get(b);
+  };
   {
     const corridas = [];
     (brands || []).forEach((b) => {
       const mostoId = matchMosto(b.name, catalog);
       if (!mostoId || !(Number(b.volumen) > 0)) return;
-      const evs = Array.isArray(b.marcas) && b.marcas.length ? b.marcas : [{ name: b.name, volumen: Number(b.volumen) || 0 }];
+      const evs = corridasDe(b);
       evs.forEach((ev) => {
         if (!(Number(ev.volumen) > 0)) return;
         const t = ev.earliest ? ev.earliest.getTime() : b.earliest ? b.earliest.getTime() : Infinity;
@@ -631,10 +640,7 @@ function computeCocinaPlan(brands, catalog, inventoryBatches) {
     // SKU del mismo mosto, y un BBT terminado de Costeñita solo puede asignarse
     // a la línea que envasa Costeñita.
     const asignacionesInv = [];
-    const eventos =
-      Array.isArray(b.marcas) && b.marcas.length
-        ? b.marcas
-        : [{ name: b.name, volumen: volumenEnvasar }];
+    const eventos = corridasDe(b);
     let cubiertoPorInventario = 0;
     const pendientes = [];
     // Primera corrida (o parte de corrida) que el inventario NO cubre: es la
@@ -2254,6 +2260,9 @@ function sequenceWeek(
         if (arrY > urgY + 3 * 60000 && mejora < 2 * HORA) return;
         const xDespues = arrY + durDe(Y) + aseoMs(Y.mostoId, X.mostoId);
         if (xDespues > urgX + 3 * 60000 && !xTarde) return;
+        // Si el elegido ya iba tarde, no se le carga más atraso del que se le
+        // ahorra al urgente.
+        if (xTarde && xDespues - best > mejora) return;
         elegido = i;
         urgElegido = urgY;
       });
