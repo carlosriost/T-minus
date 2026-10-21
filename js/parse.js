@@ -674,6 +674,19 @@ function parseLegacySheet(workbook, sheetName) {
   // fecha real del primer día de envasado; si la semana está explícita, no se reemplaza
   // por el mes de la celda FECHA.
 
+  // EL DÍA DEL INSTRUCTIVO ARRANCA A LAS 22:00 DEL DÍA ANTERIOR (igual que en
+  // Suite 360, ver parseSuite360Workbook). Las filas de "viernes 23" son:
+  // 22:00→06:00 (turno de noche, que empieza el JUEVES 22 a las 22:00),
+  // 06:00→14:00 y 14:00→22:00. Antes la fila de 22:00 se pegaba al mismo día
+  // del rótulo y todo el turno de noche quedaba corrido 24 h hacia adelante:
+  // un tercio del envasado aparecía un día tarde y se cruzaba con el lavado
+  // de la mañana siguiente. Regla: dentro de cada día y de cada tren, una fila
+  // que empieza a las 22:00 o después y aparece ANTES de cualquier fila
+  // diurna es del día anterior. Si el instructivo trajera el turno de 22:00 al
+  // final del día (formato calendario), esas filas ya vienen después de las
+  // diurnas y se quedan en su día.
+  let diaFilasMs = null;
+  const yaHuboDiurna = {};
   for (let r = dataStartRow; r < aoa.length; r++) {
     const row = aoa[r] || [];
     const dayCell = row[dayCol];
@@ -740,8 +753,15 @@ function parseLegacySheet(workbook, sheetName) {
       const tpHi = cellTimeParts(hi),
         tpHt = cellTimeParts(ht);
       if (!tpHi || !tpHt) return;
-      let start = combine(currentDate, tpHi);
-      let end = combine(currentDate, tpHt);
+      if (diaFilasMs !== currentDate.getTime()) {
+        diaFilasMs = currentDate.getTime();
+        TRAINS.forEach((tt) => (yaHuboDiurna[tt] = false));
+      }
+      const esNocheDelDiaAnterior = tpHi.h >= 22 && !yaHuboDiurna[t];
+      if (tpHi.h < 22) yaHuboDiurna[t] = true;
+      const diaBase = esNocheDelDiaAnterior ? addDays(currentDate, -1) : currentDate;
+      let start = combine(diaBase, tpHi);
+      let end = combine(diaBase, tpHt);
       if (end.getTime() <= start.getTime())
         end = new Date(end.getTime() + 24 * 3600 * 1000);
       rawEvents[t].push({
