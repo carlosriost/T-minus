@@ -2983,3 +2983,20 @@ svg .trz-link.trz-link-atras { stroke-dasharray: 2 3; opacity: 0.22; }
 svg .trz-link.trz-link-atras.trz-link-sel { opacity: 1; stroke-width: 1.8; }
 .trz-sw-atras { background: transparent; border: 1.5px dashed var(--muted); }
 .trz-tren.trz-tren-atras { background: transparent !important; color: var(--text) !important; border: 1.5px dashed var(--muted) !important; }
+
+/* Recomendaciones: calificación con estrellas */
+.rec-cal { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.rec-cal-lab { font-size: 11.5px; color: var(--muted); }
+.rec-cal .acu-det { margin: 0; }
+.rec-stars { display: inline-flex; gap: 1px; }
+.rec-star { background: none; border: 0; padding: 0 2px; font-size: 18px; line-height: 1; color: var(--line); cursor: pointer; transition: color .1s, transform .1s; }
+.rec-star.on { color: var(--accent); }
+.rec-stars:hover .rec-star { color: var(--accent); }
+.rec-stars .rec-star:hover ~ .rec-star { color: var(--line); }
+.rec-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.rec-star:active { transform: scale(.9); }
+.rec-com { flex: 1 1 160px; min-width: 120px; font-size: 12px; padding: 3px 6px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
+.rec-prom { white-space: nowrap; font-weight: 600; }
+.rec-orden { display: flex; gap: 6px; align-items: center; font-size: 12.5px; margin: 10px 0 6px; }
+.rec-acc { display: flex; flex-wrap: wrap; gap: 6px; }
+.rec-borrar[data-confirmar="1"] { color: var(--danger); border-color: var(--danger); }
