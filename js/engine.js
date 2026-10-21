@@ -2166,6 +2166,52 @@ function sequenceWeek(
         }
       }
     }
+    // NO DEJAR TARDE UN BLOQUE URGENTE POR COCINAR PRIMERO UNO CON HOLGURA
+    // (cualquier marca). La selección de arriba toma el bloque que puede
+    // arrancar antes, y la urgencia solo desempata dentro de ±1 h. Así, doce
+    // Estándar con dos días de holgura entraban antes que una Light que ya
+    // estaba en su «a más tardar» (solo porque la Light paga 4:40 de aseo), y
+    // la Light salía 12 h tarde con la cocina parada después. Si cocinar
+    // primero el elegido deja tarde a otro bloque más urgente, y meter antes
+    // ese otro no deja tarde al elegido (o el elegido ya iba tarde), entra el
+    // urgente. Es la misma regla que ya protegía a la Pony, para todas.
+    {
+      const X = pending[idx];
+      const durDe = (b) => Math.max(0, b.numCocimientos - 1) * b.gapHoras * HORA + b.cocinaHoras * HORA;
+      const aseoMs = (de, a) => {
+        if (!de || de === a) return 0;
+        const info = getAseoDuracion(de, a, resolvedAseo, aseoDefaultHoras);
+        return !info.sinAseo && info.horas > 0 ? info.horas * HORA : 0;
+      };
+      const urgX = urgencia(X);
+      const xTarde = best > urgX + 3 * 60000;
+      let elegido = -1;
+      let urgElegido = Infinity;
+      pending.forEach((Y, i) => {
+        if (i === idx) return;
+        const urgY = urgencia(Y);
+        if (!(urgY < urgX) || urgY >= urgElegido) return;
+        // Las reglas de corrida de Pony (de a 5, día de por medio) siguen
+        // mandando: esto no encadena Pony detrás de Pony.
+        if (esMostoPony(Y.mostoId) && esMostoPony(prevMostoId)) return;
+        const yDespues = best + durDe(X) + aseoMs(X.mostoId, Y.mostoId);
+        if (yDespues <= urgY + 3 * 60000) return; // no le pasa nada
+        const arrY = arranqueDe(Y);
+        if (!isFinite(arrY)) return;
+        // Primero Y: tiene que mejorar de verdad (llegar a tiempo, o al menos
+        // llegar bastante menos tarde que si espera).
+        const mejora = yDespues - Math.max(arrY, urgY);
+        if (arrY > urgY + 3 * 60000 && mejora < 2 * HORA) return;
+        const xDespues = arrY + durDe(Y) + aseoMs(Y.mostoId, X.mostoId);
+        if (xDespues > urgX + 3 * 60000 && !xTarde) return;
+        elegido = i;
+        urgElegido = urgY;
+      });
+      if (elegido >= 0) {
+        idx = elegido;
+        best = arranqueDe(pending[idx]);
+      }
+    }
     // ARRANQUE CON CERVEZA (acuerdo SLA Planta n.º 1, prioridad definida por
     // Planeación): la apertura de la programación y todo arranque después de
     // una parada de la cocina (12 h o más sin cargar) se hace con cerveza, no
@@ -2695,7 +2741,9 @@ function sequenceWeek(
         )} h después de su inicio ideal ${
           i0Ms != null && rows[rowStartIdx].start.getTime() <= i0Ms + 60000
             ? "porque el I0 (desde cuándo se programa) ya es posterior a ese inicio"
-            : "porque la cocina seguía ocupada"
+            : yeastUsed && yeastUsed.fechaDisponible && yeastUsed.fechaDisponible.getTime() >= rows[rowStartIdx].start.getTime() - 60000
+              ? `porque la levadura Light no está disponible hasta el ${fmtDateTime(yeastUsed.fechaDisponible)} (${yeastUsed.fuente || "cosecha"})`
+              : "porque la cocina seguía ocupada"
         }, así que el proceso (cocina + fermentación + maduración) no alcanza a terminar antes del envasado que tiene que cubrir.`,
       });
     }
