@@ -244,7 +244,7 @@ function computeCocimientoStarts(fechaEnvasadoMinima, numCocimientos, m) {
   // comenzar el último cocimiento.
   // El ÚLTIMO inicio se obtiene restando SOLO el tiempo de cocina al fin de cocina requerido.
   // A partir de ahí, cada inicio anterior se separa exactamente por el tiempo ENTRE CARGUES.
-  // En el catálogo operativo ese valor es 2:50 h, salvo que el usuario lo cambie manualmente.
+  // En el catálogo: 2:10 Estándar/Pilsen, 2:30 Light, 2:05 Pony (Programa de Cocinas real).
   const lastStartMs = deadline.getTime() - cocinaMs;
   const firstStartMs = lastStartMs - Math.max(0, numCocimientos - 1) * gapMs;
   const starts = Array.from(

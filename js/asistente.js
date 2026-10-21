@@ -176,7 +176,7 @@ function asResponderLocal(q) {
 
   // ¿A dónde va lo que se cocina en tal momento? / ¿qué se cocina ahora?
   if (/a donde|para donde|donde se envasa|a que linea|destino|se va|va a ir|ahora|en este momento|se esta cocinando|que se cocina|que hay en (la )?cocina/.test(n) || (/cocin/.test(n) && t.explicito && !/cuando/.test(n))) {
-    // Con cargues cada ~2:50 y 9 h de cocina, a una hora dada suele haber
+    // Con cargues cada ~2 h y 9 h de cocina, a una hora dada suele haber
     // varios cocimientos en proceso: se toma el de cargue más cercano a la hora
     // preguntada («lo que se cocinó a las 4:28») y se nombran los demás.
     const enProceso = d.cocs.filter((x) => x.ms <= t.ms && t.ms < x.fin);
@@ -334,11 +334,11 @@ function asHtmlReglas() {
     .map((m) => `<li><b>${asEsc(m.nombre)}</b>: factor ${MOD_NF(m.factorDilucion, 2)}, ${MOD_NF(m.volumenPorCocimiento)} hL por cocimiento, cocina ${MOD_NF(m.tiempoCocinaHoras, 2)} h, fermentación ${MOD_NF(m.tiempoFermentacionHoras)} h, maduración ${MOD_NF(m.tiempoMaduracionHoras)} h${m.tiempoMaxBBTHoras ? `, máx. ${MOD_NF(m.tiempoMaxBBTHoras)} h en BBT` : ""}.</li>`)
     .join("");
   return `<p>Cómo arma FerIA el plan de cocinas:</p><ol>
-    <li>Toma lo que falta por envasar desde el I0 y le descuenta el inventario.</li>
+    <li>Toma lo que falta por envasar y le descuenta el inventario del Producto en proceso, cada tanque solo desde que está listo (días contados hasta la hora de la foto).</li>
     <li>Arma la demanda en el tiempo por mosto: el cocimiento n.º k se necesita cuando la demanda acumulada pasa de k rendimientos (factor × hL por cocimiento).</li>
     <li>Cargue a más tardar de cada cocimiento = necesidad − maduración − fermentación − cocina.</li>
     <li>Los junta en campañas: Pony de a 5 y sin pasar 48 h en BBT; Estándar y Pilsen de a 6; Light completa (paga aseo al entrar). Cerveza máximo 2 días adelantada.</li>
-    <li>Secuencia en la cocina única (2:50 entre cargues), con aseos de cambio de marca al entrar a Light o Pony (4:40) y aseo periódico cada 16–20 cocimientos; arranque con cerveza después de una parada; ≥ 24 h entre corridas de Pony; Light solo con levadura Light.</li>
+    <li>Secuencia en la cocina única (entre cargues: 2:10 Estándar/Pilsen, 2:30 Light, 2:05 Pony), con aseos de cambio de marca al entrar a Light o Pony (4:40) y aseo periódico cada 16–20 cocimientos; arranque con cerveza después de una parada; ≥ 24 h entre corridas de Pony; Light solo con levadura Light.</li>
     <li>Cuenta con que la cerveza se junta en FV de a 8 cocimientos y el lote fermenta desde su último llenado: el lote completo tiene que quedar listo antes del envasado de su primer cocimiento.</li>
     <li>Asigna FV y SV; un FV no espera abierto más de 24 h ni recibe un cocimiento que atrase a un lote que iba a tiempo.</li></ol>
     <p>Catálogo:</p><ul>${cat}</ul>`;

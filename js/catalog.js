@@ -16,6 +16,14 @@
 // La programación puede estirarlo hasta PONY_BBT_TOLERANCIA_HORAS (72 h) como
 // máximo absoluto: entre 48 h y 72 h el bloque sale en rojo para que el equipo
 // lo revise; más allá de 72 h no se programa.
+// TIEMPO ENTRE CARGUES (cadencia de la cocina): medido en el Programa de
+// Cocinas real (jul–oct 2026), entre un cocimiento y el siguiente del mismo
+// mosto: Estándar y Pilsen 2:10, Light 2:30, Pony 2:05. Antes era 2:50 para
+// todos, lo que hacía la cocina un 25 % más lenta de lo que es: cabían menos
+// cocimientos por día y el plan se llenaba de cocimientos tarde.
+// FERMENTACIÓN MÍNIMA de Light: 184 h, la que usa la planta en el «Control
+// diario» del Producto en proceso (Light 184 h, Estándar/Pilsen 204 h). Antes
+// estaba en 168 h y la Light quedaba 16 h más corta que en la realidad.
 let MOSTO_CATALOG = [
   {
     id: "light",
@@ -24,9 +32,9 @@ let MOSTO_CATALOG = [
     factorDilucion: 2.2,
     volumenPorCocimiento: 560,
     tiempoCocinaHoras: parseHMS("8:50:00"),
-    tiempoFermentacionHoras: parseHMS("168:00:00"),
+    tiempoFermentacionHoras: parseHMS("184:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:30:00"),
     tiempoMaxBBTHoras: 0,
   },
   {
@@ -38,7 +46,7 @@ let MOSTO_CATALOG = [
     tiempoCocinaHoras: parseHMS("8:55:00"),
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:10:00"),
     tiempoMaxBBTHoras: 0,
   },
   // Pony GO y Pony HG son EL MISMO MOSTO: se cuecen juntas, van al mismo
@@ -55,7 +63,7 @@ let MOSTO_CATALOG = [
     tiempoCocinaHoras: parseHMS("8:15:00"),
     tiempoFermentacionHoras: parseHMS("0"),
     tiempoMaduracionHoras: parseHMS("48:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:05:00"),
     tiempoMaxBBTHoras: parseHMS("48:00:00"),
   },
   {
@@ -67,7 +75,7 @@ let MOSTO_CATALOG = [
     tiempoCocinaHoras: parseHMS("8:55:00"),
     tiempoFermentacionHoras: parseHMS("204:00:00"),
     tiempoMaduracionHoras: parseHMS("72:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:10:00"),
     tiempoMaxBBTHoras: 0,
   },
 ];

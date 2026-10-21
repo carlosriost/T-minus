@@ -707,7 +707,7 @@ document.getElementById("addMostoBtn").addEventListener("click", () => {
     tiempoCocinaHoras: parseHMS("8:00:00"),
     tiempoFermentacionHoras: parseHMS("168:00:00"),
     tiempoMaduracionHoras: parseHMS("48:00:00"),
-    tiempoEntreCarguesHoras: parseHMS("2:50:00"),
+    tiempoEntreCarguesHoras: parseHMS("2:10:00"),
     tiempoMaxBBTHoras: 0,
   });
   renderCatalog();
