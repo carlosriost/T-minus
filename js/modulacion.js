@@ -4,15 +4,19 @@
    El instructivo es el seguimiento de la LLENADORA: si dice que la línea
    arranca a las 7:00, la llenadora arranca a las 7:00; igual con la parada.
 
-   Hay PARADA cuando la llenadora deja de envasar:
-     · por un DPA que dura 2 h o más (varios DPA seguidos cuentan juntos:
-       «cambio de líquido 1:30 + inicio de producción 1:00» = 2:30), o
-     · por no haber programación 2 h o más (NST «Sin programación», o
+   Hay PARADA (definido por Utilities):
+     · por un DPA de MANTENIMIENTO de 2 h o más («Programmed maintenance
+       activities»), o
+     · por no haber programación 2 h o más (NST «Sin programación», u
        horas sin ninguna fila en el instructivo).
-   Un tramo sin envasar que mezcla DPA y sin programación, sin que ninguna de
-   las dos partes llegue a 2 h, NO se toma como parada: se lista aparte
-   para revisar. Un DPA escrito dentro de un turno de producción no detiene
-   la llenadora (el instructivo la tiene envasando).
+   Los demás DPA (cambio de líquido, esterilización, cambio de empaque,
+   inicio de producción…) NO son parada: la línea sigue trabajando, así que
+   también cortan un tramo sin programación. Un tramo que mezcla
+   mantenimiento y sin programación sin que ninguna parte llegue sola a
+   2 h no se toma como parada: se lista aparte para revisar.
+   La línea PET (sin lavadora) solo modula agua y paster; qué líneas tienen
+   lavadora se ajusta en el panel (por defecto: todas menos las que solo
+   envasan PET).
 
    Con la hora en que PARA la llenadora (P) y en que ARRANCA (A):
      arranque · lavadora A − 3 h · agua A · paster A + 1 h
@@ -41,6 +45,7 @@ function modlConfig() {
   const c = JSON.parse(JSON.stringify(MODL_DEFECTO));
   if (g && typeof g === "object") {
     if (Number(g.umbralMin) > 0) c.umbralMin = Number(g.umbralMin);
+    if (g.lavadoraLinea && typeof g.lavadoraLinea === "object") c.lavadoraLinea = { ...g.lavadoraLinea };
     ["arranque", "parada"].forEach((k) =>
       MODL_EQUIPOS.forEach(([e]) => {
         const v = g[k] && g[k][e];
@@ -67,6 +72,19 @@ function modlDesfase(min) {
   const t = Number.isInteger(h) ? `${h} h` : modlDur(Math.abs(min) * MODL_MIN);
   return `${t} ${min < 0 ? "antes" : "después"} de la llenadora`;
 }
+// DPA de mantenimiento (el único DPA que es parada).
+function modlEsMantenimiento(b) {
+  return !!b && b.type === "changeover" && /manten|maintenance|mtto/i.test(String(b.name || ""));
+}
+// ¿La línea tiene lavadora? Lo que diga el panel; si no, todas menos las que
+// en el instructivo solo envasan PET.
+function modlTieneLavadora(t, bloques, cfg) {
+  const o = cfg && cfg.lavadoraLinea;
+  if (o && typeof o[t] === "boolean") return o[t];
+  const prod = (bloques || []).filter((b) => b.type === "production");
+  if (!prod.length || typeof envaseDeSKU !== "function") return true;
+  return !prod.every((b) => envaseDeSKU(b.name || b.codigo) === "pet");
+}
 function modlNombreBloque(b) {
   const n = String(b.name || "").replace(/^(DPA|NST)\s*-\s*/i, "");
   // «Liquid changes - Cambio de Liquido» → «Cambio de Liquido» (la parte en español).
@@ -90,11 +108,14 @@ function calcularModulacion(mergedByTrain, cfg) {
   const hasta = Math.max(...todos.map((b) => b.end.getTime()));
   const paradas = [];
   const revisar = [];
+  const lavadora = {};
   TRAINS.forEach((t) => {
     const bs = todos.filter((b) => b.train === t);
-    // Unión de lo que la llenadora envasa (producción, con solapes juntos).
+    lavadora[t] = modlTieneLavadora(t, bs, cfg);
+    // Unión de lo que la línea tiene ACTIVO: producción y los DPA que no son
+    // de mantenimiento (cambio de líquido, CIP, empaque, arranque…).
     const prod = bs
-      .filter((b) => b.type === "production")
+      .filter((b) => b.type === "production" || (b.type === "changeover" && !modlEsMantenimiento(b)))
       .map((b) => [b.start.getTime(), b.end.getTime()])
       .sort((x, y) => x[0] - y[0]);
     const union = [];
@@ -111,11 +132,11 @@ function calcularModulacion(mergedByTrain, cfg) {
       cur = Math.max(cur, z);
     });
     if (hasta > cur) huecos.push([cur, hasta]);
-    const noProd = bs.filter((b) => b.type !== "production");
+    const noProd = bs.filter((b) => b.type !== "production" && !(b.type === "changeover" && !modlEsMantenimiento(b)));
     huecos.forEach(([a, z]) => {
       if (z - a < MODL_MIN) return;
-      // Cortes del tramo en intervalos elementales: DPA, o sin programación
-      // (NST, «otro» o sin filas).
+      // Cortes del tramo en intervalos elementales: mantenimiento, o sin
+      // programación (NST, «otro» o sin filas).
       const cortes = new Set([a, z]);
       noProd.forEach((b) => {
         const s = Math.max(a, b.start.getTime());
@@ -129,8 +150,8 @@ function calcularModulacion(mergedByTrain, cfg) {
         const e = ts[i + 1];
         if (e <= s) continue;
         const cubren = noProd.filter((b) => b.start.getTime() <= s && b.end.getTime() >= e);
-        const dpa = cubren.find((b) => b.type === "changeover");
-        const otro = cubren.find((b) => b.type !== "changeover");
+        const dpa = cubren.find((b) => modlEsMantenimiento(b));
+        const otro = cubren.find((b) => !modlEsMantenimiento(b));
         const tipo = dpa ? "dpa" : "sin";
         const etiqueta = dpa ? `DPA ${modlNombreBloque(dpa)}` : otro ? (otro.type === "idle" ? "Sin programación (NST)" : modlNombreBloque(otro)) : "Sin filas en el instructivo";
         const u = tramos[tramos.length - 1];
@@ -147,7 +168,7 @@ function calcularModulacion(mergedByTrain, cfg) {
       const motivo = tramos.flatMap((x) => x.partes).map((p) => `${p.etiqueta} ${modlDur(p.end - p.start)}`).join(" + ");
       const base = { tren: t, para: a, arranca: z, dur: z - a, motivo, tramos, desdeInicio: a <= desde, hastaFin: z >= hasta };
       if (dpaMax >= umbral || sinMax >= umbral)
-        paradas.push({ ...base, por: dpaMax >= umbral && sinMax >= umbral ? "DPA y sin programación" : dpaMax >= umbral ? "DPA de 2 h o más" : "sin programación 2 h o más" });
+        paradas.push({ ...base, por: dpaMax >= umbral && sinMax >= umbral ? "mantenimiento y sin programación" : dpaMax >= umbral ? "mantenimiento (DPA)" : "sin programación" });
       else if (z - a >= umbral && !base.desdeInicio && !base.hastaFin) revisar.push(base);
     });
   });
@@ -159,19 +180,21 @@ function calcularModulacion(mergedByTrain, cfg) {
   paradas.forEach((p) => {
     const lavPara = p.para + cfg.parada.lavadora * MODL_MIN;
     const lavArr = p.arranca + cfg.arranque.lavadora * MODL_MIN;
-    const lavaSigue = !p.desdeInicio && !p.hastaFin && lavArr <= lavPara;
+    const conLav = lavadora[p.tren];
+    const lavaSigue = conLav && !p.desdeInicio && !p.hastaFin && lavArr <= lavPara;
     p.lavadoraNoPara = lavaSigue;
+    p.conLavadora = conLav;
     if (!p.desdeInicio) {
       eventos.push({ ms: p.para, tren: p.tren, equipo: "llenadora", accion: "para", parada: p });
       MODL_EQUIPOS.forEach(([e]) => {
-        if (e === "lavadora" && lavaSigue) return;
+        if (e === "lavadora" && (lavaSigue || !conLav)) return;
         eventos.push({ ms: p.para + cfg.parada[e] * MODL_MIN, tren: p.tren, equipo: e, accion: "para", parada: p });
       });
     }
     if (!p.hastaFin) {
       eventos.push({ ms: p.arranca, tren: p.tren, equipo: "llenadora", accion: "arranca", parada: p });
       MODL_EQUIPOS.forEach(([e]) => {
-        if (e === "lavadora" && lavaSigue) return;
+        if (e === "lavadora" && (lavaSigue || !conLav)) return;
         eventos.push({ ms: p.arranca + cfg.arranque[e] * MODL_MIN, tren: p.tren, equipo: e, accion: "arranca", parada: p });
       });
     }
@@ -179,7 +202,7 @@ function calcularModulacion(mergedByTrain, cfg) {
   });
   const ordenEq = { lavadora: 0, agua: 1, llenadora: 2, paster: 3 };
   eventos.sort((x, y) => x.ms - y.ms || x.tren.localeCompare(y.tren) || ordenEq[x.equipo] - ordenEq[y.equipo]);
-  return { paradas, eventos, revisar, desde, hasta };
+  return { paradas, eventos, revisar, desde, hasta, lavadora };
 }
 
 const MODL_NOMBRE = { lavadora: "Lavadora", agua: "Agua", paster: "Paster", llenadora: "Llenadora" };
@@ -246,7 +269,7 @@ function htmlFilasModulacion(mergedByTrain, rangeStart, totalWidth, dayLinesHtml
   return `
         <div class="gantt-row util-sep">
           <div class="lane-label">MODULACIÓN</div>
-          <div class="util-sep-track sp-sep-track" style="width:${totalWidth}px;"><span>Paradas de la llenadora (DPA o sin programación de 2 h o más) · ▼ para · ▲ arranca: <b class="modl-c-lavadora">lavadora</b> · <b class="modl-c-agua">agua</b> · <b class="modl-c-paster">paster</b></span></div>
+          <div class="util-sep-track sp-sep-track" style="width:${totalWidth}px;"><span>Paradas (mantenimiento o sin programación de 2 h o más) · ▼ para · ▲ arranca: <b class="modl-c-lavadora">lavadora</b> · <b class="modl-c-agua">agua</b> · <b class="modl-c-paster">paster</b></span></div>
         </div>
         ${TRAINS.map(fila).join("")}`;
 }
@@ -318,7 +341,7 @@ function htmlPanelModulacion(mergedByTrain) {
         .join("")
     : '<tr><td colspan="6"><p class="empty-note">Sin eventos en el filtro elegido.</p></td></tr>';
   const inp = (grupo, e) => `<input type="number" class="acu-pond sp-in" data-modl="${grupo}.${e}" step="0.25" value="${cfg[grupo][e] / 60}"> h`;
-  const conf = `<table class="acu-tabla sp-conf"><thead><tr><th>Equipo</th><th class="acu-c">Arranque</th><th class="acu-c">Parada</th></tr></thead><tbody>${MODL_EQUIPOS.map(([e, n]) => `<tr><td>${n}</td><td class="acu-c">${inp("arranque", e)}</td><td class="acu-c">${inp("parada", e)}</td></tr>`).join("")}<tr><td>Parada si dura</td><td class="acu-c" colspan="2"><input type="number" class="acu-pond sp-in" data-modl="umbral" step="0.25" min="0.25" value="${cfg.umbralMin / 60}"> h o más</td></tr></tbody></table>`;
+  const conf = `<table class="acu-tabla sp-conf"><thead><tr><th>Equipo</th><th class="acu-c">Arranque</th><th class="acu-c">Parada</th></tr></thead><tbody>${MODL_EQUIPOS.map(([e, n]) => `<tr><td>${n}</td><td class="acu-c">${inp("arranque", e)}</td><td class="acu-c">${inp("parada", e)}</td></tr>`).join("")}<tr><td>Parada si dura</td><td class="acu-c" colspan="2"><input type="number" class="acu-pond sp-in" data-modl="umbral" step="0.25" min="0.25" value="${cfg.umbralMin / 60}"> h o más</td></tr><tr><td>Tienen lavadora</td><td class="acu-c" colspan="2">${TRAINS.map((t) => `<label class="modl-lav-l"><input type="checkbox" data-modl-lav="${t}" ${r.lavadora[t] ? "checked" : ""}> L${t}</label>`).join(" ")}</td></tr></tbody></table>`;
   const revisarHtml = r.revisar.length
     ? `<div class="acu-card" style="margin-top:12px;"><div class="acu-card-tit">Para revisar: ¿son paradas? (${r.revisar.length})</div><p class="acu-nota" style="margin-top:0;">Tramos de 2 h o más sin envasar en los que ninguna parte llega sola a 2 h (DPA corto seguido de sin programación). Con las reglas no son parada; confírmenlo.</p><ul class="modl-rev">${r.revisar
         .map((p) => `<li><b>L${escapeHtml(p.tren)}</b> ${escapeHtml(fmtDateTime(new Date(p.para)))} → ${escapeHtml(fmtDateTime(new Date(p.arranca)))} (${escapeHtml(modlDur(p.dur))}): ${escapeHtml(p.motivo)}</li>`)
@@ -348,7 +371,7 @@ function htmlPanelModulacion(mergedByTrain) {
         <div class="acu-card">
           <div class="acu-card-tit">Reglas de modulación</div>
           ${conf}
-          <p class="acu-nota">Horas respecto a la llenadora: negativo = antes, positivo = después. Parada = DPA de esa duración o más (seguidos cuentan juntos) o sin programación de esa duración o más. Se guardan en este navegador.</p>
+          <p class="acu-nota">Horas respecto a la llenadora: negativo = antes, positivo = después. Parada = DPA de mantenimiento o sin programación (NST u horas sin filas) de esa duración o más; los demás DPA (cambio de líquido, CIP, empaque, arranque) no son parada. Se guardan en este navegador.</p>
           <button type="button" class="btn small" data-modl-reset>Restaurar reglas</button>
         </div>
       </div>
@@ -371,6 +394,14 @@ function conectarPanelModulacion(mergedByTrain, redibujar) {
         const [g, e] = k.split(".");
         c[g][e] = Math.round(v * 60);
       }
+      modlGuardar(c);
+      redibujar();
+    }),
+  );
+  panel.querySelectorAll("[data-modl-lav]").forEach((ch) =>
+    ch.addEventListener("change", () => {
+      const c = modlConfig();
+      c.lavadoraLinea = { ...(c.lavadoraLinea || {}), [ch.dataset.modlLav]: ch.checked };
       modlGuardar(c);
       redibujar();
     }),

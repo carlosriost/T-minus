@@ -2928,3 +2928,5 @@
 
 .modl-card li.modl-ya { opacity: .6; }
 .modl-card li.modl-ya i { color: var(--warn, #f5a623); font-style: normal; }
+
+.modl-lav-l { margin: 0 4px; white-space: nowrap; font-size: 12px; }
