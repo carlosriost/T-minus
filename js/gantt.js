@@ -354,6 +354,12 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.idle};"></span>Paro (NST)</div>` +
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.other};"></span>Otro</div>`;
 
+  // Filas de modulación (paradas y arranques de lavadora, agua y paster),
+  // justo debajo de los trenes (js/modulacion.js).
+  const modlRowsHtml =
+    typeof htmlFilasModulacion === "function"
+      ? htmlFilasModulacion(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
+      : "";
   // Filas de Utilidades (calderas y aire) según las líneas funcionando.
   const utilRowsHtml =
     typeof htmlFilasUtilidades === "function"
@@ -371,13 +377,15 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
         ${weekHeaderHtml}
         <div class="day-header" style="top:${weekHeaderHtml ? "24px" : "0"};">${dayHeaderHtml}</div>
         ${laneRowsHtml}
+        ${modlRowsHtml}
         ${utilRowsHtml}
         ${spRowsHtml}
         <div class="gantt-xcursor" hidden></div>
       </div>
     </div>
     ${utilRowsHtml ? htmlControlesUtilidades() : ""}
-    <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}${spRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaSetpoints() : ""}</div>
+    <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}${spRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaSetpoints() : ""}${modlRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaModulacion() : ""}</div>
+    ${modlRowsHtml ? htmlPanelModulacion(mergedByTrain) : ""}
     ${spRowsHtml ? htmlPanelSetpoints(mergedByTrain) : ""}
   `;
 
@@ -387,6 +395,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   if (utilRowsHtml) conectarControlesUtilidades(redibujarGantt);
   // Panel de setpoints: fuente de cocinas, PSI editables y filtros de la tabla.
   if (spRowsHtml) conectarPanelSetpoints(mergedByTrain, redibujarGantt);
+  if (modlRowsHtml) conectarPanelModulacion(mergedByTrain, redibujarGantt);
 
   // Cursor de tiempo enlazado con el Gantt de filtración.
   container.dataset.rangeStart = rangeStart.getTime();
