@@ -31,7 +31,7 @@ const TRZ_FRIO_DEFECTO = {
   maduracion: 0.5, // SV madurando (sostener frío)
   umbral: 3, // cuánto tiene que subir el índice para avisar «sube»
 };
-let TRZ = { sel: null, pxH: 3, ahora: null, mosto: "todos" };
+let TRZ = { sel: null, pxH: 3, ahora: null, mosto: "todos", verAtras: true };
 
 function trzConfig() {
   let g = null;
@@ -44,11 +44,12 @@ function trzConfig() {
       if (isFinite(Number(g.frio[k])) && Number(g.frio[k]) >= 0) c.frio[k] = Number(g.frio[k]);
     });
   if (g && [2, 3, 4, 6, 8].includes(Number(g.pxH))) TRZ.pxH = Number(g.pxH);
+  if (g && typeof g.verAtras === "boolean") TRZ.verAtras = g.verAtras;
   return c;
 }
 function trzGuardar(c) {
   try {
-    localStorage.setItem(TRZ_LS_KEY, JSON.stringify({ frio: c.frio, pxH: TRZ.pxH }));
+    localStorage.setItem(TRZ_LS_KEY, JSON.stringify({ frio: c.frio, pxH: TRZ.pxH, verAtras: TRZ.verAtras }));
   } catch (_) {}
 }
 // «Ahora» en la convención de la app: componentes UTC = hora de pared local.
@@ -251,6 +252,24 @@ function trzTextoCocinado(f) {
   return `${verbo} ${trzF(f.cocinadoEn)} · ${MOD_NF(dias, 1)} días antes de envasarse`;
 }
 
+// Lo que DEBIÓ cocinarse antes del I0 (plan FerIA completo hacia atrás, sin
+// inventario: js/programa-feria.js). Se dibuja en un carril propio para ver
+// cuándo había que cocinar lo que hoy se envasa del inventario. No es parte
+// del plan vigente. Clave «r<n>» (n.º del escenario hacia atrás).
+function trzCocimientosAtras() {
+  if (!TRZ.verAtras || typeof pfDatos !== "function") return [];
+  const i0d = typeof getI0Date === "function" ? getI0Date() : null;
+  if (!i0d || isNaN(i0d)) return [];
+  let datos = null;
+  try {
+    datos = pfDatos("atras");
+  } catch (e) {
+    console.error(e);
+  }
+  if (!datos || !datos.base || !datos.base.trz) return [];
+  return datos.base.trz.cocs.filter((c) => c.ms < i0d.getTime()).map((c) => ({ ...c, key: `r${c.n}`, atras: true }));
+}
+
 // Estado de un cocimiento en un instante dado.
 function trzEstado(c, t) {
   if (t < c.ms) return { txt: "Por cocinar", cls: "trz-e0" };
@@ -283,6 +302,7 @@ function renderTrazabilidad() {
   }
   const cfg = trzConfig();
   const d = calcularTrazabilidad(cfg);
+  trzAgregarAtras(d);
   if (TRZ.ahora == null) TRZ.ahora = trzAhoraMs();
   const t = TRZ.ahora;
   const enCocina = trzCocimientoEn(d, t);
@@ -316,6 +336,8 @@ function renderTrazabilidad() {
           </div>
           <div class="pc-fgrupo"><span class="pc-flab">Mosto</span>
             ${[["todos", "Todos", ""], ...Object.keys(TRZ_MOSTO_CLS).map((k) => [k, trzNombreMosto(k), TRZ_MOSTO_CLS[k]])].map(([k, l, cls]) => `<button class="pc-chip ${TRZ.mosto === k ? "on" : ""}" data-trz-mosto="${k}">${cls ? `<span class="pc-dot ${cls}"></span>` : ""}${escapeHtml(l)}</button>`).join("")}
+            <span class="pc-flab" style="margin-left:10px;">Debió cocinarse</span>
+            <button class="pc-chip ${TRZ.verAtras ? "on" : ""}" data-trz-atras title="Carril con el plan FerIA hacia atrás: lo que había que cocinar antes del I0 para envasar todo el instructivo">${TRZ.verAtras ? "Visible" : "Oculto"}${TRZ.verAtras && d.atras && d.atras.length ? ` · ${d.atras.length} antes del I0` : ""}</button>
             <span class="pc-flab" style="margin-left:10px;">Zoom</span>
             ${[2, 3, 4, 6, 8].map((z) => `<button class="pc-chip ${TRZ.pxH === z ? "on" : ""}" data-trz-zoom="${z}">${z} px/h</button>`).join("")}
           </div>
@@ -323,9 +345,9 @@ function renderTrazabilidad() {
         <div class="acu-kpis">${kpis}</div>
         <div class="pc-layout">
           <div class="acu-card">
-            <div class="acu-card-tit">Línea de tiempo <small class="pc-sub">· arriba la cocina, abajo las líneas de envasado · cada curva une un cocimiento con lo que alimenta · la línea amarilla es el momento elegido · clic en un cocimiento o en un bloque de envasado</small></div>
+            <div class="acu-card-tit">Línea de tiempo <small class="pc-sub">· arriba la cocina (plan FerIA${d.atras && d.atras.length ? " y, antes del I0, lo que debió cocinarse" : ""}), abajo las líneas de envasado · cada curva une un cocimiento con lo que alimenta · la línea amarilla es el momento elegido · clic en un cocimiento o en un bloque de envasado</small></div>
             <div id="trzLinea" class="trz-linea"></div>
-            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-inv"></span>Sale del inventario</div><div class="item"><span class="sw trz-sw-noalc"></span>No alcanzable desde el I0</div><div class="item"><span class="sw trz-sw-frio"></span>Índice de frío (estimado)</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
+            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-inv"></span>Sale del inventario</div><div class="item"><span class="sw trz-sw-noalc"></span>No alcanzable desde el I0</div>${d.atras && d.atras.length ? '<div class="item"><span class="sw trz-sw-atras"></span>Debió cocinarse (plan FerIA hacia atrás)</div>' : ""}<div class="item"><span class="sw trz-sw-frio"></span>Índice de frío (estimado)</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
           </div>
           <div class="acu-card" id="trzDetalle">${trzHtmlDetalle(d)}</div>
         </div>
@@ -349,11 +371,39 @@ function renderTrazabilidad() {
   trzConectar(d, cfg);
 }
 
+// Suma al modelo de la vista el carril «debió cocinarse» y corre el inicio
+// de la línea de tiempo para que se vea.
+function trzAgregarAtras(d) {
+  d.atras = trzCocimientosAtras();
+  if (d.atras.length) d.desde = Math.min(d.desde, Math.min(...d.atras.map((c) => c.ms)) - 6 * TRZ_H);
+  return d;
+}
+
 function trzHtmlDetalle(d) {
   const t = TRZ.ahora;
   if (!TRZ.sel)
     return `<div class="acu-card-tit">Detalle</div><p class="empty-note">Haz clic en un cocimiento (carril «Cocina») para ver dónde fermenta, cuándo se trasiega y en qué línea, SKU y horas se envasa. O haz clic en un bloque de envasado para ver de qué cocimientos sale.</p>`;
   const fila = (k, v) => (v == null || v === "" ? "" : `<div class="pc-dl"><span>${k}</span><b>${v}</b></div>`);
+  if (TRZ.sel.startsWith("r")) {
+    const c = (d.atras || []).find((x) => x.key === TRZ.sel);
+    if (!c) return `<div class="acu-card-tit">Detalle</div><p class="empty-note">Ese cocimiento ya no está en el plan hacia atrás.</p>`;
+    const fv = c.fv && c.fv.length ? c.fv.map((x) => escapeHtml(x.tanque)).join(", ") : "—";
+    const ini = c.consumo.length ? Math.min(...c.consumo.map((x) => x.desde)) : null;
+    return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[c.mostoId] || "pc-otro"}"></span>${escapeHtml(trzNombreMosto(c.mostoId))} · debió cocinarse</div>
+      <div class="trz-estado trz-e0">Plan FerIA hacia atrás <small>· no es parte del plan vigente</small></div>
+      <p class="acu-nota" style="margin-top:0;">Para envasar todo el instructivo sin contar el inventario, este cocimiento había que cargarlo antes del I0. Lo que hoy cubre ese envasado sale del Producto en proceso (rayado claro en la línea) o queda «no alcanzable» (rayado rojo).</p>
+      <div class="pc-sec">Cocina</div>
+      ${fila("Debió cargarse", escapeHtml(trzF(c.ms)))}${fila("Fin de cocina", escapeHtml(trzF(c.fin)))}${fila("Días hasta su envasado", ini != null ? MOD_NF((ini - c.ms) / (24 * TRZ_H), 1) + " días" : "")}
+      <div class="pc-sec">Fermentación y maduración (en ese escenario)</div>
+      ${fila("Fermenta en", fv)}${fila("Trasiego a maduración", escapeHtml(trzF(c.trasiego)))}${fila("Listo para envasar", escapeHtml(trzF(c.listo)))}
+      <div class="pc-sec">Para envasar en</div>${
+        c.consumo.length
+          ? c.consumo
+              .map((x) => `<div class="trz-dest"><span class="trz-tren">L${escapeHtml(String(x.train))}</span><div><b>${escapeHtml(x.name)}</b><small>${escapeHtml(trzF(x.desde))} → ${escapeHtml(trzF(x.hasta))} · ${trzHL(x.hL)}</small></div><button class="pc-mini" data-trz-ver="e${escapeHtml(String(x.train))}|${x.desde}">ver</button></div>`)
+              .join("")
+          : '<p class="empty-note">Sin destino calculado.</p>'
+      }`;
+  }
   if (TRZ.sel.startsWith("c")) {
     const c = d.cocs.find((x) => x.key === TRZ.sel);
     if (!c) return `<div class="acu-card-tit">Detalle</div><p class="empty-note">Ese cocimiento ya no está en el plan.</p>`;
@@ -380,8 +430,17 @@ function trzHtmlDetalle(d) {
   const fuentes = d.cocs
     .map((c) => ({ c, x: c.consumo.filter((z) => String(z.train) === tr && z.desde < b.fin && z.hasta > b.ms) }))
     .filter((o) => o.x.length);
+  const fuentesAtras = (d.atras || [])
+    .map((c) => ({ c, x: c.consumo.filter((z) => String(z.train) === tr && z.desde < b.fin && z.hasta > b.ms) }))
+    .filter((o) => o.x.length);
+  const htmlAtras = fuentesAtras.length
+    ? `<div class="pc-sec">Debió cocinarse (plan hacia atrás, ${fuentesAtras.length})</div>` +
+      fuentesAtras
+        .map((o) => `<div class="trz-dest"><span class="trz-tren trz-tren-atras ${TRZ_MOSTO_CLS[o.c.mostoId] || ""}">◇</span><div><b>Cargue ${escapeHtml(trzF(o.c.ms))}</b><small>${MOD_NF((Math.min(...o.x.map((z) => z.desde)) - o.c.ms) / (24 * TRZ_H), 1)} días antes de envasarse · ${trzHL(o.x.reduce((a, z) => a + z.hL, 0))} para este bloque</small></div><button class="pc-mini" data-trz-ver="${o.c.key}">ver</button></div>`)
+        .join("")
+    : "";
   if (b.antesI0)
-    return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[b.mostoId] || "pc-otro"}"></span>L${escapeHtml(tr)} · ${escapeHtml(b.name)}</div>${fila("Envasa", `${escapeHtml(trzF(b.ms))} → ${escapeHtml(trzF(b.fin))}`)}<p class="empty-note">Se envasa antes del I0: ya no es demanda del plan.</p>`;
+    return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[b.mostoId] || "pc-otro"}"></span>L${escapeHtml(tr)} · ${escapeHtml(b.name)}</div>${fila("Envasa", `${escapeHtml(trzF(b.ms))} → ${escapeHtml(trzF(b.fin))}`)}<p class="empty-note">Se envasa antes del I0: ya no es demanda del plan.</p>${htmlAtras}`;
   const invHL = (b.inv || []).reduce((a, z) => a + z.hL, 0);
   const noHL = (b.noAlc || []).reduce((a, z) => a + z.hL, 0);
   const listo = (b.noAlc || []).map((z) => z.listoDesde).filter(Boolean)[0];
@@ -407,7 +466,7 @@ function trzHtmlDetalle(d) {
             .map((o) => `<div class="trz-dest"><span class="trz-tren ${TRZ_MOSTO_CLS[o.c.mostoId] || ""}">${o.c.n}</span><div><b>Cargue ${escapeHtml(trzF(o.c.ms))}</b><small>${escapeHtml(trzEstado(o.c, TRZ.ahora).txt)} · ${MOD_NF((Math.min(...o.x.map((z) => z.desde)) - o.c.ms) / (24 * TRZ_H), 1)} días antes de envasarse · ${trzHL(o.x.reduce((a, z) => a + z.hL, 0))} para este bloque</small></div><button class="pc-mini" data-trz-ver="${o.c.key}">ver</button></div>`)
             .join("")
         : `<p class="empty-note">${b.tipo !== "production" ? "Es un DPA o NST: no envasa." : invHL > 1 || noHL > 1 ? "Ningún cocimiento nuevo: ver arriba de dónde sale." : "Ningún cocimiento del plan alimenta este bloque (quedó antes del I0)."}</p>`
-    }`;
+    }${htmlAtras}`;
 }
 
 function trzHtmlSubidas(d, t) {
@@ -460,7 +519,11 @@ function trzDibujarLinea(d, t) {
   const hueco = 120;
   const hTren = 40;
   const trenes = typeof TRAINS !== "undefined" ? TRAINS : [];
-  const yCoc = eje;
+  // Carril «debió cocinarse» (plan hacia atrás) encima de la cocina.
+  const atras = d.atras || [];
+  const hAtr = atras.length ? 54 : 0;
+  const yAtr = eje;
+  const yCoc = eje + hAtr;
   const yFrio = yCoc + hCoc + 6;
   const yTren0 = yFrio + hFrio + hueco;
   const H = yTren0 + trenes.length * hTren + 10;
@@ -479,6 +542,7 @@ function trzDibujarLinea(d, t) {
   }
   // Fondos de carril.
   s.push(`<rect class="pvr-carril" x="0" y="${yCoc + 4}" width="${W}" height="${hCoc - 8}"></rect>`);
+  if (hAtr) s.push(`<rect class="pvr-carril trz-carril-atras" x="0" y="${yAtr + 4}" width="${W}" height="${hAtr - 8}"></rect>`);
   trenes.forEach((tr) => s.push(`<rect class="pvr-carril" x="0" y="${yTren(tr) + 3}" width="${W}" height="${hTren - 6}"></rect>`));
   // Índice de frío (área escalonada).
   // Escala del mínimo al máximo del índice: la carga de base (tanques
@@ -544,6 +608,26 @@ function trzDibujarLinea(d, t) {
       s.push(`<path class="trz-link ${TRZ_MOSTO_CLS[c.mostoId] ? "trz-l-" + c.mostoId : ""} ${tardeAqui ? "trz-link-tarde" : ""} ${marcada ? "trz-link-sel" : ""}" d="M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"></path>`);
     });
   });
+  // Curvas de lo que debió cocinarse (punteadas): solo las del cocimiento o
+  // del bloque de envasado elegido (son ~150 cocimientos y taparían todo).
+  // Se dibujan antes de los cocimientos del plan para no taparlos.
+  atras.forEach((c) => {
+    if (TRZ.mosto !== "todos" && c.mostoId !== TRZ.mosto) return;
+    c.consumo.forEach((z) => {
+      const x1 = x(c.ms) + 3;
+      const y1 = yAtr + hAtr - 6;
+      const x2 = x((z.desde + z.hasta) / 2);
+      const y2 = yTren(z.train) + 7;
+      const marcada = TRZ.sel === c.key || (selE && String(z.train) === selE[0] && z.desde < Number(selE[1]) + 1 && z.hasta > Number(selE[1]) - 1);
+      if (!marcada) return;
+      const ym = (y1 + y2) / 2;
+      s.push(`<path class="trz-link trz-link-atras ${TRZ_MOSTO_CLS[c.mostoId] ? "trz-l-" + c.mostoId : ""} ${marcada ? "trz-link-sel" : ""}" d="M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2}"></path>`);
+    });
+  });
+  atras.forEach((c) => {
+    const atenuado = TRZ.mosto !== "todos" && c.mostoId !== TRZ.mosto ? "trz-atenuado" : "";
+    s.push(`<rect class="${TRZ_MOSTO_CLS[c.mostoId] || "pc-otro"} trz-coc trz-coc-atras ${atenuado} ${TRZ.sel === c.key ? "trz-sel" : ""}" x="${x(c.ms)}" y="${yAtr + 8}" width="${Math.max(3, x(c.fin) - x(c.ms))}" height="${hAtr - 16}" rx="2" data-trz-key="${c.key}" data-trz-tip="${escapeHtml(`Debió cocinarse · ${trzNombreMosto(c.mostoId)} · cargue ${trzF(c.ms)}${c.consumo.length ? " · para " + c.consumo.slice(0, 3).map((z) => `L${z.train} ${trzF(z.desde)}`).join(", ") : ""} (plan FerIA hacia atrás, no es el plan vigente) · clic para ver a dónde va`)}"></rect>`);
+  });
   // Cocimientos.
   d.cocs.forEach((c) => {
     const atenuado = TRZ.mosto !== "todos" && c.mostoId !== TRZ.mosto ? "trz-atenuado" : "";
@@ -552,7 +636,7 @@ function trzDibujarLinea(d, t) {
   });
   // Momento elegido.
   if (t >= d.desde && t <= d.hasta) s.push(`<line class="trz-ahora" x1="${x(t)}" y1="${eje - 6}" x2="${x(t)}" y2="${H - 10}"></line><text class="pc-ax trz-ahora-t" x="${x(t) + 4}" y="${eje - 8}">${escapeHtml(trzF(t))}</text>`);
-  const labs = `<div class="pvr-lab" style="height:${eje}px"></div><div class="pvr-lab" style="height:${hCoc}px"><b>Cocina</b><small>${d.cocs.length} cocimientos</small></div><div class="pvr-lab" style="height:${hFrio + 6}px"><b>Frío</b><small>índice estimado</small></div><div class="pvr-lab pvr-lab-h" style="height:${hueco}px"><small>fermentación + maduración</small></div>${trenes.map((tr) => `<div class="pvr-lab" style="height:${hTren}px"><b>L${escapeHtml(tr)}</b><small>envasado</small></div>`).join("")}`;
+  const labs = `<div class="pvr-lab" style="height:${eje}px"></div>${hAtr ? `<div class="pvr-lab" style="height:${hAtr}px"><b>Debió cocinarse</b><small>hacia atrás · ${atras.length}</small></div>` : ""}<div class="pvr-lab" style="height:${hCoc}px"><b>Cocina</b><small>plan FerIA · ${d.cocs.length}</small></div><div class="pvr-lab" style="height:${hFrio + 6}px"><b>Frío</b><small>índice estimado</small></div><div class="pvr-lab pvr-lab-h" style="height:${hueco}px"><small>fermentación + maduración</small></div>${trenes.map((tr) => `<div class="pvr-lab" style="height:${hTren}px"><b>L${escapeHtml(tr)}</b><small>envasado</small></div>`).join("")}`;
   const sc = document.getElementById("trzSvgWrap");
   const prev = sc ? sc.scrollLeft : null;
   cont.innerHTML = `<div class="pvr-tl"><div class="pvr-labs">${labs}</div><div class="pvr-svgwrap" id="trzSvgWrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="pvr-svg">${s.join("")}</svg></div></div>`;
@@ -624,6 +708,16 @@ function trzConectar(d, cfg) {
     }),
   );
   cont.querySelectorAll("[data-trz-ir]").forEach((b) => b.addEventListener("click", () => trzIrA(TRZ.ahora)));
+  cont.querySelectorAll("[data-trz-atras]").forEach((b) =>
+    b.addEventListener("click", () => {
+      TRZ.verAtras = !TRZ.verAtras;
+      if (!TRZ.verAtras && TRZ.sel && TRZ.sel.startsWith("r")) TRZ.sel = null;
+      trzGuardar(cfg);
+      const wrap = document.getElementById("trzSvgWrap");
+      if (wrap) wrap.remove();
+      re();
+    }),
+  );
   cont.querySelectorAll("[data-trz-mosto]").forEach((b) =>
     b.addEventListener("click", () => {
       TRZ.mosto = b.dataset.trzMosto;
@@ -661,10 +755,10 @@ function trzConectar(d, cfg) {
     cont.addEventListener("click", (e) => {
       const b = e.target.closest("[data-trz-ver]");
       if (b) {
-        const datos = calcularTrazabilidad(trzConfig());
+        const datos = trzAgregarAtras(calcularTrazabilidad(trzConfig()));
         trzSeleccionar(b.dataset.trzVer, datos);
         const k = b.dataset.trzVer;
-        const ms = k.startsWith("c") ? (datos.cocs.find((c) => c.key === k) || {}).ms : Number(k.split("|")[1]);
+        const ms = k.startsWith("c") ? (datos.cocs.find((c) => c.key === k) || {}).ms : k.startsWith("r") ? (datos.atras.find((c) => c.key === k) || {}).ms : Number(k.split("|")[1]);
         if (ms) trzIrA(ms);
         if (b.tagName !== "TR") {
           const tl = document.getElementById("trzLinea");

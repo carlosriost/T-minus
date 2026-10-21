@@ -2974,3 +2974,12 @@ svg .pd-rombo { fill: none; stroke-width: 1.8; cursor: help; }
 .pd-det { margin-top: 10px; }
 .pd-det > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 6px 0; }
 .pd-dias th.pd-th-m { text-align: center; border-left: 1px solid var(--line); }
+
+/* Del cocimiento al envasado: carril «debió cocinarse» (plan hacia atrás) */
+svg .trz-carril-atras { opacity: 0.55; }
+svg .trz-coc-atras { fill-opacity: 0.28; stroke: currentColor; stroke-width: 1.2; stroke-dasharray: 3 2; }
+svg .trz-coc-atras.trz-sel { fill-opacity: 0.6; stroke-dasharray: none; stroke: var(--text); }
+svg .trz-link.trz-link-atras { stroke-dasharray: 2 3; opacity: 0.22; }
+svg .trz-link.trz-link-atras.trz-link-sel { opacity: 1; stroke-width: 1.8; }
+.trz-sw-atras { background: transparent; border: 1.5px dashed var(--muted); }
+.trz-tren.trz-tren-atras { background: transparent !important; color: var(--text) !important; border: 1.5px dashed var(--muted) !important; }
