@@ -70,6 +70,11 @@ function render(parsed) {
 
 function recompute() {
   if (!STATE || !STATE.parsed) return;
+  // La demanda se corta en el I0 VIGENTE. Antes los bloques se armaban una
+  // sola vez al cargar el instructivo: si después cambiaba el I0 (a mano, o
+  // al cargar el Producto en proceso, que lo pone en la hora de su foto), el
+  // plan seguía cortado en el I0 viejo y se perdía el envasado de en medio.
+  STATE.brands = buildBrandList(STATE.parsed, STATE.mergedByTrain);
   const plan = computeCocinaPlan(
     STATE.brands,
     MOSTO_CATALOG,
