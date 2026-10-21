@@ -1715,11 +1715,15 @@ function sequenceWeek(
   // se abra la ventana de Pony y luego no queda con qué INTERCALAR: se irían
   // 25 Pony seguidas. Con esta holgura corta, la cerveza cae dentro de la
   // ventana de Pony y sirve de separador.
-  const MAX_ADELANTO_CERVEZA = 2 * DIA;
+  // ENGINE_ADELANTO_EXTRA_DIAS: solo lo sube el escenario «plan completo
+  // hacia atrás» (js/programa-feria.js) mientras se calcula; el plan normal
+  // siempre corre con 0.
+  const extraAdelanto = (typeof ENGINE_ADELANTO_EXTRA_DIAS === "number" ? ENGINE_ADELANTO_EXTRA_DIAS : 0) * DIA;
+  const MAX_ADELANTO_CERVEZA = 2 * DIA + extraAdelanto;
   const aplicaTopeAdelanto = (id) => id === "estandar" || id === "pilsen" || id === "light";
   // Light: 3 días (la levadura manda, pero tampoco se cocina semanas antes;
   // sin este tope, con la apertura desde el I0 se cocinaba toda el primer día).
-  const topeAdelantoMs = (id) => (id === "light" ? 3 * DIA : MAX_ADELANTO_CERVEZA);
+  const topeAdelantoMs = (id) => (id === "light" ? 3 * DIA + extraAdelanto : MAX_ADELANTO_CERVEZA);
   // Pony: el máximo REAL en BBT es tiempoMaxBBTHoras (48 h). La programación
   // puede estirarlo hasta 72 h como tope absoluto; entre el máximo y las 72 h el
   // bloque sale en ROJO para que el equipo lo revise. Nunca más de 72 h.

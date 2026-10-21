@@ -2954,3 +2954,7 @@
 .pc-dual input[type="range"]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); cursor: ew-resize; margin-top: 3px; }
 .pc-dual input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); cursor: ew-resize; }
 
+/* Programa de cocinas (FerIA) */
+.pvr-si { color: var(--ok, #3fb950); font-weight: 600; }
+.pf-esc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pf-esc-nota { margin: 0 0 12px; }

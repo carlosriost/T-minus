@@ -259,6 +259,7 @@ function alAbrirVista(view) {
     "view-recomendaciones": renderRecomendacionesPlan,
     "view-cip": renderCipABC,
     "view-programa-cocinas": typeof renderProgramaCocinas === "function" ? renderProgramaCocinas : null,
+    "view-programa-feria": typeof renderProgramaFeria === "function" ? renderProgramaFeria : null,
     // Setpoints: si cambió el plan de cocinas desde el último dibujo, se redibuja el Gantt.
     "view-gantt-plan": () => {
       if (typeof spNecesitaRedibujar === "function" && typeof redibujarGanttEnvasado === "function" && spNecesitaRedibujar()) redibujarGanttEnvasado();
