@@ -21,6 +21,11 @@
 // mosto: Estándar y Pilsen 2:10, Light 2:30, Pony 2:05. Antes era 2:50 para
 // todos, lo que hacía la cocina un 25 % más lenta de lo que es: cabían menos
 // cocimientos por día y el plan se llenaba de cocimientos tarde.
+// FACTOR DE DILUCIÓN: el del «Control diario» del Producto en proceso
+// (Estándar y Pilsen 1,909 = 19,34 / 10,13; Light 2,208 = 17,05 / 7,72), el
+// mismo con que ese archivo calcula sus HL diluidos. Al cargar el archivo se
+// vuelven a leer de ahí (ver aplicarFactoresDelArchivo). La Pony no se toca
+// sola: el archivo dice 3,52 en su tabla pero usa 3,40 en el Reporte.
 // FERMENTACIÓN MÍNIMA de Light: 184 h, la que usa la planta en el «Control
 // diario» del Producto en proceso (Light 184 h, Estándar/Pilsen 204 h). Antes
 // estaba en 168 h y la Light quedaba 16 h más corta que en la realidad.
@@ -29,7 +34,7 @@ let MOSTO_CATALOG = [
     id: "light",
     nombre: "Light",
     palabras: "aguila light, aguila lig, light",
-    factorDilucion: 2.2,
+    factorDilucion: 2.207650273224044,
     volumenPorCocimiento: 560,
     tiempoCocinaHoras: parseHMS("8:50:00"),
     tiempoFermentacionHoras: parseHMS("184:00:00"),
@@ -41,7 +46,7 @@ let MOSTO_CATALOG = [
     id: "pilsen",
     nombre: "Pilsen",
     palabras: "pilsen",
-    factorDilucion: 1.93,
+    factorDilucion: 1.9090909090909092,
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:55:00"),
     tiempoFermentacionHoras: parseHMS("204:00:00"),
@@ -70,7 +75,7 @@ let MOSTO_CATALOG = [
     id: "estandar",
     nombre: "Estandar",
     palabras: "costeñita, aguila, poker",
-    factorDilucion: 1.95,
+    factorDilucion: 1.9090909090909092,
     volumenPorCocimiento: 600,
     tiempoCocinaHoras: parseHMS("8:55:00"),
     tiempoFermentacionHoras: parseHMS("204:00:00"),
@@ -79,6 +84,26 @@ let MOSTO_CATALOG = [
     tiempoMaxBBTHoras: 0,
   },
 ];
+
+// Factores de dilución leídos del último Producto en proceso cargado. Se
+// guardan para que sigan valiendo al reabrir FerIA (el catálogo no se guarda).
+const PP_FACTORES_KEY = "planCocinasFactoresPP";
+const PP_FACTORES_MOSTOS = ["estandar", "pilsen", "light"];
+function aplicarFactoresDelArchivo(factores) {
+  const cambios = [];
+  PP_FACTORES_MOSTOS.forEach((id) => {
+    const v = Number(factores && factores[id]);
+    const m = MOSTO_CATALOG.find((x) => x.id === id);
+    if (!m || !(v > 0.5 && v < 10)) return;
+    if (Math.abs((Number(m.factorDilucion) || 0) - v) > 1e-6) cambios.push(`${m.nombre} ${m.factorDilucion.toFixed(3)} → ${v.toFixed(3)}`);
+    m.factorDilucion = v;
+  });
+  return cambios;
+}
+try {
+  const g = JSON.parse(localStorage.getItem(PP_FACTORES_KEY) || "null");
+  if (g) aplicarFactoresDelArchivo(g);
+} catch (_) {}
 
 // Catálogo de aseos (CIP) entre cambios de marca: duración según marca de origen → marca de destino.
 // "origen" y "destino" se homologan contra el catálogo de mostos igual que las marcas del Excel

@@ -1020,6 +1020,7 @@ function parseProductoEnProceso(workbook) {
     });
     out.foto = ctl.foto;
     out.tiemposMinimos = ctl.tiemposMinimos;
+    out.factores = ctl.factores;
   }
   return out;
 }
@@ -1094,6 +1095,27 @@ function leerControlDiario(ws) {
     }
     break;
   }
-  return { foto: foto ? foto.toISOString() : null, porEquipo, tiemposMinimos };
+  // «FACTOR DILUCIÓN» por marca (bloque COCINA / BBT / FACTOR DILUCIÓN, con
+  // la marca a la izquierda de COCINA). Es el mismo factor con el que el
+  // archivo calcula sus «HL diluidos», así que el plan y el inventario
+  // quedan en las mismas unidades.
+  const factores = {};
+  for (let r = 0; r < aoa.length; r++) {
+    const row = aoa[r] || [];
+    const c = row.findIndex((v) => typeof v === "string" && /factor\s+diluci/i.test(v));
+    if (c < 1) continue;
+    let marca = "";
+    for (let k = r; k >= Math.max(0, r - 3) && !marca; k--) {
+      const v = (aoa[k] || [])[c - 1];
+      if (typeof v === "string" && v.trim()) marca = normalizeText(v);
+    }
+    const val = row.slice(c + 1).find((v) => typeof v === "number" && v > 0);
+    if (!marca || !val) continue;
+    if (/pony/.test(marca)) factores.pony = val;
+    else if (/light/.test(marca)) factores.light = val;
+    else if (/pilsen/.test(marca)) factores.pilsen = val;
+    else if (/estandar|aguila/.test(marca)) factores.estandar = val;
+  }
+  return { foto: foto ? foto.toISOString() : null, porEquipo, tiemposMinimos, factores };
 }
 

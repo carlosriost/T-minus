@@ -2259,10 +2259,12 @@ function sequenceWeek(
         const mejora = yDespues - Math.max(arrY, urgY);
         if (arrY > urgY + 3 * 60000 && mejora < 2 * HORA) return;
         const xDespues = arrY + durDe(Y) + aseoMs(Y.mostoId, X.mostoId);
-        if (xDespues > urgX + 3 * 60000 && !xTarde) return;
-        // Si el elegido ya iba tarde, no se le carga más atraso del que se le
-        // ahorra al urgente.
-        if (xTarde && xDespues - best > mejora) return;
+        // Atraso que se le causa al elegido por esperar al urgente. Se cambia
+        // solo si al urgente se le ahorra claramente más (el doble): así no se
+        // cambia un atraso por otro parecido, pero tampoco se deja una Light
+        // 30 h tarde por no atrasar 9 h una Pony.
+        const causado = xTarde ? xDespues - best : Math.max(0, xDespues - (urgX + 3 * 60000));
+        if (causado > 0 && mejora < 2 * causado) return;
         elegido = i;
         urgElegido = urgY;
       });

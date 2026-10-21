@@ -654,7 +654,7 @@ function renderCatalog() {
     <tr data-idx="${idx}">
       <td><input type="text" class="cat-input" data-field="nombre" value="${escapeHtml(m.nombre)}"></td>
       <td><input type="text" class="cat-input" data-field="palabras" value="${escapeHtml(m.palabras)}" placeholder="ej: costeñita, aguila, poker"></td>
-      <td><input type="number" step="0.01" min="0.01" class="cat-input" data-field="factorDilucion" value="${m.factorDilucion}"></td>
+      <td><input type="number" step="any" min="0.01" class="cat-input" data-field="factorDilucion" value="${Math.round(m.factorDilucion * 10000) / 10000}" title="${m.factorDilucion}"></td>
       <td><input type="number" step="1" min="1" class="cat-input" data-field="volumenPorCocimiento" value="${m.volumenPorCocimiento}"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoEntreCarguesHoras" value="${formatHMS(m.tiempoEntreCarguesHoras)}" placeholder="hh:mm:ss"></td>
       <td><input type="text" class="cat-input cat-time" data-field="tiempoCocinaHoras" value="${formatHMS(m.tiempoCocinaHoras)}" placeholder="hh:mm:ss"></td>
@@ -1212,6 +1212,20 @@ let PP_AVISO_TIEMPOS = "";
             avisoI0 = ` · I0 = hora de la foto (${fmtDateTime(foto)})`;
           }
         }
+        // Factor de dilución: el del archivo (Estándar, Pilsen, Light).
+        let avisoFactores = "";
+        if (filas.factores && Object.keys(filas.factores).length) {
+          const cambios = aplicarFactoresDelArchivo(filas.factores);
+          try {
+            localStorage.setItem(PP_FACTORES_KEY, JSON.stringify(filas.factores));
+          } catch (_) {}
+          if (typeof renderCatalog === "function") renderCatalog();
+          avisoFactores = cambios.length ? ` · factor de dilución del archivo: ${cambios.join(", ")}` : "";
+          const fp = Number(filas.factores.pony);
+          const mp = MOSTO_CATALOG.find((x) => x.id === "pony");
+          if (fp > 0 && mp && Math.abs(fp - mp.factorDilucion) > 0.005)
+            avisoFactores += ` · ⚠ Pony: el archivo dice ${fp.toFixed(2)} y el catálogo usa ${mp.factorDilucion.toFixed(2)} (no se cambió)`;
+        }
         // Tiempos mínimos de fermentación que trae el archivo vs. el catálogo.
         const tm = filas.tiemposMinimos || {};
         const difs = Object.keys(tm)
@@ -1236,7 +1250,7 @@ let PP_AVISO_TIEMPOS = "";
           status.style.color = "var(--ok)";
           const nBBT = filas.filter((x) => x.tipo === "BBT").length;
           const nVac = filas.filter((x) => x.vacio).length;
-          status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}${filas.foto ? " · foto del " + fmtDateTime(new Date(filas.foto)) : ""}${avisoI0}${PP_AVISO_TIEMPOS ? " · ⚠ " + PP_AVISO_TIEMPOS : ""}`;
+          status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}${filas.foto ? " · foto del " + fmtDateTime(new Date(filas.foto)) : ""}${avisoI0}${avisoFactores}${PP_AVISO_TIEMPOS ? " · ⚠ " + PP_AVISO_TIEMPOS : ""}`;
         }
       } catch (err) {
         console.error(err);
