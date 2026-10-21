@@ -873,7 +873,7 @@ function pvrConectarDetalle() {
       const i = Number(b.dataset.pvrPc);
       const x = PC && PC.filas[i];
       if (!x) return;
-      if (!PC_F) PC_F = pcFiltrosIniciales();
+      if (!PC_F) PC_F = pcFiltrosIniciales(PC);
       const dia = medianocheMs(new Date(x.inicio));
       if (x.inicio < PC_F.desde || x.inicio >= PC_F.hasta) {
         PC_F.desde = Math.max(PC_F.min, dia - 3 * PVR_D);

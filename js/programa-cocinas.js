@@ -55,6 +55,43 @@ let PC_F = null; // filtros
 let PC_SEL = null; // fila seleccionada (índice en PC.filas)
 let PC_PAG = 0;
 
+// CONTEXTO DE DIBUJO. Este módulo pinta dos vistas con las mismas gráficas:
+// el Excel de Elaboración (PC: es el único que leen los demás módulos —plan
+// vs. real, setpoints, inventario—) y el plan de cocinas que FerIA genera
+// desde el instructivo (js/programa-feria.js). PCX apunta a la vista que se
+// está pintando. PC_F / PC_SEL / PC_PAG siguen siendo siempre los del Excel.
+const PCX_EXCEL = {
+  fuente: "excel",
+  get D() {
+    return PC;
+  },
+  get F() {
+    return PC_F;
+  },
+  set F(v) {
+    PC_F = v;
+  },
+  get SEL() {
+    return PC_SEL;
+  },
+  set SEL(v) {
+    PC_SEL = v;
+  },
+  get PAG() {
+    return PC_PAG;
+  },
+  set PAG(v) {
+    PC_PAG = v;
+  },
+};
+let PCX = PCX_EXCEL;
+function pcMostos() {
+  return (PCX.D && PCX.D.mostos) || PC_MOSTOS;
+}
+function pcEventos() {
+  return (PCX.D && PCX.D.eventos) || PC_EVENTOS;
+}
+
 /* ---------------------------------------------------------------- lectura */
 
 function pcSerialAMs(v) {
@@ -333,8 +370,9 @@ function pcRecuperar() {
     PC = null;
   }
 }
-function pcFiltrosIniciales() {
-  const coc = PC.filas.filter((x) => x.inicio != null);
+function pcFiltrosIniciales(datos) {
+  const D = datos || PCX.D;
+  const coc = D.filas.filter((x) => x.inicio != null);
   const max = Math.max(...coc.map((x) => x.inicio));
   const min = Math.min(...coc.map((x) => x.inicio));
   const finDia = medianocheMs(new Date(max)) + PC_D;
@@ -343,8 +381,8 @@ function pcFiltrosIniciales() {
     hasta: finDia,
     min: medianocheMs(new Date(min)),
     max: finDia,
-    mostos: new Set(PC_MOSTOS.map((m) => m.id)),
-    eventos: new Set(PC_EVENTOS.map((e) => e.id)),
+    mostos: new Set((D.mostos || PC_MOSTOS).map((m) => m.id)),
+    eventos: new Set((D.eventos || PC_EVENTOS).map((e) => e.id)),
     grupo: "todos",
     equipo: "",
     texto: "",
@@ -352,32 +390,32 @@ function pcFiltrosIniciales() {
   };
 }
 function pcPasa(x, sinRango) {
-  const f = PC_F;
+  const f = PCX.F;
   if (x.inicio == null) return false;
   if (!sinRango && (x.fin != null ? x.fin : x.inicio) < f.desde) return false;
   if (!sinRango && x.inicio >= f.hasta) return false;
   if (x.tipo === "coc" && !f.mostos.has(x.id)) return false;
   if (x.tipo === "evento" && !f.eventos.has(x.id)) return false;
-  if (x.tipo === "otro" && f.mostos.size < PC_MOSTOS.length) return false;
+  if (x.tipo === "otro" && f.mostos.size < pcMostos().length) return false;
   if (f.grupo !== "todos" && x.tipo === "coc" && x.grupo !== f.grupo) return false;
   if (f.grupo !== "todos" && x.tipo !== "coc") return false;
   if (f.equipo && normalizeText(x.equipo) !== normalizeText(f.equipo)) return false;
   if (f.soloNotas && !x.notas.length && !x.comentarios.length) return false;
   if (f.texto) {
     const q = normalizeText(f.texto);
-    const hay = normalizeText([x.n, x.texto, x.equipo, ...x.notas.map((nn) => (nn.tipo === "texto" || nn.tipo === "numero" ? nn.v : "")), ...x.comentarios.map((c) => c.txt)].join(" "));
+    const hay = normalizeText([x.n, x.texto, x.equipo, x.buscar || "", ...x.notas.map((nn) => (nn.tipo === "texto" || nn.tipo === "numero" ? nn.v : "")), ...x.comentarios.map((c) => c.txt)].join(" "));
     if (!hay.includes(q)) return false;
   }
   return true;
 }
 function pcClaseDe(x) {
-  if (x.tipo === "coc") return (PC_MOSTOS.find((m) => m.id === x.id) || {}).cls || "pc-otro";
-  if (x.tipo === "evento") return (PC_EVENTOS.find((e) => e.id === x.id) || {}).cls || "pc-otro";
+  if (x.tipo === "coc") return (pcMostos().find((m) => m.id === x.id) || {}).cls || "pc-otro";
+  if (x.tipo === "evento") return (pcEventos().find((e) => e.id === x.id) || {}).cls || "pc-otro";
   return "pc-otro";
 }
 function pcNombreDe(x) {
-  if (x.tipo === "coc") return (PC_MOSTOS.find((m) => m.id === x.id) || {}).nombre || x.texto;
-  if (x.tipo === "evento") return (PC_EVENTOS.find((e) => e.id === x.id) || {}).nombre || x.texto;
+  if (x.tipo === "coc") return (pcMostos().find((m) => m.id === x.id) || {}).nombre || x.texto;
+  if (x.tipo === "evento") return (pcEventos().find((e) => e.id === x.id) || {}).nombre || x.texto;
   return x.texto;
 }
 function pcSemanaIso(ms) {
@@ -464,11 +502,15 @@ function pcTipFila(ev, x) {
 function renderProgramaCocinas() {
   const cont = document.getElementById("programaCocinasPanel");
   if (!cont) return;
+  PCX = PCX_EXCEL;
+  // Las dos vistas usan los mismos id de gráficas: solo una puede estar pintada.
+  const otra = document.getElementById("programaFeriaPanel");
+  if (otra) otra.innerHTML = "";
   if (!PC) pcRecuperar();
   const carga = `
     <div class="panel">
       <div class="panel-head"><h3>Programa de cocinas (Excel de Elaboración)</h3>
-        <span class="sub">${PC ? `${escapeHtml(PC.archivo)} · ${PC.filas.length.toLocaleString("es-CO")} filas · cargado ${escapeHtml(new Date(PC.cargado).toLocaleString("es-CO"))}` : "Carga «Programa_Cocinas.xlsx»"}</span>
+        <span class="sub">${PC ? `${escapeHtml(PC.archivo)} · ${PCX.D.filas.length.toLocaleString("es-CO")} filas · cargado ${escapeHtml(new Date(PC.cargado).toLocaleString("es-CO"))}` : "Carga «Programa_Cocinas.xlsx»"}</span>
       </div>
       <div class="panel-body">
         <div class="pc-carga" id="pcDrop">
@@ -488,7 +530,7 @@ function renderProgramaCocinas() {
   ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, (e) => (e.preventDefault(), dz.classList.remove("drag"))));
   dz.addEventListener("drop", (e) => e.dataTransfer.files[0] && pcCargarArchivo(e.dataTransfer.files[0]));
   if (!PC) return;
-  if (!PC_F) PC_F = pcFiltrosIniciales();
+  if (!PCX.F) PCX.F = pcFiltrosIniciales();
   pcRenderCuerpo();
 }
 
@@ -509,7 +551,7 @@ function pcCargarArchivo(file) {
       wb.SheetNames = todas.SheetNames;
       wb.Workbook = todas.Workbook || wb.Workbook;
       PC = pcLeerLibro(wb, file.name);
-      PC_F = pcFiltrosIniciales();
+      PC_F = pcFiltrosIniciales(PC);
       PC_SEL = null;
       PC_PAG = 0;
       pcGuardar();
@@ -529,12 +571,14 @@ function pcCargarArchivo(file) {
 }
 
 function pcRenderCuerpo() {
+  // La vista del plan FerIA tiene su propio cuerpo (js/programa-feria.js).
+  if (PCX !== PCX_EXCEL && typeof pfRenderCuerpo === "function") return pfRenderCuerpo();
   const cuerpo = document.getElementById("pcCuerpo");
   if (!cuerpo) return;
-  const vis = PC.filas.filter((x) => pcPasa(x));
+  const vis = PCX.D.filas.filter((x) => pcPasa(x));
   const coc = vis.filter((x) => x.tipo === "coc");
   const ev = vis.filter((x) => x.tipo === "evento");
-  const dias = Math.max(1, (PC_F.hasta - PC_F.desde) / PC_D);
+  const dias = Math.max(1, (PCX.F.hasta - PCX.F.desde) / PC_D);
   const vol = coc.reduce((a, x) => a + ((x.ef && x.ef.volFrio) || 0), 0);
   const conVol = coc.filter((x) => x.ef && x.ef.volFrio).length;
   const efs = coc.map((x) => x.ef && x.ef.efSap).filter((v) => v > 50 && v < 150);
@@ -555,7 +599,7 @@ function pcRenderCuerpo() {
     ${pcHtmlFiltros()}
     <div class="acu-kpis">${kpis}</div>
     <div class="acu-card">
-      <div class="acu-card-tit">Cocimientos por semana <small class="pc-sub">· todo el archivo · clic en una semana para verla · el recuadro marca el rango elegido</small></div>
+      <div class="acu-card-tit">Cocimientos por semana <small class="pc-sub">· clic en una semana para verla · el recuadro marca el rango elegido · desliza para moverte y acorta las semanas con la barra de abajo</small></div>
       <div id="pcSemanas" class="pc-chart"></div>
       ${pcLeyenda()}
     </div>
@@ -600,11 +644,11 @@ function pcRenderCuerpo() {
 }
 
 function pcLeyenda() {
-  return `<div class="legend pc-leyenda">${PC_MOSTOS.map((m) => `<div class="item"><span class="sw ${m.cls}"></span>${m.nombre}</div>`).join("")}${PC_EVENTOS.map((e) => `<div class="item"><span class="sw ${e.cls}"></span>${e.nombre}</div>`).join("")}</div>`;
+  return `<div class="legend pc-leyenda">${pcMostos().map((m) => `<div class="item"><span class="sw ${m.cls}"></span>${m.nombre}</div>`).join("")}${pcEventos().map((e) => `<div class="item"><span class="sw ${e.cls}"></span>${e.nombre}</div>`).join("")}</div>`;
 }
 
 function pcHtmlFiltros() {
-  const f = PC_F;
+  const f = PCX.F;
   const d2i = (ms) => new Date(ms).toISOString().slice(0, 10);
   const presets = [
     ["7", "Última semana"],
@@ -612,7 +656,7 @@ function pcHtmlFiltros() {
     ["91", "Últimos 3 meses"],
     ["todo", "Todo el archivo"],
   ];
-  const grupos = ["todos", "Tanques TE", "Cubas 41–58", "SV Pony 1–5", "Formato / otros", "Sin equipo"];
+  const grupos = ["todos", ...((PCX.D && PCX.D.grupos) || ["Tanques TE", "Cubas 41–58", "SV Pony 1–5", "Formato / otros", "Sin equipo"])];
   return `<div class="pc-filtros">
     <div class="pc-fgrupo"><span class="pc-flab">Rango</span>
       ${presets.map(([k, l]) => `<button class="pc-chip" data-pc-preset="${k}">${l}</button>`).join("")}
@@ -621,15 +665,15 @@ function pcHtmlFiltros() {
       <input type="date" class="pc-fecha" id="pcHasta" value="${d2i(f.hasta - PC_D)}" min="${d2i(f.min)}" max="${d2i(f.max)}" aria-label="Hasta">
     </div>
     <div class="pc-fgrupo"><span class="pc-flab">Mostos</span>
-      ${PC_MOSTOS.map((m) => `<button class="pc-chip pc-chip-m ${f.mostos.has(m.id) ? "on" : ""}" data-pc-mosto="${m.id}"><span class="pc-dot ${m.cls}"></span>${m.nombre}</button>`).join("")}
+      ${pcMostos().map((m) => `<button class="pc-chip pc-chip-m ${f.mostos.has(m.id) ? "on" : ""}" data-pc-mosto="${m.id}"><span class="pc-dot ${m.cls}"></span>${m.nombre}</button>`).join("")}
     </div>
     <div class="pc-fgrupo"><span class="pc-flab">Eventos</span>
-      ${PC_EVENTOS.map((e) => `<button class="pc-chip pc-chip-m ${f.eventos.has(e.id) ? "on" : ""}" data-pc-evento="${e.id}"><span class="pc-dot ${e.cls}"></span>${e.nombre}</button>`).join("")}
+      ${pcEventos().map((e) => `<button class="pc-chip pc-chip-m ${f.eventos.has(e.id) ? "on" : ""}" data-pc-evento="${e.id}"><span class="pc-dot ${e.cls}"></span>${e.nombre}</button>`).join("")}
       <span class="pc-flab" style="margin-left:10px;">Equipo</span>
       <select id="pcGrupo" class="pc-sel">${grupos.map((g) => `<option value="${g}" ${f.grupo === g ? "selected" : ""}>${g === "todos" ? "Todos los equipos" : g}</option>`).join("")}</select>
       ${f.equipo ? `<button class="pc-chip on" data-pc-quitar-equipo>Equipo ${escapeHtml(f.equipo)} ✕</button>` : ""}
-      <input type="search" id="pcBuscar" class="pc-buscar" placeholder="Buscar n.º, nota, levadura (TE4 J2), incidente…" value="${escapeHtml(f.texto)}">
-      <label class="pc-flab pc-check"><input type="checkbox" id="pcSoloNotas" ${f.soloNotas ? "checked" : ""}> Solo con anotaciones</label>
+      <input type="search" id="pcBuscar" class="pc-buscar" placeholder="${escapeHtml((PCX.D && PCX.D.buscarTxt) || "Buscar n.º, nota, levadura (TE4 J2), incidente…")}" value="${escapeHtml(f.texto)}">
+      <label class="pc-flab pc-check"><input type="checkbox" id="pcSoloNotas" ${f.soloNotas ? "checked" : ""}> ${escapeHtml((PCX.D && PCX.D.notasTxt) || "Solo con anotaciones")}</label>
       <button class="pc-chip" data-pc-limpiar>Limpiar filtros</button>
     </div>
   </div>`;
@@ -637,18 +681,18 @@ function pcHtmlFiltros() {
 
 function pcConectarFiltros() {
   const re = () => {
-    PC_PAG = 0;
+    PCX.PAG = 0;
     pcRenderCuerpo();
   };
   document.querySelectorAll("[data-pc-preset]").forEach((b) =>
     b.addEventListener("click", () => {
       const k = b.dataset.pcPreset;
       if (k === "todo") {
-        PC_F.desde = PC_F.min;
-        PC_F.hasta = PC_F.max;
+        PCX.F.desde = PCX.F.min;
+        PCX.F.hasta = PCX.F.max;
       } else {
-        PC_F.hasta = PC_F.max;
-        PC_F.desde = Math.max(PC_F.min, PC_F.max - Number(k) * PC_D);
+        PCX.F.hasta = PCX.F.max;
+        PCX.F.desde = Math.max(PCX.F.min, PCX.F.max - Number(k) * PC_D);
       }
       re();
     }),
@@ -662,29 +706,29 @@ function pcConectarFiltros() {
       });
   };
   fecha("pcDesde", (v) => {
-    PC_F.desde = v;
-    if (PC_F.hasta <= v) PC_F.hasta = v + PC_D;
+    PCX.F.desde = v;
+    if (PCX.F.hasta <= v) PCX.F.hasta = v + PC_D;
     re();
   });
   fecha("pcHasta", (v) => {
-    PC_F.hasta = v + PC_D;
-    if (PC_F.desde >= PC_F.hasta) PC_F.desde = v;
+    PCX.F.hasta = v + PC_D;
+    if (PCX.F.desde >= PCX.F.hasta) PCX.F.desde = v;
     re();
   });
   const toggle = (set, id) => (set.has(id) ? set.delete(id) : set.add(id));
-  document.querySelectorAll("[data-pc-mosto]").forEach((b) => b.addEventListener("click", () => (toggle(PC_F.mostos, b.dataset.pcMosto), re())));
-  document.querySelectorAll("[data-pc-evento]").forEach((b) => b.addEventListener("click", () => (toggle(PC_F.eventos, b.dataset.pcEvento), re())));
+  document.querySelectorAll("[data-pc-mosto]").forEach((b) => b.addEventListener("click", () => (toggle(PCX.F.mostos, b.dataset.pcMosto), re())));
+  document.querySelectorAll("[data-pc-evento]").forEach((b) => b.addEventListener("click", () => (toggle(PCX.F.eventos, b.dataset.pcEvento), re())));
   const g = document.getElementById("pcGrupo");
-  if (g) g.addEventListener("change", () => ((PC_F.grupo = g.value), (PC_F.equipo = ""), re()));
+  if (g) g.addEventListener("change", () => ((PCX.F.grupo = g.value), (PCX.F.equipo = ""), re()));
   const q = document.querySelector("[data-pc-quitar-equipo]");
-  if (q) q.addEventListener("click", () => ((PC_F.equipo = ""), re()));
+  if (q) q.addEventListener("click", () => ((PCX.F.equipo = ""), re()));
   const s = document.getElementById("pcBuscar");
   if (s) {
     let t = null;
     s.addEventListener("input", () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        PC_F.texto = s.value.trim();
+        PCX.F.texto = s.value.trim();
         re();
         const n = document.getElementById("pcBuscar");
         if (n) {
@@ -695,23 +739,26 @@ function pcConectarFiltros() {
     });
   }
   const sn = document.getElementById("pcSoloNotas");
-  if (sn) sn.addEventListener("change", () => ((PC_F.soloNotas = sn.checked), re()));
+  if (sn) sn.addEventListener("change", () => ((PCX.F.soloNotas = sn.checked), re()));
   const lim = document.querySelector("[data-pc-limpiar]");
   if (lim)
     lim.addEventListener("click", () => {
-      const r = { desde: PC_F.desde, hasta: PC_F.hasta };
-      PC_F = pcFiltrosIniciales();
-      Object.assign(PC_F, r);
+      const r = { desde: PCX.F.desde, hasta: PCX.F.hasta };
+      PCX.F = pcFiltrosIniciales();
+      Object.assign(PCX.F, r);
       re();
     });
 }
 
-/* ---- Cocimientos por semana (barras apiladas por mosto, todo el archivo) */
+/* ---- Cocimientos por semana (barras apiladas por mosto, todo el archivo) ----
+   Con barra para desplazarse de izquierda a derecha y una ventana de
+   semanas que se puede acortar (deslizador doble o los selectores): así no
+   hay que ver todo el archivo apretado para revisar unas pocas semanas. */
 function pcDibujarSemanas() {
   const el = document.getElementById("pcSemanas");
   if (!el) return;
   const porSem = new Map();
-  PC.filas.forEach((x) => {
+  PCX.D.filas.forEach((x) => {
     if (x.tipo !== "coc" || x.inicio == null || !pcPasa(x, true)) return;
     const s = semanaCalendario(x.inicio);
     if (!porSem.has(s)) porSem.set(s, {});
@@ -720,57 +767,173 @@ function pcDibujarSemanas() {
   });
   // Semanas sin cocimientos también se muestran (huecos reales).
   const todas = [];
-  for (let s = semanaCalendario(PC_F.min); s < PC_F.max; s += 7 * PC_D) todas.push(s);
-  const W = Math.max(600, el.clientWidth || 900);
+  for (let s = semanaCalendario(PCX.F.min); s < PCX.F.max; s += 7 * PC_D) todas.push(s);
+  if (!todas.length) {
+    el.innerHTML = '<p class="empty-note">Sin semanas en el archivo.</p>';
+    return;
+  }
+  // Ventana visible (índices en «todas»). Por defecto, todo el archivo.
+  const v = PCX.F.semVista || { i0: 0, i1: todas.length - 1 };
+  v.i0 = Math.max(0, Math.min(todas.length - 1, v.i0));
+  v.i1 = Math.max(v.i0, Math.min(todas.length - 1, v.i1));
+  PCX.F.semVista = v;
+  const vis = todas.slice(v.i0, v.i1 + 1);
   const H = 190;
-  const m = { l: 34, r: 8, t: 10, b: 34 };
-  const iw = W - m.l - m.r;
+  const m = { t: 10, b: 34 };
   const ih = H - m.t - m.b;
-  const tot = (o) => Object.values(o || {}).reduce((a, v) => a + v, 0);
-  const max = Math.max(10, ...todas.map((s) => tot(porSem.get(s))));
-  const paso = iw / todas.length;
-  const bw = Math.max(2, paso - 2);
-  const y = (v) => m.t + ih - (v / max) * ih;
-  let svg = "";
-  // Rejilla recesiva.
+  const tot = (o) => Object.values(o || {}).reduce((a, x) => a + x, 0);
+  const max = Math.max(10, ...vis.map((s) => tot(porSem.get(s))));
+  const ancho = Math.max(300, (el.clientWidth || 900) - 40);
+  // Cada semana tiene al menos 22 px: si no caben, aparece la barra.
+  const paso = Math.max(22, ancho / vis.length);
+  const W = Math.ceil(paso * vis.length) + 8;
+  const bw = Math.max(2, paso - 3);
+  const y = (val) => m.t + ih - (val / max) * ih;
   const ticks = [0, Math.round(max / 2), max];
-  ticks.forEach((t) => (svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" class="pc-grid"/><text x="${m.l - 6}" y="${y(t) + 3}" class="pc-ax" text-anchor="end">${t}</text>`));
-  // Rango elegido.
-  const xr0 = m.l + ((semanaCalendario(PC_F.desde) - todas[0]) / (7 * PC_D)) * paso;
-  const xr1 = m.l + ((semanaCalendario(PC_F.hasta - 1) - todas[0]) / (7 * PC_D) + 1) * paso;
-  svg += `<rect x="${xr0}" y="${m.t - 4}" width="${Math.max(2, xr1 - xr0)}" height="${ih + 8}" class="pc-rango"/>`;
-  todas.forEach((s, i) => {
+  let eje = "";
+  ticks.forEach((t) => (eje += `<text x="30" y="${y(t) + 3}" class="pc-ax" text-anchor="end">${t}</text>`));
+  let svg = "";
+  ticks.forEach((t) => (svg += `<line x1="0" x2="${W}" y1="${y(t)}" y2="${y(t)}" class="pc-grid"/>`));
+  // Rango elegido (filtros de arriba), en coordenadas de la ventana.
+  const iR0 = (semanaCalendario(PCX.F.desde) - vis[0]) / (7 * PC_D);
+  const iR1 = (semanaCalendario(PCX.F.hasta - 1) - vis[0]) / (7 * PC_D) + 1;
+  const xr0 = Math.max(0, iR0 * paso);
+  const xr1 = Math.min(W, iR1 * paso);
+  if (xr1 > xr0) svg += `<rect x="${xr0}" y="${m.t - 4}" width="${Math.max(2, xr1 - xr0)}" height="${ih + 8}" class="pc-rango"/>`;
+  const cadaEtq = paso >= 40 ? 1 : paso >= 28 ? 2 : 3;
+  vis.forEach((s, i) => {
     const o = porSem.get(s) || {};
     let acum = 0;
-    const x0 = m.l + i * paso + 1;
-    PC_MOSTOS.forEach((mo, k) => {
-      const v = o[mo.id] || 0;
-      if (!v) return;
-      const y1 = y(acum + v);
+    const x0 = i * paso + 1.5;
+    const ms = pcMostos();
+    ms.forEach((mo, k) => {
+      const val = o[mo.id] || 0;
+      if (!val) return;
+      const y1 = y(acum + val);
       const y0 = y(acum);
-      // 2 px de separación entre segmentos.
-      svg += `<rect x="${x0}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1 - (acum > 0 ? 2 : 0))}" rx="${k === PC_MOSTOS.length - 1 ? 2 : 0}" class="${mo.cls}"/>`;
-      acum += v;
+      svg += `<rect x="${x0}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1 - (acum > 0 ? 2 : 0))}" rx="${k === ms.length - 1 ? 2 : 0}" class="${mo.cls}"/>`;
+      acum += val;
     });
-    if (i % Math.ceil(todas.length / 22) === 0) {
+    if (i % cadaEtq === 0) {
       const d = new Date(s);
       svg += `<text x="${x0 + bw / 2}" y="${H - m.b + 14}" class="pc-ax" text-anchor="middle">S${pcSemanaIso(s)}</text><text x="${x0 + bw / 2}" y="${H - m.b + 26}" class="pc-ax" text-anchor="middle">${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}</text>`;
     }
-    svg += `<rect x="${m.l + i * paso}" y="${m.t}" width="${paso}" height="${ih}" class="pc-hit" data-sem="${s}"/>`;
+    svg += `<rect x="${i * paso}" y="${m.t}" width="${paso}" height="${ih}" class="pc-hit" data-sem="${s}"/>`;
   });
-  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cocimientos por semana">${svg}</svg>`;
+  const etq = (s) => `S${pcSemanaIso(s)} · ${fmtDate(new Date(s))}`;
+  const opts = (sel) => todas.map((s, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${escapeHtml(etq(s))}</option>`).join("");
+  el.innerHTML = `
+    <div class="pc-semctl">
+      <span class="pc-flab">Ver semanas</span>
+      <select class="pc-sel" data-semv="i0">${opts(v.i0)}</select><span class="pc-flab">→</span><select class="pc-sel" data-semv="i1">${opts(v.i1)}</select>
+      <button class="pc-chip" data-semv-preset="todo">Todo</button>
+      <button class="pc-chip" data-semv-preset="12">Últimas 12</button>
+      <button class="pc-chip" data-semv-preset="rango">Alrededor del rango</button>
+      <span class="pc-sub">${vis.length} de ${todas.length} semanas</span>
+    </div>
+    <div class="pc-semwrap">
+      <svg class="pc-semeje" width="34" height="${H}" viewBox="0 0 34 ${H}" aria-hidden="true">${eje}</svg>
+      <div class="pc-semscroll"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cocimientos por semana">${svg}</svg></div>
+    </div>
+    <div class="pc-dualfila">
+      <button class="pc-chip pc-mover" data-semmover="-1" title="Mover la ventana una semana a la izquierda" ${v.i0 === 0 ? "disabled" : ""}>◀</button>
+      <div class="pc-dual" style="--a:${todas.length > 1 ? (v.i0 / (todas.length - 1)) * 100 : 0}%;--b:${todas.length > 1 ? (v.i1 / (todas.length - 1)) * 100 : 100}%">
+        <div class="pc-dual-banda" title="Arrastra para moverte sin cambiar cuántas semanas ves"></div>
+        <input type="range" min="0" max="${todas.length - 1}" value="${v.i0}" data-semr="i0" aria-label="Primera semana visible">
+        <input type="range" min="0" max="${todas.length - 1}" value="${v.i1}" data-semr="i1" aria-label="Última semana visible">
+      </div>
+      <button class="pc-chip pc-mover" data-semmover="1" title="Mover la ventana una semana a la derecha" ${v.i1 === todas.length - 1 ? "disabled" : ""}>▶</button>
+    </div>`;
+  const sc = el.querySelector(".pc-semscroll");
+  // Mostrar el rango elegido: si queda fuera de la vista, se desplaza hasta él.
+  if (sc && xr1 > xr0 && (xr0 < sc.scrollLeft || xr1 > sc.scrollLeft + sc.clientWidth)) sc.scrollLeft = Math.max(0, xr0 - 40);
+  else if (sc && PCX.F.semScroll != null) sc.scrollLeft = PCX.F.semScroll;
+  if (sc) sc.addEventListener("scroll", () => (PCX.F.semScroll = sc.scrollLeft));
+  const redibujar = () => {
+    PCX.F.semScroll = null;
+    pcDibujarSemanas();
+  };
+  el.querySelectorAll("[data-semv]").forEach((sel) =>
+    sel.addEventListener("change", () => {
+      v[sel.dataset.semv] = Number(sel.value);
+      if (v.i0 > v.i1) sel.dataset.semv === "i0" ? (v.i1 = v.i0) : (v.i0 = v.i1);
+      redibujar();
+    }),
+  );
+  el.querySelectorAll("[data-semr]").forEach((r) =>
+    r.addEventListener("input", () => {
+      const k = r.dataset.semr;
+      v[k] = Number(r.value);
+      if (v.i0 > v.i1) k === "i0" ? (v.i0 = v.i1) : (v.i1 = v.i0);
+      clearTimeout(PCX.F.semT);
+      PCX.F.semT = setTimeout(redibujar, 60);
+    }),
+  );
+  // Desplazar la ventana (mismo número de semanas) a izquierda o derecha.
+  const desplazar = (d) => {
+    const largo = v.i1 - v.i0;
+    const n0 = Math.max(0, Math.min(todas.length - 1 - largo, v.i0 + d));
+    if (n0 === v.i0) return false;
+    v.i0 = n0;
+    v.i1 = n0 + largo;
+    return true;
+  };
+  el.querySelectorAll("[data-semmover]").forEach((b) =>
+    b.addEventListener("click", () => desplazar(Number(b.dataset.semmover)) && redibujar()),
+  );
+  const banda = el.querySelector(".pc-dual-banda");
+  if (banda && todas.length > 1)
+    banda.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      const pista = banda.parentElement.getBoundingClientRect();
+      const porSemanaPx = Math.max(1, pista.width / (todas.length - 1));
+      const x0 = ev.clientX;
+      const base = v.i0;
+      banda.setPointerCapture && banda.setPointerCapture(ev.pointerId);
+      const mover = (e) => {
+        const d = Math.round((e.clientX - x0) / porSemanaPx);
+        if (desplazar(base + d - v.i0)) {
+          clearTimeout(PCX.F.semT);
+          PCX.F.semT = setTimeout(redibujar, 40);
+        }
+      };
+      const soltar = () => {
+        banda.removeEventListener("pointermove", mover);
+        banda.removeEventListener("pointerup", soltar);
+        banda.removeEventListener("pointercancel", soltar);
+      };
+      banda.addEventListener("pointermove", mover);
+      banda.addEventListener("pointerup", soltar);
+      banda.addEventListener("pointercancel", soltar);
+    });
+  el.querySelectorAll("[data-semv-preset]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const k = b.dataset.semvPreset;
+      if (k === "todo") (v.i0 = 0), (v.i1 = todas.length - 1);
+      else if (k === "12") (v.i1 = todas.length - 1), (v.i0 = Math.max(0, todas.length - 12));
+      else {
+        const a = todas.findIndex((s) => s >= semanaCalendario(PCX.F.desde));
+        const z = todas.findIndex((s) => s > PCX.F.hasta - 1);
+        v.i0 = Math.max(0, (a < 0 ? 0 : a) - 4);
+        v.i1 = Math.min(todas.length - 1, (z < 0 ? todas.length - 1 : z - 1) + 4);
+      }
+      redibujar();
+    }),
+  );
   el.querySelectorAll("[data-sem]").forEach((r) => {
     const s = Number(r.dataset.sem);
     r.addEventListener("pointermove", (ev) => {
       const o = porSem.get(s) || {};
-      const lineas = PC_MOSTOS.filter((mo) => o[mo.id]).map((mo) => ({ v: String(o[mo.id]), l: mo.nombre, cls: mo.cls }));
+      const lineas = pcMostos()
+        .filter((mo) => o[mo.id])
+        .map((mo) => ({ v: String(o[mo.id]), l: mo.nombre, cls: mo.cls }));
       pcMostrarTip(ev, `Semana ${pcSemanaIso(s)} · desde ${fmtDate(new Date(s))} — ${tot(o)} cocimientos`, lineas.length ? lineas : [{ v: "0", l: "cocimientos" }]);
     });
     r.addEventListener("pointerleave", pcOcultarTip);
     r.addEventListener("click", () => {
-      PC_F.desde = Math.max(PC_F.min, s);
-      PC_F.hasta = Math.min(PC_F.max, s + 7 * PC_D);
-      PC_PAG = 0;
+      PCX.F.desde = Math.max(PCX.F.min, s);
+      PCX.F.hasta = Math.min(PCX.F.max, s + 7 * PC_D);
+      PCX.PAG = 0;
       pcRenderCuerpo();
     });
   });
@@ -780,7 +943,7 @@ function pcDibujarSemanas() {
 function pcDibujarMapa(vis) {
   const el = document.getElementById("pcMapa");
   if (!el) return;
-  const nd = Math.round((PC_F.hasta - PC_F.desde) / PC_D);
+  const nd = Math.round((PCX.F.hasta - PCX.F.desde) / PC_D);
   const rowH = nd <= 21 ? 24 : nd <= 45 ? 16 : nd <= 120 ? 9 : 5;
   const W = Math.max(520, el.clientWidth || 800);
   const m = { l: 74, r: 8, t: 22 };
@@ -795,25 +958,25 @@ function pcDibujarMapa(vis) {
   // Turnos de la planta (22-06, 06-14, 14-22) como bandas muy tenues.
   svg += `<rect x="${xh(6)}" y="${m.t}" width="${xh(14) - xh(6)}" height="${nd * rowH}" class="pc-turno"/>`;
   for (let i = 0; i < nd; i++) {
-    const d = PC_F.desde + i * PC_D;
+    const d = PCX.F.desde + i * PC_D;
     const dow = new Date(d).getUTCDay();
     const yy = m.t + i * rowH;
     if (dow === 0 || dow === 6) svg += `<rect x="${m.l}" y="${yy}" width="${iw}" height="${rowH}" class="pc-finde"/>`;
     if (rowH >= 9 || dow === 1) svg += `<text x="${m.l - 6}" y="${yy + rowH / 2 + 3}" class="pc-ax ${dow === 1 ? "pc-lunes" : ""}" text-anchor="end">${fmtDate(new Date(d))}</text>`;
     if (dow === 1) svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}" class="pc-sem"/>`;
   }
-  const idx = new Map(PC.filas.map((x, i) => [x, i]));
+  const idx = new Map(PCX.D.filas.map((x, i) => [x, i]));
   // Eventos (fondo rayado), partidos por día si cruzan medianoche.
   vis.filter((x) => x.tipo === "evento").forEach((x) => {
-    let a = Math.max(x.inicio, PC_F.desde);
-    const b = Math.min(x.fin != null ? x.fin : x.inicio + PC_H, PC_F.hasta);
+    let a = Math.max(x.inicio, PCX.F.desde);
+    const b = Math.min(x.fin != null ? x.fin : x.inicio + PC_H, PCX.F.hasta);
     while (a < b) {
       const dia = medianocheMs(new Date(a));
       const z = Math.min(b, dia + PC_D);
-      const fila = Math.round((dia - PC_F.desde) / PC_D);
+      const fila = Math.round((dia - PCX.F.desde) / PC_D);
       const h0 = (a - dia) / PC_H;
       const h1 = (z - dia) / PC_H;
-      svg += `<rect x="${xh(h0)}" y="${m.t + fila * rowH + 1}" width="${Math.max(2, xh(h1) - xh(h0))}" height="${rowH - 2}" class="pc-ev ${pcClaseDe(x)} ${PC_SEL === idx.get(x) ? "pc-selm" : ""}" data-pc-i="${idx.get(x)}"/>`;
+      svg += `<rect x="${xh(h0)}" y="${m.t + fila * rowH + 1}" width="${Math.max(2, xh(h1) - xh(h0))}" height="${rowH - 2}" class="pc-ev ${pcClaseDe(x)} ${PCX.SEL === idx.get(x) ? "pc-selm" : ""}" data-pc-i="${idx.get(x)}"/>`;
       a = z;
     }
   });
@@ -821,12 +984,12 @@ function pcDibujarMapa(vis) {
   const r = rowH >= 16 ? 5 : rowH >= 9 ? 3.5 : 0;
   vis.filter((x) => x.tipo !== "evento").forEach((x) => {
     const dia = medianocheMs(new Date(x.inicio));
-    const fila = Math.round((dia - PC_F.desde) / PC_D);
+    const fila = Math.round((dia - PCX.F.desde) / PC_D);
     if (fila < 0 || fila >= nd) return;
     const h = (x.inicio - dia) / PC_H;
     const cx = xh(h);
     const cy = m.t + fila * rowH + rowH / 2;
-    const sel = PC_SEL === idx.get(x) ? " pc-selm" : "";
+    const sel = PCX.SEL === idx.get(x) ? " pc-selm" : "";
     const marca = x.notas.length || x.comentarios.length ? " pc-anot" : "";
     svg += r
       ? `<circle cx="${cx}" cy="${cy}" r="${r}" class="pc-pt ${pcClaseDe(x)}${sel}${marca}"/>`
@@ -836,7 +999,7 @@ function pcDibujarMapa(vis) {
   });
   el.innerHTML = nd > 0 ? `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mapa de cargues por día y hora" class="${rowH < 9 ? "pc-compacto" : ""}">${svg}</svg>` : '<p class="empty-note">Sin días en el rango.</p>';
   el.querySelectorAll("[data-pc-i]").forEach((n) => {
-    const x = PC.filas[Number(n.dataset.pcI)];
+    const x = PCX.D.filas[Number(n.dataset.pcI)];
     n.addEventListener("pointermove", (ev) => pcTipFila(ev, x));
     n.addEventListener("pointerleave", pcOcultarTip);
     n.addEventListener("click", () => pcSeleccionar(Number(n.dataset.pcI)));
@@ -844,7 +1007,7 @@ function pcDibujarMapa(vis) {
 }
 
 function pcSeleccionar(i) {
-  PC_SEL = i;
+  PCX.SEL = i;
   const d = document.getElementById("pcDetalle");
   if (d) d.innerHTML = pcHtmlDetalle();
   pcConectarDetalle();
@@ -861,10 +1024,11 @@ function pcSeleccionar(i) {
 }
 
 function pcHtmlDetalle() {
-  if (PC_SEL == null || !PC.filas[PC_SEL])
+  if (PCX !== PCX_EXCEL && typeof pfHtmlDetalle === "function") return pfHtmlDetalle();
+  if (PCX.SEL == null || !PCX.D.filas[PCX.SEL])
     return `<div class="acu-card-tit">Detalle</div><p class="empty-note">Haz clic en un punto del mapa, en una franja rayada o en una fila de la tabla para ver todo lo que el Excel dice de ese cocimiento o evento.</p>
       <div class="pc-ayuda"><div><span class="pc-dot pc-c1"></span>Punto = cargue de un cocimiento (color = mosto)</div><div><span class="pc-dot pc-aseo"></span>Franja rayada = aseo o paro entre dos cargues</div><div><span class="pc-anot-demo"></span>Punto con aro = tiene anotaciones en el Excel</div><div>Bandas: fines de semana más oscuros; la franja clara es el turno 06–14.</div></div>`;
-  const x = PC.filas[PC_SEL];
+  const x = PCX.D.filas[PCX.SEL];
   const fila = (k, v) => (v == null || v === "" ? "" : `<div class="pc-dl"><span>${k}</span><b>${v}</b></div>`);
   const nota = (nn) => {
     const v = nn.tipo === "fecha" ? pcFecha(nn.v) : nn.tipo === "duracion" ? fmtHM(nn.v) + " h" : nn.tipo === "numero" ? MOD_NF(nn.v, Number.isInteger(nn.v) ? 0 : 2) : escapeHtml(String(nn.v));
@@ -872,7 +1036,7 @@ function pcHtmlDetalle() {
   };
   const e = x.ef || {};
   const vecinos = (dir) => {
-    for (let j = PC_SEL + dir; j >= 0 && j < PC.filas.length; j += dir) if (pcPasa(PC.filas[j], true) && PC.filas[j].inicio != null) return j;
+    for (let j = PCX.SEL + dir; j >= 0 && j < PCX.D.filas.length; j += dir) if (pcPasa(PCX.D.filas[j], true) && PCX.D.filas[j].inicio != null) return j;
     return null;
   };
   const ant = vecinos(-1);
@@ -887,7 +1051,7 @@ function pcHtmlDetalle() {
     ${x.tipo === "coc" ? fila("Fin (F)", pcFecha(x.fin)) : ""}
     ${fila("Equipo destino (G)", x.equipo ? `${escapeHtml(x.equipo)} <small class="pc-sub">· ${escapeHtml(x.grupo)}</small> <button class="pc-mini" data-pc-equipo="${escapeHtml(x.equipo)}">filtrar</button>` : "")}
     ${x.lev ? fila("Levadura", `${x.lev.tanque}${x.lev.lote ? " · lote " + x.lev.lote : ""} <button class="pc-mini" data-pc-buscar="${x.lev.tanque}${x.lev.lote ? " " + x.lev.lote : ""}">ver otros</button>`) : ""}
-    ${x.desdeAnterior ? fila("Desde el cargue anterior", fmtHM(x.desdeAnterior / PC_MIN) + " h" + (x.mostoAnterior && x.mostoAnterior !== x.id ? ` <small class="pc-sub">(venía de ${escapeHtml((PC_MOSTOS.find((m) => m.id === x.mostoAnterior) || {}).nombre || "")})</small>` : "")) : ""}
+    ${x.desdeAnterior ? fila("Desde el cargue anterior", fmtHM(x.desdeAnterior / PC_MIN) + " h" + (x.mostoAnterior && x.mostoAnterior !== x.id ? ` <small class="pc-sub">(venía de ${escapeHtml((pcMostos().find((m) => m.id === x.mostoAnterior) || {}).nombre || "")})</small>` : "")) : ""}
     ${x.colores.length ? fila("Resaltado en el Excel", x.colores.map((c) => `<span class="pc-swatch" style="background:${c}" title="${c}"></span>`).join(" ")) : ""}
     ${fila("Fila en el Excel", String(x.fila))}
     ${x.ef ? `<div class="pc-sec">EFICIENCIAS</div>${fila("Volumen mosto frío", e.volFrio != null ? MOD_NF(e.volFrio) + " hL" : "—")}${fila("Extracto maceración", e.extMac != null ? MOD_NF(e.extMac, 2) + " °P" : "—")}${fila("Extracto al llenar", e.extLlenar != null ? MOD_NF(e.extLlenar, 2) + " °P" : "—")}${fila("Mosto débil", e.mostoDebil != null ? MOD_NF(e.mostoDebil, 1) + " hL" : "—")}${fila("Eficiencia INSQL", e.efInsql != null ? MOD_NF(e.efInsql, 2) + " %" : "—")}${fila("Eficiencia SAP", e.efSap != null ? MOD_NF(e.efSap, 2) + " %" : "—")}` : x.tipo === "coc" ? '<div class="pc-sec">EFICIENCIAS</div><p class="empty-note">Sin datos de laboratorio para este cocimiento (aún no se ha cocinado o no está en la hoja).</p>' : ""}
@@ -896,19 +1060,25 @@ function pcHtmlDetalle() {
     ${x.comentarios.length ? `<div class="pc-sec">Comentarios de celda</div>${x.comentarios.map((c) => `<div class="pc-nota"><span class="pc-col">${c.col}</span><div>${escapeHtml(c.txt)}${c.autor ? ` <small class="pc-sub">— ${escapeHtml(c.autor)}</small>` : ""}</div></div>`).join("")}` : ""}`;
 }
 function pcConectarDetalle() {
+  // Del plan FerIA: abrir el cocimiento en «Del cocimiento al envasado».
+  document.querySelectorAll("[data-pf-trz]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (typeof TRZ !== "undefined") TRZ.sel = b.dataset.pfTrz;
+    }),
+  );
   document.querySelectorAll("[data-pc-nav]").forEach((b) => b.addEventListener("click", () => b.dataset.pcNav !== "null" && pcSeleccionar(Number(b.dataset.pcNav))));
   document.querySelectorAll("[data-pc-equipo]").forEach((b) =>
     b.addEventListener("click", () => {
-      PC_F.equipo = b.dataset.pcEquipo;
-      PC_F.grupo = "todos";
+      PCX.F.equipo = b.dataset.pcEquipo;
+      PCX.F.grupo = "todos";
       pcRenderCuerpo();
     }),
   );
   document.querySelectorAll("[data-pc-buscar]").forEach((b) =>
     b.addEventListener("click", () => {
-      PC_F.texto = b.dataset.pcBuscar;
-      PC_F.desde = PC_F.min;
-      PC_F.hasta = PC_F.max;
+      PCX.F.texto = b.dataset.pcBuscar;
+      PCX.F.desde = PCX.F.min;
+      PCX.F.hasta = PCX.F.max;
       pcRenderCuerpo();
     }),
   );
@@ -923,20 +1093,20 @@ function pcDibujarMix(vis) {
   const tot = Object.values(cnt).reduce((a, v) => a + v, 0);
   // Barra única 100 % apilada + lista con valores (identidad también por texto).
   el.innerHTML =
-    `<div class="pc-mixbar">${PC_MOSTOS.filter((m) => cnt[m.id]).map((m) => `<span class="${m.cls}" style="flex:${cnt[m.id]}" data-pc-m="${m.id}"></span>`).join("")}</div>` +
-    `<div class="pc-mixlist">${PC_MOSTOS.map((m) => {
+    `<div class="pc-mixbar">${pcMostos().filter((m) => cnt[m.id]).map((m) => `<span class="${m.cls}" style="flex:${cnt[m.id]}" data-pc-m="${m.id}"></span>`).join("")}</div>` +
+    `<div class="pc-mixlist">${pcMostos().map((m) => {
       const v = cnt[m.id] || 0;
-      const on = PC_F.mostos.has(m.id);
+      const on = PCX.F.mostos.has(m.id);
       return `<button class="pc-mixrow ${on ? "" : "off"}" data-pc-m="${m.id}"><span class="pc-dot ${m.cls}"></span><span class="l">${m.nombre}</span><b>${MOD_NF(v)}</b><span class="p">${tot ? Math.round((v / tot) * 100) : 0}%</span></button>`;
     }).join("")}</div>`;
   el.querySelectorAll("[data-pc-m]").forEach((b) => {
-    const m = PC_MOSTOS.find((mm) => mm.id === b.dataset.pcM);
+    const m = pcMostos().find((mm) => mm.id === b.dataset.pcM);
     b.addEventListener("pointermove", (ev) => pcMostrarTip(ev, m.nombre, [{ v: MOD_NF(cnt[m.id] || 0), l: "cocimientos en el rango", cls: m.cls }]));
     b.addEventListener("pointerleave", pcOcultarTip);
     b.addEventListener("click", () => {
       // Clic = ver solo ese mosto; clic otra vez = volver a todos.
-      const solo = PC_F.mostos.size === 1 && PC_F.mostos.has(m.id);
-      PC_F.mostos = solo ? new Set(PC_MOSTOS.map((x) => x.id)) : new Set([m.id]);
+      const solo = PCX.F.mostos.size === 1 && PCX.F.mostos.has(m.id);
+      PCX.F.mostos = solo ? new Set(pcMostos().map((x) => x.id)) : new Set([m.id]);
       pcRenderCuerpo();
     });
   });
@@ -959,15 +1129,15 @@ function pcDibujarEquipos(vis) {
     ? `<div class="pc-eqs">${lista
         .map(
           ([k, o]) =>
-            `<button class="pc-eq ${PC_F.equipo === k ? "on" : ""}" data-pc-eq="${escapeHtml(k)}" title="${escapeHtml(o.g)}"><span class="l">${escapeHtml(k)}</span><span class="t"><span style="width:${(o.n / max) * 100}%"></span></span><b>${o.n}</b></button>`,
+            `<button class="pc-eq ${PCX.F.equipo === k ? "on" : ""}" data-pc-eq="${escapeHtml(k)}" title="${escapeHtml(o.g)}"><span class="l">${escapeHtml(k)}</span><span class="t"><span style="width:${(o.n / max) * 100}%"></span></span><b>${o.n}</b></button>`,
         )
         .join("")}</div>`
     : '<p class="empty-note">Sin cocimientos en el rango.</p>';
   el.querySelectorAll("[data-pc-eq]").forEach((b) =>
     b.addEventListener("click", () => {
       const k = b.dataset.pcEq;
-      PC_F.equipo = PC_F.equipo === k || k === "(vacío)" ? "" : k;
-      PC_F.grupo = "todos";
+      PCX.F.equipo = PCX.F.equipo === k || k === "(vacío)" ? "" : k;
+      PCX.F.grupo = "todos";
       pcRenderCuerpo();
     }),
   );
@@ -1039,17 +1209,17 @@ function pcDibujarTabla(vis) {
   if (!el) return;
   const POR = 100;
   const pags = Math.max(1, Math.ceil(vis.length / POR));
-  PC_PAG = Math.min(PC_PAG, pags - 1);
-  const idx = new Map(PC.filas.map((x, i) => [x, i]));
+  PCX.PAG = Math.min(PCX.PAG, pags - 1);
+  const idx = new Map(PCX.D.filas.map((x, i) => [x, i]));
   const filas = vis
-    .slice(PC_PAG * POR, PC_PAG * POR + POR)
+    .slice(PCX.PAG * POR, PCX.PAG * POR + POR)
     .map((x) => {
       const e = x.ef || {};
       const notas = x.notas
         .map((nn) => `<span class="pc-tn"><i>${nn.col}</i>${nn.tipo === "fecha" ? pcFecha(nn.v) : nn.tipo === "duracion" ? fmtHM(nn.v) : escapeHtml(String(nn.tipo === "numero" ? MOD_NF(nn.v, Number.isInteger(nn.v) ? 0 : 2) : nn.v))}</span>`)
         .concat(x.comentarios.map((c) => `<span class="pc-tn pc-tc"><i>💬${c.col}</i>${escapeHtml(c.txt)}</span>`))
         .join("");
-      return `<tr data-pc-i="${idx.get(x)}" class="${PC_SEL === idx.get(x) ? "sel" : ""}">
+      return `<tr data-pc-i="${idx.get(x)}" class="${PCX.SEL === idx.get(x) ? "sel" : ""}">
         <td class="num">${x.fila}</td><td class="num">${x.n != null ? x.n : ""}</td>
         <td><span class="pc-dot ${pcClaseDe(x)}"></span>${escapeHtml(x.texto)}${x.colores.length ? ` <span class="pc-swatch" style="background:${x.colores[0]}" title="Resaltado en el Excel"></span>` : ""}</td>
         <td>${x.tipo === "coc" || x.fechaPropia ? pcFecha(x.inicio) : `<small class="pc-sub">entre #${x.entre ? x.entre.join(" y #") : "—"}</small>`}</td>
@@ -1071,11 +1241,11 @@ function pcDibujarTabla(vis) {
       <th class="num">Fila</th><th class="num">#</th><th>Mosto / evento (C)</th><th>Cargue (D)</th><th class="num">Dur. (E)</th><th>Fin (F)</th><th>Equipo (G)</th><th>Levadura</th>
       <th class="num" title="Volumen mosto frío (EFICIENCIAS)">hL frío</th><th class="num" title="Extracto maceración °P">Ext. mac.</th><th class="num" title="Extracto al llenar °P">Ext. llenar</th><th class="num" title="Mosto débil">M. débil</th><th class="num">EF INSQL</th><th class="num">EF SAP</th><th>Anotaciones (H→) y comentarios</th>
     </tr></thead><tbody>${filas || '<tr><td colspan="15"><p class="empty-note">Ninguna fila cumple los filtros.</p></td></tr>'}</tbody></table></div>
-    <div class="pc-pag"><button class="btn small" data-pc-pag="-1" ${PC_PAG === 0 ? "disabled" : ""}>◀ Anteriores</button><span>Página ${PC_PAG + 1} de ${pags} · filas ${vis.length ? PC_PAG * POR + 1 : 0}–${Math.min(vis.length, (PC_PAG + 1) * POR)} de ${vis.length}</span><button class="btn small" data-pc-pag="1" ${PC_PAG >= pags - 1 ? "disabled" : ""}>Siguientes ▶</button></div>`;
+    <div class="pc-pag"><button class="btn small" data-pc-pag="-1" ${PCX.PAG === 0 ? "disabled" : ""}>◀ Anteriores</button><span>Página ${PCX.PAG + 1} de ${pags} · filas ${vis.length ? PCX.PAG * POR + 1 : 0}–${Math.min(vis.length, (PCX.PAG + 1) * POR)} de ${vis.length}</span><button class="btn small" data-pc-pag="1" ${PCX.PAG >= pags - 1 ? "disabled" : ""}>Siguientes ▶</button></div>`;
   el.querySelectorAll("tr[data-pc-i]").forEach((tr) => tr.addEventListener("click", () => pcSeleccionar(Number(tr.dataset.pcI))));
   el.querySelectorAll("[data-pc-pag]").forEach((b) =>
     b.addEventListener("click", () => {
-      PC_PAG += Number(b.dataset.pcPag);
+      PCX.PAG += Number(b.dataset.pcPag);
       pcDibujarTabla(vis);
     }),
   );
@@ -1085,7 +1255,7 @@ function pcDibujarTabla(vis) {
 function pcDibujarMatriz(coc) {
   const el = document.getElementById("pcMatriz");
   if (!el) return;
-  const mz = PC.tiempos && PC.tiempos.matriz;
+  const mz = PCX.D.tiempos && PCX.D.tiempos.matriz;
   if (!mz) {
     el.innerHTML = '<p class="empty-note">La hoja TIEMPOS no trae la matriz de cambios.</p>';
     return;
@@ -1131,7 +1301,7 @@ function pcDibujarMatriz(coc) {
 function pcDibujarTiempos() {
   const el = document.getElementById("pcTiempos");
   if (!el) return;
-  const t = PC.tiempos || { mostos: [], cambios: [] };
+  const t = PCX.D.tiempos || { mostos: [], cambios: [] };
   el.innerHTML =
     `<div class="table-scroll mod-noclip"><table class="pc-tabla"><thead><tr><th>Código</th><th>Mosto</th><th class="num">Ciclo</th><th class="num">Vol.</th><th class="num">Entre cargues</th></tr></thead><tbody>${t.mostos
       .map((m) => `<tr><td>${escapeHtml(String(m.codigo || ""))}</td><td>${escapeHtml(m.mosto)}</td><td class="num">${escapeHtml(m.ciclo)}</td><td class="num">${m.volumen != null ? MOD_NF(m.volumen) : ""}</td><td class="num">${escapeHtml(m.cargues)}</td></tr>`)
@@ -1146,7 +1316,7 @@ function pcDibujarTiempos() {
 function pcDibujarLiberacion() {
   const el = document.getElementById("pcLiberacion");
   if (!el) return;
-  const L = PC.liberacion || [];
+  const L = PCX.D.liberacion || [];
   if (!L.length) {
     el.innerHTML = '<p class="empty-note">El archivo no trae secuencias de liberación.</p>';
     return;
@@ -1172,7 +1342,7 @@ function pcDibujarHojas() {
     "Consumos Vapor formatos": "fórmulas con #REF! (vínculo roto)",
     "Programa PRO": "copia anterior del programa (hasta abril)",
   };
-  el.innerHTML = `<div class="pc-hojas">${(PC.hojas || [])
+  el.innerHTML = `<div class="pc-hojas">${(PCX.D.hojas || [])
     .map(
       (h) =>
         `<div class="pc-hoja ${h.usada ? "usada" : ""}"><span>${h.usada ? "✓" : h.oculta ? "◌" : "○"}</span><b>${escapeHtml(h.nombre)}</b><small>${h.usada ? "se muestra aquí" : h.oculta ? "oculta en el Excel" : notas[h.nombre] || "no se usa"}</small></div>`,
@@ -1186,6 +1356,8 @@ window.addEventListener("resize", () => {
   clearTimeout(PC_RESIZE);
   PC_RESIZE = setTimeout(() => {
     const v = document.getElementById("view-programa-cocinas");
-    if (PC && PC_F && v && !v.classList.contains("nav-hide")) pcRenderCuerpo();
+    const vf = document.getElementById("view-programa-feria");
+    if (PCX === PCX_EXCEL && PC && PC_F && v && !v.classList.contains("nav-hide")) pcRenderCuerpo();
+    else if (PCX !== PCX_EXCEL && PCX.D && PCX.F && vf && !vf.classList.contains("nav-hide")) pcRenderCuerpo();
   }, 250);
 });
