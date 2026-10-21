@@ -210,7 +210,18 @@ function calcularTrazabilidad(cfg) {
       .map((z) => {
         const a = Math.max(z.desde, e.ms);
         const b = Math.min(z.hasta, e.fin);
-        return { desde: a, hasta: b, hL: z.hL * ((b - a) / Math.max(1, z.hasta - z.desde)), listoDesde: z.listoDesde };
+        return {
+          desde: a,
+          hasta: b,
+          hL: z.hL * ((b - a) / Math.max(1, z.hasta - z.desde)),
+          listoDesde: z.listoDesde,
+          // De qué tanque sale y cuándo se cocinó lo que tiene (inventario).
+          equipo: z.equipo || "",
+          tipoLote: z.tipoLote || "",
+          listoEn: z.listoEn || null,
+          cocinadoEn: z.cocinadoEn || null,
+          cocinadoNota: z.cocinadoNota || "",
+        };
       });
   envasado.forEach((e) => {
     if (e.tipo !== "production") return;
@@ -218,6 +229,25 @@ function calcularTrazabilidad(cfg) {
     e.noAlc = solapa(plan.noAlcanzable, e);
   });
   return { cocs, envasado, trasiegos, curva, subidas, desde, hasta };
+}
+
+// Tanques del inventario que alimentan un bloque de envasado, agrupados: de
+// dónde sale, cuándo se cocinó y cuántos días de proceso lleva al envasarse.
+function trzFuentesInventario(inv) {
+  const porTanque = new Map();
+  (inv || []).forEach((z) => {
+    const k = z.equipo || "(sin equipo)";
+    const o = porTanque.get(k) || { equipo: k, tipo: z.tipoLote, hL: 0, desde: z.desde, cocinadoEn: z.cocinadoEn, nota: z.cocinadoNota, listoEn: z.listoEn };
+    o.hL += z.hL;
+    o.desde = Math.min(o.desde, z.desde);
+    porTanque.set(k, o);
+  });
+  return [...porTanque.values()].sort((a, b) => a.desde - b.desde);
+}
+function trzTextoCocinado(f) {
+  if (!f.cocinadoEn) return f.tipo === "BBT" ? "producto terminado en BBT (el Excel no trae la fecha de cocimiento)" : "sin fecha de cocimiento en el Excel";
+  const dias = (f.desde - f.cocinadoEn) / (24 * TRZ_H);
+  return `cocinado ${trzF(f.cocinadoEn)} · ${MOD_NF(dias, 1)} días antes de envasarse`;
 }
 
 // Estado de un cocimiento en un instante dado.
@@ -357,12 +387,23 @@ function trzHtmlDetalle(d) {
   return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${TRZ_MOSTO_CLS[b.mostoId] || "pc-otro"}"></span>L${escapeHtml(tr)} · ${escapeHtml(b.name)}</div>
     ${fila("Envasa", `${escapeHtml(trzF(b.ms))} → ${escapeHtml(trzF(b.fin))}`)}${fila("Volumen", b.hL ? trzHL(b.hL) : "—")}${fila("Mosto", escapeHtml(trzNombreMosto(b.mostoId)))}
     ${invHL > 1 ? fila("Del inventario", `${trzHL(invHL)} <small class="pc-sub">(producto en proceso: FV/SV/BBT)</small>`) : ""}
+    ${
+      invHL > 1
+        ? `<div class="pc-sec">Sale de estos tanques (${trzFuentesInventario(b.inv).length})</div>` +
+          trzFuentesInventario(b.inv)
+            .map(
+              (f) =>
+                `<div class="trz-dest"><span class="trz-tren ${TRZ_MOSTO_CLS[b.mostoId] || ""}">${escapeHtml(f.tipo === "Programa" ? "PC" : f.tipo || "—")}</span><div><b>${escapeHtml(f.equipo)}</b><small>${escapeHtml(trzTextoCocinado(f))}${f.nota ? ` <span title="${escapeHtml(f.nota)}">(${escapeHtml(f.nota)})</span>` : ""}${f.listoEn ? ` · listo ${escapeHtml(trzF(f.listoEn))}` : ""} · ${trzHL(f.hL)} para este bloque</small></div></div>`,
+            )
+            .join("")
+        : ""
+    }
     ${noHL > 1 ? fila("No alcanzable", `<span class="pvr-no">${trzHL(noHL)}</span> <small class="pc-sub">un cocimiento cargado desde el I0 estaría listo hasta el ${escapeHtml(trzF(listo))}</small>`) : ""}
     <div class="pc-sec">Sale de estos cocimientos (${fuentes.length})</div>
     ${
       fuentes.length
         ? fuentes
-            .map((o) => `<div class="trz-dest"><span class="trz-tren ${TRZ_MOSTO_CLS[o.c.mostoId] || ""}">${o.c.n}</span><div><b>Cargue ${escapeHtml(trzF(o.c.ms))}</b><small>${escapeHtml(trzEstado(o.c, TRZ.ahora).txt)} · ${trzHL(o.x.reduce((a, z) => a + z.hL, 0))} para este bloque</small></div><button class="pc-mini" data-trz-ver="${o.c.key}">ver</button></div>`)
+            .map((o) => `<div class="trz-dest"><span class="trz-tren ${TRZ_MOSTO_CLS[o.c.mostoId] || ""}">${o.c.n}</span><div><b>Cargue ${escapeHtml(trzF(o.c.ms))}</b><small>${escapeHtml(trzEstado(o.c, TRZ.ahora).txt)} · ${MOD_NF((Math.min(...o.x.map((z) => z.desde)) - o.c.ms) / (24 * TRZ_H), 1)} días antes de envasarse · ${trzHL(o.x.reduce((a, z) => a + z.hL, 0))} para este bloque</small></div><button class="pc-mini" data-trz-ver="${o.c.key}">ver</button></div>`)
             .join("")
         : `<p class="empty-note">${b.tipo !== "production" ? "Es un DPA o NST: no envasa." : invHL > 1 || noHL > 1 ? "Ningún cocimiento nuevo: ver arriba de dónde sale." : "Ningún cocimiento del plan alimenta este bloque (quedó antes del I0)."}</p>`
     }`;
@@ -468,7 +509,17 @@ function trzDibujarLinea(d, t) {
     const key = `e${e.train}|${e.ms}`;
     const invHL = (e.inv || []).reduce((a, z) => a + z.hL, 0);
     const noHL = (e.noAlc || []).reduce((a, z) => a + z.hL, 0);
-    const extra = `${invHL > 1 ? ` · ${trzHL(invHL)} del inventario` : ""}${noHL > 1 ? ` · ⚠ ${trzHL(noHL)} no alcanzables desde el I0` : ""}`;
+    // Con el inventario se dice de qué tanque sale y cuándo se cocinó.
+    const fuentesInv = invHL > 1 ? trzFuentesInventario(e.inv) : [];
+    const invTxt = fuentesInv.length
+      ? ` · ${trzHL(invHL)} del inventario: ` +
+        fuentesInv
+          .slice(0, 3)
+          .map((f) => `${f.equipo} (${f.cocinadoEn ? "cocinado " + trzF(f.cocinadoEn) : f.tipo === "BBT" ? "BBT, sin fecha de cocimiento" : "sin fecha de cocimiento"})`)
+          .join(", ") +
+        (fuentesInv.length > 3 ? ` y ${fuentesInv.length - 3} más` : "")
+      : "";
+    const extra = `${invTxt}${noHL > 1 ? ` · ⚠ ${trzHL(noHL)} no alcanzables desde el I0` : ""}`;
     s.push(`<rect class="${cls} trz-env ${atenuado} ${TRZ.sel === key ? "trz-sel" : ""}" x="${x(e.ms)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(e.fin) - x(e.ms))}" height="${hTren - 14}" rx="2" data-trz-key="${key}" data-trz-tip="${escapeHtml(`L${e.train} · ${e.name} · ${trzF(e.ms)} → ${trzF(e.fin)}${e.hL ? " · " + trzHL(e.hL) : ""}${extra}`)}"></rect>`);
     // Encima: rayado claro = sale del inventario; rayado rojo = no alcanzable.
     (e.inv || []).forEach((z) => s.push(`<rect class="trz-inv" x="${x(z.desde)}" y="${yTren(e.train) + 7}" width="${Math.max(1, x(z.hasta) - x(z.desde))}" height="${hTren - 14}" pointer-events="none"></rect>`));

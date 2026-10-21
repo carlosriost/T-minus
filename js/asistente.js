@@ -169,8 +169,20 @@ function asResponderLocal(q) {
     const delBloque = d.cocs.filter((c) => c.consumo.some((z) => String(z.train) === linea && z.desde < b.fin && z.hasta > b.ms));
     return {
       html: `<p>El ${asEsc(asF(t.ms))} la <b>línea ${asEsc(linea)}</b> envasa <b>${asEsc(b.name)}</b> (bloque del ${asEsc(asF(b.ms))} al ${asEsc(asF(b.fin))}).</p>
-        ${fuentes.length ? `<p>En ese momento sale de: ${fuentes.map((c) => `<b>${asEsc(asNom(c.mostoId))} n.º ${c.n}</b> (cargado el ${asEsc(asF(c.ms))}, ${c.fv ? `fermentó en ${asEsc(c.fv[0].tanque)}` : c.mostoId === "pony" ? "la Pony no fermenta: va directo a SV Pony" : "sin FV asignado"})`).join("; ")}.</p>` : "<p>En ese momento lo cubre el inventario (no hay cocimiento del plan asignado).</p>"}
-        <p class="as-sub">Todo el bloque sale de ${delBloque.length} cocimiento(s): ${delBloque.map((c) => `n.º ${c.n}`).join(", ") || "ninguno (inventario)"}.</p>${asVer(`e${linea}|${b.ms}`, "Ver el bloque")}`,
+        ${fuentes.length ? `<p>En ese momento sale de: ${fuentes.map((c) => `<b>${asEsc(asNom(c.mostoId))} n.º ${c.n}</b> (cargado el ${asEsc(asF(c.ms))}, ${c.fv ? `fermentó en ${asEsc(c.fv[0].tanque)}` : c.mostoId === "pony" ? "la Pony no fermenta: va directo a SV Pony" : "sin FV asignado"})`).join("; ")}.</p>` : (() => {
+          // Sin cocimiento del plan: se dice de qué tanque sale y cuándo se
+          // cocinó, o que en ese momento no hay cerveza lista (no alcanzable).
+          const inv = (b.inv || []).filter((z) => z.desde <= t.ms && z.hasta > t.ms);
+          const no = (b.noAlc || []).filter((z) => z.desde <= t.ms && z.hasta > t.ms);
+          if (inv.length && typeof trzFuentesInventario === "function")
+            return `<p>En ese momento sale del inventario: ${trzFuentesInventario(inv)
+              .map((f) => `<b>${asEsc(f.equipo)}</b> (${asEsc(trzTextoCocinado(f))})`)
+              .join("; ")}.</p>`;
+          if (no.length)
+            return `<p>En ese momento <b>no hay cerveza lista</b> para ese envasado: ni el Producto en proceso ni un cocimiento cargado desde el I0 alcanzan (lo más pronto estaría listo el ${asEsc(asF(no[0].listoDesde))}).</p>`;
+          return "<p>En ese momento lo cubre el inventario (no hay cocimiento del plan asignado).</p>";
+        })()}
+        <p class="as-sub">Todo el bloque sale de ${delBloque.length} cocimiento(s): ${delBloque.map((c) => `n.º ${c.n}`).join(", ") || ((b.inv || []).length ? "ninguno (sale del inventario)" : "ninguno")}.</p>${asVer(`e${linea}|${b.ms}`, "Ver el bloque")}`,
     };
   }
 
