@@ -41,12 +41,50 @@ function volGuardarHistorial(h) {
   } catch (_) {}
 }
 
-// Resumen del plan cargado: hL por SKU y semana, por familia y por formato.
+// Filas de producción tal como vienen en el instructivo, con la hoja (semana)
+// de la que salió cada una. Es la fuente del volumen por semana: así cada
+// semana suma exactamente lo de su hoja, aunque un bloque cruce de domingo a
+// lunes o el rótulo de la hoja no coincida con su primer día.
+function volFilasProduccion() {
+  const p = STATE && STATE.parsed;
+  if (!p || !p.rawEvents) return null;
+  const filas = [];
+  let sinHoja = false;
+  TRAINS.forEach((t) =>
+    ((p.rawEvents || {})[t] || []).forEach((ev) => {
+      if (classify(ev) !== "production") return;
+      if (!Number.isInteger(ev.semanaIdx)) sinHoja = true;
+      filas.push({ ...ev, tren: t });
+    }),
+  );
+  return sinHoja ? null : filas;
+}
+
+// Resumen del plan cargado: hL por SKU y semana, por familia y por formato,
+// y el reparto MALTA (Pony) / CERVEZA de cada semana.
 function resumenVolumen() {
   const semanas = semanasDelPlan();
   const prod = bloquesProduccion();
   const porSku = {};
-  prod.forEach((b) => {
+  const crudas = volFilasProduccion();
+  // Con filas por hoja (instructivo de varias hojas) se cuenta por hoja; si
+  // no, como antes: por la fecha de inicio de cada bloque.
+  const fuente = crudas
+    ? crudas.map((ev) => {
+        const fam = familiaDeMarca(ev.name || ev.codigo);
+        return {
+          codigo: ev.codigo || "",
+          nombre: ev.name || ev.codigo || "",
+          familiaId: fam ? fam.id : null,
+          familia: fam ? fam.nombre : "Sin homologar",
+          formato: formatoDeSKU(ev.name),
+          tren: ev.tren,
+          semana: ev.semanaIdx,
+          hl: Number(ev.hectolitros) || 0,
+        };
+      })
+    : prod;
+  fuente.forEach((b) => {
     const k = b.codigo || b.nombre;
     const s = (porSku[k] = porSku[k] || {
       codigo: b.codigo,
@@ -69,15 +107,59 @@ function resumenVolumen() {
     return o;
   };
   const totalSemana = semanas.map((_, i) => skus.reduce((a, s) => a + (s.porSemana[i] || 0), 0));
+  // Malta (Pony) vs. cerveza (Estándar, Pilsen, Light…) por semana. Lo que
+  // no homologa a ningún mosto se muestra aparte: no es ni lo uno ni lo otro.
+  const esMalta = (s) => s.familiaId && esFamiliaPony(s.familiaId);
+  const reparto = semanas.map((_, i) => {
+    const o = { malta: 0, cerveza: 0, sinMosto: 0, porMosto: {} };
+    skus.forEach((s) => {
+      const v = s.porSemana[i] || 0;
+      if (!v) return;
+      if (!s.familiaId) o.sinMosto += v;
+      else if (esMalta(s)) o.malta += v;
+      else o.cerveza += v;
+      if (s.familiaId) o.porMosto[s.familiaId] = (o.porMosto[s.familiaId] || 0) + v;
+    });
+    o.total = o.malta + o.cerveza + o.sinMosto;
+    return o;
+  });
+  const repartoTotal = reparto.reduce(
+    (a, o) => ({ malta: a.malta + o.malta, cerveza: a.cerveza + o.cerveza, sinMosto: a.sinMosto + o.sinMosto, total: a.total + o.total }),
+    { malta: 0, cerveza: 0, sinMosto: 0, total: 0 },
+  );
   return {
     semanas,
     skus,
     prod,
+    porHoja: !!crudas,
+    reparto,
+    repartoTotal,
     porFamilia: sumar("familia"),
     porFormato: sumar("formato"),
     totalSemana,
     total: skus.reduce((a, s) => a + s.total, 0),
   };
+}
+
+// Cuadre de cada hoja contra SU PROPIA tabla resumen («Hl, Depósito» por
+// SKU): lo que piden y lo que quedó programado en las filas por día. Si no
+// cuadra, la programación diaria no cubre (o pasa) lo que la semana pide.
+function cuadreTablaResumen(r) {
+  const p = (STATE && STATE.parsed) || {};
+  const resumen = (p.summary || []).filter((x) => Number.isInteger(x.semanaIdx));
+  if (!resumen.length || !r.porHoja) return null;
+  const difs = [];
+  let revisados = 0;
+  resumen.forEach((x) => {
+    const pedido = TRAINS.reduce((a, t) => a + ((x.perTrain && x.perTrain[t] && Number(x.perTrain[t].hlDeposito)) || 0), 0);
+    if (!(pedido > 0)) return; // reempaque u otros sin hL de línea
+    revisados++;
+    const sku = r.skus.find((s) => String(s.codigo) === String(x.codigo));
+    const programado = sku ? sku.porSemana[x.semanaIdx] || 0 : 0;
+    if (Math.abs(programado - pedido) >= 1)
+      difs.push({ semana: (r.semanas[x.semanaIdx] || {}).label || "Semana", codigo: x.codigo, marca: x.marca, pedido, programado, dif: programado - pedido });
+  });
+  return { revisados, difs };
 }
 
 // Revisión del plan: lo que conviene confirmar antes de usar la programación.
@@ -133,6 +215,16 @@ function validarPlanVolumen(r) {
       ? `${solapes} cruce(s): una línea tiene dos productos al mismo tiempo.`
       : "Ninguna línea tiene dos productos a la vez.",
   });
+  const cuadre = cuadreTablaResumen(r);
+  if (cuadre)
+    checks.push({
+      ok: !cuadre.difs.length,
+      warn: true,
+      tit: "Cuadre con la tabla resumen del instructivo",
+      det: cuadre.difs.length
+        ? `${cuadre.difs.length} de ${cuadre.revisados} SKU-semana no cuadran: las filas por día programan ${MOD_NF(Math.abs(cuadre.difs.reduce((a, d) => a + d.dif, 0)))} hL ${cuadre.difs.reduce((a, d) => a + d.dif, 0) < 0 ? "menos" : "más"} de lo que pide la tabla resumen de cada hoja. Detalle abajo.`
+        : `Los ${cuadre.revisados} SKU-semana programados por día suman lo mismo que la tabla resumen de cada hoja.`,
+    });
   const desde = r.semanas[0] ? new Date(r.semanas[0].start) : null;
   const hasta = r.semanas.length ? new Date(r.semanas[r.semanas.length - 1].end - 86400000) : null;
   checks.push({
@@ -203,9 +295,45 @@ function renderVolumen() {
           .join("")}<td class="num"><b>${MOD_NF(s.total)}</b></td></tr>`,
     )
     .join("");
-  const pie = `<tr class="vol-total"><td colspan="5"><b>Total</b></td>${r.totalSemana
-    .map((v) => `<td class="num"><b>${MOD_NF(v)}</b></td>`)
-    .join("")}<td class="num"><b>${MOD_NF(r.total)}</b></td></tr>`;
+  const pct = (v, t) => (t > 0 ? MOD_NF((v / t) * 100, 1) + " %" : "—");
+  const filaReparto = (tit, campo, color) =>
+    `<tr class="vol-reparto"><td colspan="5"><span class="vol-dot" style="background:${color}"></span>${tit}</td>${r.reparto
+      .map((o) => `<td class="num"><b>${pct(o[campo], o.total)}</b><small>${MOD_NF(o[campo])} hL</small></td>`)
+      .join("")}<td class="num"><b>${pct(r.repartoTotal[campo], r.repartoTotal.total)}</b><small>${MOD_NF(r.repartoTotal[campo])} hL</small></td></tr>`;
+  const pie =
+    `<tr class="vol-total"><td colspan="5"><b>Total</b></td>${r.totalSemana
+      .map((v) => `<td class="num"><b>${MOD_NF(v)}</b></td>`)
+      .join("")}<td class="num"><b>${MOD_NF(r.total)}</b></td></tr>` +
+    filaReparto("Malta (Pony)", "malta", colorForMosto("pony")) +
+    filaReparto("Cerveza (Estándar, Pilsen, Light)", "cerveza", "var(--accent)") +
+    (r.repartoTotal.sinMosto > 0 ? filaReparto("Sin homologar", "sinMosto", "#c9c9c9") : "");
+
+  // Tarjeta malta vs. cerveza: una barra apilada por semana.
+  const nomMosto = (id) => (MOSTO_CATALOG.find((m) => m.id === id) || {}).nombre || id;
+  const maltaHtml = `<div class="vol-mc">${r.reparto
+    .map((o, i) => {
+      const t = o.total || 1;
+      const cervezas = Object.entries(o.porMosto)
+        .filter(([id]) => !esFamiliaPony(id))
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, v]) => `${nomMosto(id)} ${MOD_NF((v / t) * 100, 1)} %`)
+        .join(" · ");
+      const detalle = cervezas ? `Cerveza, como % del total de la semana: ${cervezas}` : "";
+      return `<div class="vol-mc-fila"><div class="vol-mc-sem">${escapeHtml(r.semanas[i].label)}<small>${MOD_NF(o.total)} hL</small></div><div class="vol-mc-barra" title="${escapeHtml(`${r.semanas[i].label}: malta ${pct(o.malta, o.total)} (${MOD_NF(o.malta)} hL) · cerveza ${pct(o.cerveza, o.total)} (${MOD_NF(o.cerveza)} hL)`)}"><span class="vol-mc-m" style="width:${(o.malta / t) * 100}%;background:${colorForMosto("pony")};">${o.malta / t >= 0.12 ? pct(o.malta, o.total) : ""}</span><span class="vol-mc-c" style="width:${(o.cerveza / t) * 100}%;">${o.cerveza / t >= 0.12 ? pct(o.cerveza, o.total) : ""}</span>${o.sinMosto ? `<span style="width:${(o.sinMosto / t) * 100}%;background:#c9c9c9;"></span>` : ""}</div><div class="vol-mc-det">${escapeHtml(detalle)}</div></div>`;
+    })
+    .join("")}<div class="vol-mc-fila vol-mc-tot"><div class="vol-mc-sem">Todo el plan<small>${MOD_NF(r.repartoTotal.total)} hL</small></div><div class="vol-mc-barra"><span class="vol-mc-m" style="width:${(r.repartoTotal.malta / (r.repartoTotal.total || 1)) * 100}%;background:${colorForMosto("pony")};">${pct(r.repartoTotal.malta, r.repartoTotal.total)}</span><span class="vol-mc-c" style="width:${(r.repartoTotal.cerveza / (r.repartoTotal.total || 1)) * 100}%;">${pct(r.repartoTotal.cerveza, r.repartoTotal.total)}</span></div><div class="vol-mc-det">${r.porHoja ? "Cada semana suma las filas de su hoja del instructivo." : "Semanas por fecha de inicio de cada bloque."}</div></div></div>`;
+
+  // Detalle del cuadre contra la tabla resumen de cada hoja.
+  const cuadre = cuadreTablaResumen(r);
+  const cuadreHtml =
+    cuadre && cuadre.difs.length
+      ? `<div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Lo que pide la tabla resumen vs. lo programado por día <small style="color:var(--muted);font-weight:400;">(misma hoja del instructivo)</small></div><div class="table-scroll"><table><thead><tr><th>Semana</th><th>Código</th><th>SKU</th><th class="num">Tabla resumen (hL)</th><th class="num">Filas por día (hL)</th><th class="num">Diferencia</th></tr></thead><tbody>${cuadre.difs
+          .map(
+            (d) =>
+              `<tr><td>${escapeHtml(d.semana)}</td><td>${escapeHtml(d.codigo)}</td><td style="font-family:var(--sans);color:var(--text);">${escapeHtml(d.marca)}</td><td class="num">${MOD_NF(d.pedido)}</td><td class="num">${MOD_NF(d.programado)}</td><td class="num" style="color:${d.dif < 0 ? "var(--danger)" : "var(--warn)"};"><b>${d.dif > 0 ? "+" : "−"}${MOD_NF(Math.abs(d.dif))}</b></td></tr>`,
+          )
+          .join("")}</tbody></table></div><p class="acu-nota">FerIA programa las cocinas con las filas por día (lo que de verdad se va a envasar y cuándo). Si la tabla resumen es la que vale, hay que corregir las filas del instructivo.</p></div>`
+      : "";
 
   const famItems = Object.entries(r.porFamilia)
     .sort((a, b) => b[1] - a[1])
@@ -238,6 +366,8 @@ function renderVolumen() {
           <div class="acu-card"><div class="acu-card-tit">Volumen por mosto (familia)</div>${modBarras(famItems, "hL")}</div>
           <div class="acu-card"><div class="acu-card-tit">Distribución por formato</div>${modAnillo(fmtPartes, MOD_NF(r.total / 1000, 1) + "k", "hL total")}</div>
         </div>
+        <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Malta vs. cerveza a envasar por semana</div>${maltaHtml}</div>
+        ${cuadreHtml}
         <div class="acu-card" style="margin-top:14px;">
           <div class="acu-card-tit">Historial de cargas <small style="color:var(--muted);font-weight:400;">(últimas 10, guardadas solo en este navegador)</small></div>
           <div class="table-scroll"><table><thead><tr><th>#</th><th>Archivo</th><th>Cargado</th><th>Semanas</th><th class="num">SKU</th><th class="num">hL</th></tr></thead><tbody>${histHtml}</tbody></table></div>

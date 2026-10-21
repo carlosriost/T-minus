@@ -484,6 +484,13 @@ function parseLegacyWorkbook(workbook) {
     else unicas.push(p);
   });
 
+  // Cada fila y cada línea de la tabla resumen recuerdan de qué hoja (semana)
+  // salieron: el volumen por semana se cuenta con la hoja del instructivo, no
+  // con la fecha (un bloque que cruza de domingo a lunes es de dos semanas).
+  unicas.forEach((p, i) => {
+    TRAINS.forEach((t) => ((p.rawEvents || {})[t] || []).forEach((ev) => (ev.semanaIdx = i)));
+    (p.summary || []).forEach((s) => (s.semanaIdx = i));
+  });
   if (unicas.length === 1) {
     const unica = unicas[0];
     return {
@@ -687,6 +694,10 @@ function parseLegacySheet(workbook, sheetName) {
   // diurnas y se quedan en su día.
   let diaFilasMs = null;
   const yaHuboDiurna = {};
+  // Primer día que de verdad trae filas. El rótulo de la hoja no siempre
+  // coincide: «Semana 46 · Del 10 noviembre al 15 noviembre» arranca con el
+  // lunes 09, y con el rótulo ese lunes quedaba contado en la semana 45.
+  let primerDiaFilas = null;
   for (let r = dataStartRow; r < aoa.length; r++) {
     const row = aoa[r] || [];
     const dayCell = row[dayCol];
@@ -740,6 +751,7 @@ function parseLegacySheet(workbook, sheetName) {
       }
       dayIndex++;
       if (firstDayDate === null) firstDayDate = currentDate;
+      if (primerDiaFilas === null) primerDiaFilas = currentDate;
     }
     TRAINS.forEach((t) => {
       const base = trainCols[t];
@@ -840,7 +852,7 @@ function parseLegacySheet(workbook, sheetName) {
   return {
     weekLabel: weekLabel.trim(),
     headerDate,
-    weekStartDate: firstDayDate || headerDate,
+    weekStartDate: primerDiaFilas || firstDayDate || headerDate,
     explicitWeekStart,
     explicitWeekEnd,
     rawEvents,

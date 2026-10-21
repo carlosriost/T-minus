@@ -2865,3 +2865,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Malta vs. cerveza por semana (Datos de entrada). */
+.vol-tabla tr.vol-reparto td { color: var(--muted); font-size: 12px; }
+.vol-tabla tr.vol-reparto td b { color: var(--text); display: block; }
+.vol-tabla tr.vol-reparto td small { display: block; font-size: 10.5px; }
+.vol-mc { display: flex; flex-direction: column; gap: 10px; }
+.vol-mc-fila { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; align-items: center; }
+.vol-mc-sem { font-weight: 600; font-size: 12.5px; }
+.vol-mc-sem small { display: block; color: var(--muted); font-weight: 400; font-family: var(--mono, monospace); font-size: 11px; }
+.vol-mc-barra { display: flex; height: 26px; border-radius: 4px; overflow: hidden; background: var(--surface-2, rgba(127,127,127,.15)); }
+.vol-mc-barra span { display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; }
+.vol-mc-c { background: var(--accent); }
+.vol-mc-det { grid-column: 2; color: var(--muted); font-size: 11px; }
+.vol-mc-tot { border-top: 1px dashed var(--border, rgba(127,127,127,.3)); padding-top: 10px; }
+@media (max-width: 640px) { .vol-mc-fila { grid-template-columns: 1fr; } .vol-mc-det { grid-column: 1; } }

@@ -23,7 +23,8 @@ function formatoDeSKU(texto) {
   const n = normalizeText(t);
   let envase = /\bpet\b/.test(n) ? "PET" : /\blata\b|\bcan\b/.test(n) ? "Lata" : "Vidrio";
   let tam = "";
-  const cc = n.match(/(\d+(?:[.,]\d+)?)\s*(cc|ml)\b/);
+  // «200ccX30» viene sin espacio antes de la X: la x también cierra el tamaño.
+  const cc = n.match(/(\d+(?:[.,]\d+)?)\s*(cc|ml)(?=\b|x\s*\d)/);
   if (cc) tam = `${cc[1].replace(".", ",")} cc`;
   else {
     const l = n.match(/(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litro|litros)\b/);
