@@ -27,6 +27,16 @@ const AS_EJEMPLOS = [
   "¿Cuántos cocimientos y hL hay por mosto?",
   "¿Qué reglas usa el plan de cocinas?",
   "¿Por qué no aparece el plan real de cocinas?",
+  "¿Qué porcentaje de malta y cerveza se envasa la semana 44?",
+  "¿Cuánta Costeñita se envasa por semana?",
+  "¿Qué hay en el EXT 4 y cuándo queda listo?",
+  "¿Qué envasado no alcanza a tener cerveza?",
+  "¿Qué compresores de aire van el 25/10 a las 22:00?",
+  "¿Qué debería revisar del plan?",
+  "La L5 arranca, ¿a qué hora caliento la lavadora y la paster?",
+  "¿Cuándo para la línea 9 y a qué hora apago la lavadora?",
+  "Dame un resumen del plan",
+  "¿De dónde sacas los datos?",
 ];
 let AS = { abierto: false, msgs: [], cargando: false };
 
@@ -75,6 +85,12 @@ function asFechaHora(q) {
   else if (/\bmanana\b/.test(n) && !/\bde la manana\b/.test(n)) dia = med(hoy) + AS_D;
   else if (/\bayer\b/.test(n)) dia = med(hoy) - AS_D;
   else if (/\bhoy\b/.test(n)) dia = med(hoy);
+  else if ((m = n.match(/\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/))) {
+    // «el jueves»: el próximo jueves (o hoy, si hoy es jueves).
+    const dow = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"].indexOf(m[1]);
+    const h = new Date(med(hoy));
+    dia = med(hoy) + ((dow - h.getUTCDay() + 7) % 7) * AS_D;
+  }
   // Hora: «4:28», «16h30», «a las 5 pm», «5 p.m.», «a las 4 y 28», «a las 5 de la tarde».
   let min = null;
   const ampm = (h, suf) => {
@@ -133,12 +149,15 @@ function asFichaCoc(c, t) {
   const fv = c.fv && c.fv.length ? c.fv.map((x) => x.tanque).join(", ") : c.mostoId === "pony" ? "— (la Pony no fermenta: va directo a SV Pony)" : "— (sin FV asignado)";
   return `<p><b>${asEsc(asNom(c.mostoId))} · cocimiento n.º ${c.n}</b> — cargue ${asEsc(asF(c.ms))}, fin de cocina ${asEsc(asF(c.fin))}.</p>
     <p>Fermenta en <b>${asEsc(fv)}</b>, se trasiega a maduración el ${asEsc(asF(c.trasiego))}${c.sv && c.sv.length ? ` (${asEsc(c.sv.join(", "))})` : ""} y queda listo el ${asEsc(asF(c.listo))}.${c.tarde || c.tardeTanque ? ' <span class="pvr-no">⚠ Llega tarde a su envasado.</span>' : ""}</p>
-    <p>Se envasa en:</p>${asDestinos(c)}<p class="as-sub">Estado a las ${asEsc(asF(t != null ? t : asAhora()))}: ${asEsc(e.txt)}.</p>${asVer(c.key)}`;
+    <p>Se envasa en:</p>${asDestinos(c)}<p class="as-sub">Estado a las ${asEsc(asF(t != null ? t : asAhora()))}: ${asEsc(e.txt)}.</p>${typeof asFuente === "function" ? asFuente("plan FerIA calculado desde el I0 y asignación de tanques.") : ""}${asVer(c.key)}`;
 }
 
 // Motor local: devuelve {html, texto} con la respuesta calculada.
 function asResponderLocal(q) {
-  const n = asNorm(q);
+  // Texto normalizado y con los errores de tecleo del dominio corregidos
+  // («cosinando», «pilssen»): todo lo de abajo lee de aquí.
+  const n = typeof asCorregir === "function" ? asCorregir(asNorm(q)) : asNorm(q);
+  q = n;
   const d = asDatos();
   const sinPlan = '<p>Todavía no hay un plan cargado. Carga el plan de envasado en «Datos de entrada» y revisa el I0: con eso FerIA calcula el plan de cocinas y puedo responder.</p><button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>';
 
@@ -157,6 +176,14 @@ function asResponderLocal(q) {
   if (m) {
     const c = d.cocs.find((x) => x.n === Number(m[1]));
     return { html: c ? asFichaCoc(c, t.ms) : `<p>No encuentro el cocimiento n.º ${asEsc(m[1])} en el plan (hay ${d.cocs.length}).</p>` };
+  }
+
+  // Preguntas sobre los datos cargados: volumen y % malta/cerveza, inventario
+  // y tanques, envasado sin cerveza, compresores y calderas, levadura,
+  // resumen, qué revisar y de dónde salen los datos (js/asistente-datos.js).
+  if (typeof asResponderDatos === "function") {
+    const r = asResponderDatos(n, t, d);
+    if (r) return r;
   }
 
   // ¿De dónde sale un envasado? (línea + momento)
@@ -375,6 +402,19 @@ function asContextoIA() {
     ctx.aseos = (STATE.seq.rows || []).filter((r) => r.tipo === "aseo").map((r) => ({ desde: f(r.start.getTime()), hasta: f(r.end.getTime()), nombre: r.nombre }));
     ctx.alertas = (STATE.seq.capacityWarnings || []).slice(0, 30).map((w) => w.detalle || w.tipo);
     ctx.subidasFrio = d.subidas.slice(0, 60).map((s) => ({ t: f(s.t), de: s.de, a: s.a, motivos: s.motivos.slice(0, 3) }));
+    ctx.envasadoSinCerveza = ((STATE.plan && STATE.plan.noAlcanzable) || []).filter((x) => x.hL >= 1).map((x) => ({ linea: x.train, sku: x.name, desde: f(x.desde), hasta: f(x.hasta), hL: Math.round(x.hL) }));
+    ctx.inventarioCubre = ((STATE.plan && STATE.plan.cubiertoPorInvTramos) || []).slice(0, 200).map((x) => ({ linea: x.train, sku: x.name, desde: f(x.desde), hasta: f(x.hasta), hL: Math.round(x.hL), tanque: x.equipo, cocinado: f(x.cocinadoEn) }));
+    if (typeof asCuadrePlan === "function") ctx.cuadrePorMosto = asCuadrePlan();
+  }
+  if (typeof resumenVolumen === "function" && STATE && STATE.parsed) {
+    const r = resumenVolumen();
+    ctx.volumenPorSemana = r.semanas.map((s, i) => ({ semana: s.label, hL: Math.round(r.reparto[i].total), malta: Math.round(r.reparto[i].malta), cerveza: Math.round(r.reparto[i].cerveza), porMosto: Object.fromEntries(Object.entries(r.reparto[i].porMosto).map(([k, v]) => [k, Math.round(v)])) }));
+  }
+  if (typeof INVENTORY_BALANCE !== "undefined" && INVENTORY_BALANCE.length)
+    ctx.productoEnProceso = INVENTORY_BALANCE.filter((e) => !e.vacio).map((e) => ({ equipo: e.equipo, tipo: e.tipo, mosto: e.mostoId, marca: e.marcaTexto, hL: e.hL, dias: e.diasEnEquipo, cocinado: e.cocinadoEn, vacioMin: e.vacioMinEn }));
+  if (typeof asFuentes === "function") {
+    const fu = asFuentes();
+    ctx.fuentes = { instructivo: fu.instructivo, fotoProductoEnProceso: fu.pep && f(fu.pep.foto), ultimoLlenadoRegistrado: fu.pep && f(fu.pep.corte), programaCocinasHasta: fu.pc && f(fu.pc.hasta) };
   }
   return ctx;
 }
@@ -386,7 +426,7 @@ async function asResponderIA(pregunta, local) {
     .slice(-6)
     .map((m) => ({ role: m.rol === "yo" ? "user" : "assistant", content: m.texto }));
   const sistema = `Eres el asistente de FerIA, la app de planeación de la Cervecería de Itagüí (Bavaria). Respondes en español, claro y breve, a personal de Utilities y Planeación.
-Usa SOLO los datos del plan que vienen en el contexto (JSON). Las fechas están en hora local de planta (Bogotá). Si algo no está en los datos, dilo; no inventes.
+Usa SOLO los datos del plan que vienen en el contexto (JSON). Las fechas están en hora local de planta (Bogotá). Si algo no está en los datos, dilo; no inventes. No hagas cuentas aproximadas: si una cifra no está en el contexto ni en la respuesta calculada, di que no la tienes. Al final di de qué dato del contexto sale la respuesta (fuente).
 Si viene una «respuesta calculada por FerIA», es exacta: úsala como base y amplíala si la pregunta lo pide.
 CONTEXTO:
 ${JSON.stringify(asContextoIA())}`;
