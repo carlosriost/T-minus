@@ -2855,3 +2855,13 @@
       svg .trz-link.trz-link-tarde { stroke: var(--danger); stroke-dasharray: 4 3; opacity: 0.55; }
       svg .trz-link.trz-link-tarde.trz-link-sel { opacity: 1; }
       svg .trz-pasado { opacity: 0.25; }
+
+/* Barras de Utilidades: el texto nunca se parte en varias líneas dentro de
+   una barra angosta (se corta con «…»; el detalle está en el globo). */
+.util-block b,
+.util-block span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

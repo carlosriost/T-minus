@@ -85,12 +85,27 @@ function spCocinas(fuentePedida) {
     const rows = ((STATE && STATE.seq && STATE.seq.rows) || []).filter((r) => r.tipo === "cocimiento" && r.start && r.end);
     if (!rows.length) return null;
     const i0 = (typeof getI0Date === "function" && getI0Date()) || rows[0].start;
-    return {
+    const i0ms = i0.getTime();
+    const out = {
       fuente: "feria",
       nombre: "Plan FerIA (programación calculada)",
       intervalos: rows.map((r) => [r.start.getTime(), r.end.getTime()]),
-      cobertura: [Math.min(i0.getTime(), ...rows.map((r) => r.start.getTime())), Math.max(...rows.map((r) => r.end.getTime()))],
+      cobertura: [Math.min(i0ms, ...rows.map((r) => r.start.getTime())), Math.max(...rows.map((r) => r.end.getTime()))],
     };
+    // ANTES DEL I0 el plan FerIA no existe: lo que pasó en la cocina es lo del
+    // Programa de Cocinas real. Si está cargado y cubre ese tramo, se usa para
+    // él (cocimientos que arrancaron antes del I0, recortados al I0). Antes
+    // ese tramo salía «?» en el aire y el vapor.
+    const fs = ((typeof PC !== "undefined" && PC && PC.filas) || []).filter((x) => x.tipo === "coc" && x.inicio != null && x.fin != null);
+    if (fs.length) {
+      const iniReal = Math.min(...fs.map((x) => x.inicio));
+      if (iniReal < out.cobertura[0]) {
+        fs.filter((x) => x.inicio < i0ms).forEach((x) => out.intervalos.push([x.inicio, Math.min(x.fin, i0ms)]));
+        out.cobertura[0] = iniReal;
+        out.nombre = `Plan FerIA desde el I0 · Programa de Cocinas real antes (${PC.archivo || "Excel"})`;
+      }
+    }
+    return out;
   };
   const deReal = () => {
     if (typeof PC !== "undefined" && !PC && typeof pcRecuperar === "function") pcRecuperar();
@@ -129,6 +144,12 @@ function calcularSetpoints(mergedByTrain, cfg) {
     }),
   );
   if (!bloques.length) return { vapor: [], aire: [], cambios: [], coc };
+  // Mismos huecos cortos que en Utilidades: no son paradas (ver utilidades.js).
+  if (typeof utilPuentearHuecos === "function") {
+    const p = utilPuentearHuecos(bloques, (b) => b.type === "production");
+    bloques.length = 0;
+    p.forEach((b) => bloques.push(b));
+  }
   const desde = Math.min(...bloques.map((b) => b.start.getTime()));
   const hasta = Math.max(...bloques.map((b) => b.end.getTime()));
   const prod = bloques.filter((b) => b.type === "production");

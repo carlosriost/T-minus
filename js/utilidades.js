@@ -37,6 +37,35 @@ function utilGuardarOpciones(op) {
   } catch (_) {}
 }
 
+// HUECOS CORTOS ENTRE BLOQUES DE UN MISMO TREN. El instructivo deja minutos
+// sueltos sin fila entre turnos (Costeñita termina 21:47 y sigue 22:00). Para
+// calderas, compresores y setpoints eso no es una parada: la línea no se
+// apaga 13 minutos. Antes cada uno de esos huecos partía la barra de aire en
+// tiras de 2 a 30 min y metía cambios de setpoint de minutos en la lista del
+// operador. Un hueco de hasta UTIL_HUECO_MAX_MIN se cubre con el bloque
+// anterior (solo para estos cálculos; el Gantt de envasado no cambia).
+const UTIL_HUECO_MAX_MIN = 30;
+function utilPuentearHuecos(bloques, esActivo) {
+  const porTren = {};
+  bloques.forEach((b) => (porTren[b.train] = porTren[b.train] || []).push(b));
+  const out = [];
+  Object.values(porTren).forEach((bs) => {
+    bs.sort((a, b) => a.start - b.start);
+    bs.forEach((b, i) => {
+      const c = { ...b };
+      const sig = bs.slice(i + 1).find((x) => esActivo(x));
+      if (esActivo(b) && sig) {
+        const hueco = sig.start.getTime() - b.end.getTime();
+        // Solo si entre los dos no hay otro bloque (un hueco vacío de verdad).
+        const entre = bs.some((x) => x !== b && x !== sig && x.start < sig.start && x.end > b.end);
+        if (hueco > 0 && hueco <= UTIL_HUECO_MAX_MIN * 60000 && !entre) c.end = new Date(sig.start.getTime());
+      }
+      out.push(c);
+    });
+  });
+  return out;
+}
+
 // Regla de CALDERAS según el número de líneas funcionando.
 // Devuelve { clave, texto }: la clave fija el color de la barra.
 function utilEquiposCaldera(n, op) {
@@ -83,6 +112,9 @@ function calcularUtilidades(mergedByTrain, opciones) {
     }),
   );
   if (!bloques.length) return { calderas: [], aire: [] };
+  const puenteados = utilPuentearHuecos(bloques, utilBloqueFunciona);
+  bloques.length = 0;
+  puenteados.forEach((b) => bloques.push(b));
 
   // 1) Instantes donde puede cambiar el número de líneas funcionando.
   const instantes = [
@@ -156,8 +188,11 @@ function htmlFilasUtilidades(mergedByTrain, rangeStart, totalWidth, dayLinesHtml
         const title = escapeHtml(
           `${t.texto} · ${fmtDateTime(t.start)} → ${fmtDateTime(t.end)} (${dur}) · ${utilTextoLineas(t)}`,
         );
+        // En una barra angosta el texto se partía letra por letra («Elli / ot 1
+        // / + Centac») y tapaba las vecinas: ahí solo va el color, y el detalle
+        // queda en el globo al pasar el mouse.
         const txt =
-          width >= 22
+          width >= 90
             ? `<b>${escapeHtml(t.texto)}</b><span>${escapeHtml(dur)} · ${escapeHtml(utilTextoLineas(t))}</span>`
             : "";
         return `<div class="block util-block util-${t.clave}" style="left:${left}px; width:${width}px;" title="${title}">${txt}</div>`;
