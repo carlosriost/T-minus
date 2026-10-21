@@ -200,8 +200,13 @@ function pfCalcularHaciaAtras() {
 function pfDatos(escenario) {
   if (!(STATE && STATE.seq && STATE.plan)) return null;
   const i0d = getI0Date();
-  const clave = `${escenario}|${i0d ? i0d.getTime() : ""}`;
-  const c = PCX_FERIA.cache;
+  // Un cache por escenario: el plan hacia atrás también lo leen el Programa
+  // de cocinas del Excel y «Del cocimiento al envasado». Se invalida cuando
+  // cambia el plan (STATE.seq), el I0 o el catálogo / inventario de los que
+  // depende (firma).
+  const firma = pfFirma();
+  const clave = `${escenario}|${i0d ? i0d.getTime() : ""}|${firma}`;
+  const c = (PCX_FERIA.cache[escenario] = PCX_FERIA.cache[escenario] || {});
   if (c.clave === clave && c.seq === STATE.seq && c.datos) return c.datos;
   let base;
   if (escenario === "atras") base = pfCalcularHaciaAtras();
@@ -219,8 +224,20 @@ function pfDatos(escenario) {
     notasTxt: "Solo los que llegan tarde",
     base,
   };
-  PCX_FERIA.cache = { clave, seq: STATE.seq, datos };
+  PCX_FERIA.cache[escenario] = { clave, seq: STATE.seq, datos };
   return datos;
+}
+// Lo que, además del plan, cambia el resultado del escenario hacia atrás.
+function pfFirma() {
+  try {
+    return JSON.stringify([
+      (MOSTO_CATALOG || []).map((m) => [m.id, m.tiempoCocinaHoras, m.tiempoEntreCarguesHoras, m.tiempoFermentacionHoras, m.tiempoMaduracionHoras, m.volumenPorCocimiento, m.factorDilucion]),
+      PF_ADELANTO_ATRAS_DIAS,
+      PF_DIAS_ATRAS,
+    ]);
+  } catch (_) {
+    return "";
+  }
 }
 
 /* ------------------------------------------------------------- render */

@@ -603,9 +603,10 @@ function pcRenderCuerpo() {
       <div id="pcSemanas" class="pc-chart"></div>
       ${pcLeyenda()}
     </div>
+    ${typeof pdHtmlCard === "function" ? pdHtmlCard() : ""}
     <div class="pc-layout">
       <div class="acu-card">
-        <div class="acu-card-tit">Mapa de cargues <small class="pc-sub">· una fila por día, de 00:00 a 24:00 · cada punto es un cargue · lo rayado es un aseo o paro · clic para ver todo el detalle</small></div>
+        <div class="acu-card-tit">Mapa de cargues <small class="pc-sub">· una fila por día, de 00:00 a 24:00 · cada punto es un cargue · lo rayado es un aseo o paro · clic para ver todo el detalle${PCX.F.verDebio ? ' · <span class="pd-ley pd-ley-rombo"></span> rombo = cargue que debió darse (plan FerIA hacia atrás)' : ""}</small></div>
         <div id="pcMapa" class="pc-mapa"></div>
       </div>
       <div>
@@ -632,6 +633,14 @@ function pcRenderCuerpo() {
 
   pcConectarFiltros();
   pcDibujarSemanas();
+  if (typeof pdDibujar === "function")
+    try {
+      pdDibujar();
+    } catch (e) {
+      console.error(e);
+      const el = document.getElementById("pdCuerpo");
+      if (el) el.innerHTML = '<p class="empty-note">No se pudo calcular el programa que debió darse.</p>';
+    }
   pcDibujarMapa(vis);
   pcDibujarMix(vis);
   pcDibujarEquipos(vis);
@@ -997,7 +1006,13 @@ function pcDibujarMapa(vis) {
     // Zona de clic más grande que la marca.
     svg += `<rect x="${cx - 7}" y="${cy - Math.max(7, rowH / 2)}" width="14" height="${Math.max(14, rowH)}" class="pc-hit" data-pc-i="${idx.get(x)}"/>`;
   });
+  // Excel: rombos con lo que debió darse según el plan FerIA hacia atrás.
+  if (PCX === PCX_EXCEL && typeof pdMarcasMapa === "function") svg += pdMarcasMapa(xh, m, rowH, nd);
   el.innerHTML = nd > 0 ? `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mapa de cargues por día y hora" class="${rowH < 9 ? "pc-compacto" : ""}">${svg}</svg>` : '<p class="empty-note">Sin días en el rango.</p>';
+  el.querySelectorAll("[data-pd-tip]").forEach((n) => {
+    n.addEventListener("pointermove", (ev) => pcMostrarTip(ev, n.dataset.pdTip, []));
+    n.addEventListener("pointerleave", pcOcultarTip);
+  });
   el.querySelectorAll("[data-pc-i]").forEach((n) => {
     const x = PCX.D.filas[Number(n.dataset.pcI)];
     n.addEventListener("pointermove", (ev) => pcTipFila(ev, x));

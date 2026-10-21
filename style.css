@@ -2958,3 +2958,19 @@
 .pvr-si { color: var(--ok, #3fb950); font-weight: 600; }
 .pf-esc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pf-esc-nota { margin: 0 0 12px; }
+
+/* Programa que debió darse (pestaña Programa de cocinas del Excel) */
+.pd-card { margin-top: 14px; }
+.pd-intro { margin-top: 0; }
+.pd-paneles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
+.pd-panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 8px 2px; background: var(--panel2); }
+.pd-panel-t { font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
+svg .pd-l-debio { fill: none; stroke-width: 2; stroke-dasharray: 5 3; }
+svg .pd-l-real { fill: none; stroke-width: 2.2; }
+.pd-ley { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--muted); margin-right: 6px; vertical-align: middle; }
+.pd-ley-debio { border-top-style: dashed; }
+.pd-ley-rombo { width: 8px; height: 8px; border: 1.6px solid var(--text); transform: rotate(45deg); margin: 0 4px 0 2px; }
+svg .pd-rombo { fill: none; stroke-width: 1.8; cursor: help; }
+.pd-det { margin-top: 10px; }
+.pd-det > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 6px 0; }
+.pd-dias th.pd-th-m { text-align: center; border-left: 1px solid var(--line); }
