@@ -1,1 +1,9 @@
 .claude/
+.vscode/
+# Datos de planta: nunca se suben (la app los procesa en el navegador)
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+modelo_servicios*.json
+consumos_servicios_*.xlsx
