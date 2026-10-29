@@ -4,11 +4,11 @@
    «Genérame el programa que tuvo que haberse dado para poder envasar lo de
    las semanas actuales.»
 
-   · «Debió darse» = los cocimientos del plan FerIA completo hacia atrás
+   · «Debió darse» = los cocimientos del plan T-minus completo hacia atrás
      (js/programa-feria.js → pfCalcularHaciaAtras) que caen ANTES del I0:
      sin inventario, todo lo que pide el instructivo sale de un cocimiento.
    · «Se dio» = los cocimientos del Excel de Elaboración en esas mismas
-     fechas (Pony HG y Pony GO del Excel = Pony en FerIA).
+     fechas (Pony HG y Pony GO del Excel = Pony en T-minus).
    · Se comparan por mosto (cuántos, acumulado en el tiempo y día a día) y
      cocimiento a cocimiento: el k-ésimo que debió darse de un mosto contra
      el k-ésimo real de ese mosto.
@@ -24,7 +24,7 @@ const PD_MOSTOS = [
   { id: "light", nombre: "Light", cls: "pc-c3", color: "var(--pc-c3)", excel: ["light"] },
   { id: "pony", nombre: "Pony", cls: "pc-c4", color: "var(--pc-c4)", excel: ["ponyhg", "ponygo"] },
 ];
-// Mosto del plan FerIA que corresponde a un mosto del Excel (club → ninguno).
+// Mosto del plan T-minus que corresponde a un mosto del Excel (club → ninguno).
 function pdMostoDeExcel(id) {
   const m = PD_MOSTOS.find((x) => x.excel.includes(id));
   return m ? m.id : null;
@@ -64,7 +64,7 @@ function pdDatos() {
 }
 
 function pdHtmlCard() {
-  return `<div class="acu-card pd-card" id="pdCard"><div class="acu-card-tit">Programa que debió darse para envasar las semanas actuales <small class="pc-sub">· plan FerIA hacia atrás vs. lo que dice este Excel, hasta el I0</small></div><div id="pdCuerpo"></div></div>`;
+  return `<div class="acu-card pd-card" id="pdCard"><div class="acu-card-tit">Programa que debió darse para envasar las semanas actuales <small class="pc-sub">· plan T-minus hacia atrás vs. lo que dice este Excel, hasta el I0</small></div><div id="pdCuerpo"></div></div>`;
 }
 
 function pdDibujar() {
@@ -107,7 +107,7 @@ function pdDibujar() {
     .join("");
   const otros = D.otrosReal.length ? `<p class="acu-nota">Además, el Excel tiene ${D.otrosReal.length} cocimiento(s) de mostos que no están en el instructivo (p. ej. Club Colombia) en esas fechas: no entran en la comparación.</p>` : "";
   el.innerHTML = `
-    <p class="acu-nota pd-intro">Para que <b>todo</b> lo que pide el instructivo (envasado desde el ${escapeHtml(fmtDate(new Date(Math.min(...D.porMosto.filter((m) => m.envDesde != null).map((m) => m.envDesde)))))}) tenga cerveza a tiempo sin contar el inventario, FerIA calcula que había que cocinar <b>${totD} cocimientos</b> entre el ${escapeHtml(pcFecha(D.debio[0].inicio))} y el I0 (${escapeHtml(pcFecha(D.i0))}).${D.hayExcel ? ` En esas fechas este Excel tiene <b>${totR}</b> de esos mostos.` : " Carga el Excel de Elaboración para compararlo."} Mismas reglas del plan, sin inventario, con levadura Light disponible y cerveza cocinable hasta ${2 + PF_ADELANTO_ATRAS_DIAS} días antes (Light ${3 + PF_ADELANTO_ATRAS_DIAS}).</p>
+    <p class="acu-nota pd-intro">Para que <b>todo</b> lo que pide el instructivo (envasado desde el ${escapeHtml(fmtDate(new Date(Math.min(...D.porMosto.filter((m) => m.envDesde != null).map((m) => m.envDesde)))))}) tenga cerveza a tiempo sin contar el inventario, T-minus calcula que había que cocinar <b>${totD} cocimientos</b> entre el ${escapeHtml(pcFecha(D.debio[0].inicio))} y el I0 (${escapeHtml(pcFecha(D.i0))}).${D.hayExcel ? ` En esas fechas este Excel tiene <b>${totR}</b> de esos mostos.` : " Carga el Excel de Elaboración para compararlo."} Mismas reglas del plan, sin inventario, con levadura Light disponible y cerveza cocinable hasta ${2 + PF_ADELANTO_ATRAS_DIAS} días antes (Light ${3 + PF_ADELANTO_ATRAS_DIAS}).</p>
     <div class="pf-esc">
       <button class="pc-chip ${ver ? "on" : ""}" data-pd-ver>◇ ${ver ? "Ocultar" : "Ver"} en el mapa de cargues</button>
       <button class="pc-chip" data-pd-abrir>Abrir el plan completo hacia atrás →</button>
@@ -179,7 +179,7 @@ function pdDibujarAcumulado(D) {
       return `<div class="pd-panel"><div class="pd-panel-t"><span class="pc-dot ${mo.cls}"></span>${mo.nombre} <small class="pc-sub">debió ${mo.debio.length}${D.hayExcel ? ` · se dio ${mo.real.length} · <span class="${dif < 0 ? "pvr-no" : "pvr-si"}">${dif > 0 ? "+" : ""}${dif}</span>` : ""}</small></div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Acumulado de cocimientos de ${escapeHtml(mo.nombre)}">${s}</svg></div>`;
     })
     .join("");
-  el.innerHTML = `<div class="pd-paneles">${paneles}</div><div class="legend pc-leyenda"><div class="item"><span class="pd-ley pd-ley-debio"></span>Debió darse (plan FerIA hacia atrás)</div>${D.hayExcel ? '<div class="item"><span class="pd-ley pd-ley-real"></span>Se dio (este Excel)</div>' : ""}<div class="item pc-sub">Cocimientos acumulados desde el ${escapeHtml(fmtDate(new Date(D.desde)))} hasta el I0. Donde la línea continua va por debajo de la punteada, la cocina iba atrasada frente a lo que pide el instructivo.</div></div>`;
+  el.innerHTML = `<div class="pd-paneles">${paneles}</div><div class="legend pc-leyenda"><div class="item"><span class="pd-ley pd-ley-debio"></span>Debió darse (plan T-minus hacia atrás)</div>${D.hayExcel ? '<div class="item"><span class="pd-ley pd-ley-real"></span>Se dio (este Excel)</div>' : ""}<div class="item pc-sub">Cocimientos acumulados desde el ${escapeHtml(fmtDate(new Date(D.desde)))} hasta el I0. Donde la línea continua va por debajo de la punteada, la cocina iba atrasada frente a lo que pide el instructivo.</div></div>`;
 }
 
 function pdDibujarDias(D) {

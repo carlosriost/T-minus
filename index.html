@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Interfaz de Programación</title>
+    <title>T-minus</title>
+    <meta name="description" content="T-minus · planeación de envasado, cocinas y servicios" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
   </head>
@@ -22,13 +23,14 @@
           alt="Logo"
         />
         <div class="divider"></div>
-        <div>
-          <h1>Interfaz de <span class="accent">Planeación</span></h1>
+        <div class="brand-txt">
+          <h1>T-minus</h1>
+          <p>Planeación de envasado, cocinas y servicios</p>
         </div>
       </div>
       <div class="header-right">
-        <button class="btn" id="themeToggleBtn">☀️ Modo claro</button>
         <div id="weekMeta"></div>
+        <button class="btn icon" id="themeToggleBtn" aria-label="Cambiar tema" title="Cambiar tema"></button>
       </div>
     </header>
 
@@ -39,152 +41,54 @@
           <span class="sb-collapse-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg></span>
         </button>
         <nav class="sb-nav" id="sbNav">
-          <button class="sb-item" data-view="view-datos">
-            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span><span class="sb-txt">Datos de entrada</span>
-          </button>
-
-          <div class="sb-group" data-group="gantt">
-            <button class="sb-head" type="button">
-              <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17V10M13 17V5M18 17v-8"/></svg></span><span class="sb-txt">Gantt</span
-              ><span class="sb-caret">▾</span>
-            </button>
+          <button class="sb-item" data-view="view-inicio"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></span><span class="sb-txt">Inicio</span></button>
+          <button class="sb-item" data-view="view-datos"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span><span class="sb-txt">Datos de entrada</span></button>
+          <button class="sb-item" data-view="view-recomendaciones"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span><span class="sb-txt">Recomendaciones</span></button>
+          <div class="sb-label">Envasado</div>
+          <button class="sb-item" data-view="view-gantt-plan"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14M4 12h9M4 18h12"/></svg></span><span class="sb-txt">Gantt de envasado</span></button>
+          <button class="sb-item" data-view="view-tminus"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg></span><span class="sb-txt">T-minus por línea</span></button>
+          <button class="sb-item" data-view="view-logistica"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg></span><span class="sb-txt">Acuerdos de servicio</span></button>
+          <div class="sb-label">Cocinas</div>
+          <button class="sb-item" data-view="view-programa-feria"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 15l2.5 2.5L16 12"/></svg></span><span class="sb-txt">Plan de cocinas</span></button>
+          <button class="sb-item" data-view="view-programa-cocinas"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="16" cy="14" r="1"/><circle cx="8" cy="18" r="1"/><circle cx="12" cy="18" r="1"/></svg></span><span class="sb-txt">Programa real (Excel)</span></button>
+          <button class="sb-item" data-view="view-plan-vs-real"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 17h18"/><circle cx="7" cy="7" r="1.6"/><circle cx="14" cy="7" r="1.6"/><circle cx="9" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/><path d="M7 8.6l2 6.8M14 8.6l3 6.8"/></svg></span><span class="sb-txt">Plan vs. real</span></button>
+          <button class="sb-item" data-view="view-trazabilidad"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v3a3 3 0 0 0 3 3h5a3 3 0 0 1 3 3v-1"/></svg></span><span class="sb-txt">Del cocimiento al envasado</span></button>
+          <div class="sb-group" data-group="det">
+            <button class="sb-head" type="button"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="sb-txt">Detalle de programación</span><span class="sb-caret">▾</span></button>
             <div class="sb-sub">
-              <button class="sb-item" data-view="view-gantt-plan">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14M4 12h9M4 18h12"/></svg></span
-                ><span class="sb-txt">Envasado y filtración</span>
-              </button>
-              <button class="sb-item" data-view="view-gantt-cocina">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 22h11.6a2 2 0 0 0 1.7-3.5L14 9V3"/><path d="M7 15h10"/></svg></span
-                ><span class="sb-txt">Cocina</span>
-              </button>
+              <button class="sb-item" data-view="view-programacion"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="sb-txt">Programación de cocinas</span></button>
+              <button class="sb-item" data-view="view-secuencia"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></span><span class="sb-txt">Secuencia semanal</span></button>
+              <button class="sb-item" data-view="view-gantt-cocina"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 22h11.6a2 2 0 0 0 1.7-3.5L14 9V3"/><path d="M7 15h10"/></svg></span><span class="sb-txt">Gantt de cocina</span></button>
+              <button class="sb-item" data-view="view-tanques"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4.42 0 8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5c0-1.66 3.58-3 8-3z"/><path d="M20 5c0 1.66-3.58 3-8 3s-8-1.34-8-3"/></svg></span><span class="sb-txt">Asignación de tanques</span></button>
+              <button class="sb-item" data-view="view-conflictos"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><span class="sb-txt">Conflictos de capacidad</span></button>
+              <button class="sb-item" data-view="view-reglas"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><path d="m9 11 3 3L22 4"/></svg></span><span class="sb-txt">Reglas y recomendaciones</span></button>
+              <button class="sb-item" data-view="view-sin-homologar"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="sb-txt">Sin homologar</span></button>
             </div>
           </div>
-
-          <button class="sb-item" data-view="view-programa-cocinas">
-            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="16" cy="14" r="1"/><circle cx="8" cy="18" r="1"/><circle cx="12" cy="18" r="1"/></svg></span><span class="sb-txt">Programa de cocinas (Excel)</span>
-          </button>
-          <button class="sb-item" data-view="view-programa-feria">
-            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 15l2.5 2.5L16 12"/></svg></span><span class="sb-txt">Programa de cocinas (FerIA)</span>
-          </button>
-          <button class="sb-item" data-view="view-plan-vs-real">
-            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 17h18"/><circle cx="7" cy="7" r="1.6"/><circle cx="14" cy="7" r="1.6"/><circle cx="9" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/><path d="M7 8.6l2 6.8M14 8.6l3 6.8"/></svg></span><span class="sb-txt">Plan vs. real de cocinas</span>
-          </button>
-          <button class="sb-item" data-view="view-trazabilidad">
-            <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v3a3 3 0 0 0 3 3h5a3 3 0 0 1 3 3v-1"/></svg></span><span class="sb-txt">Del cocimiento al envasado</span>
-          </button>
-
-          <div class="sb-group" data-group="prog">
-            <button class="sb-head" type="button">
-              <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><path d="M8 11h.01M8 16h.01M12 11h4M12 16h4"/></svg></span
-              ><span class="sb-txt">Programación de cocinas</span
-              ><span class="sb-caret">▾</span>
-            </button>
+          <div class="sb-label">Servicios</div>
+          <button class="sb-item" data-view="view-servicios"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="sb-txt">Consumos de servicios</span></button>
+          <button class="sb-item" data-view="view-cip"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 6.3 6 11.3a6 6 0 0 1-12 0c0-5 6-11.3 6-11.3z"/></svg></span><span class="sb-txt">CIP A/B/C</span></button>
+          <div class="sb-label">Configuración</div>
+          <div class="sb-group" data-group="cfg">
+            <button class="sb-head" type="button"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="sb-txt">Parámetros de planta</span><span class="sb-caret">▾</span></button>
             <div class="sb-sub">
-              <button class="sb-item" data-view="view-programacion">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span
-                ><span class="sb-txt">Programación de cocinas</span>
-              </button>
-              <button class="sb-item" data-view="view-secuencia">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></span
-                ><span class="sb-txt">Secuencia semanal</span>
-              </button>
-              <button class="sb-item" data-view="view-tanques">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4.42 0 8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5c0-1.66 3.58-3 8-3z"/><path d="M20 5c0 1.66-3.58 3-8 3s-8-1.34-8-3"/></svg></span
-                ><span class="sb-txt">Asignación de tanques</span>
-              </button>
-              <button class="sb-item" data-view="view-conflictos">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span
-                ><span class="sb-txt">Conflictos de capacidad</span>
-              </button>
-              <button class="sb-item" data-view="view-reglas">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><path d="m9 11 3 3L22 4"/></svg></span
-                ><span class="sb-txt">Reglas y recomendaciones</span>
-              </button>
-              <button class="sb-item" data-view="view-sin-homologar">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span
-                ><span class="sb-txt">Sin homologar</span>
-              </button>
+              <button class="sb-item" data-view="view-catalogo"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span><span class="sb-txt">Catálogo de mostos</span></button>
+              <button class="sb-item" data-view="view-balance"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="sb-txt">Balance semanal</span></button>
+              <button class="sb-item" data-view="view-equipos"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4.42 0 8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5c0-1.66 3.58-3 8-3z"/><path d="M20 5c0 1.66-3.58 3-8 3s-8-1.34-8-3"/></svg></span><span class="sb-txt">Equipos / Tanques</span></button>
+              <button class="sb-item" data-view="view-levadura"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2v17.5a2.5 2.5 0 0 1-5 0V2"/><path d="M8.5 2h7"/><path d="M9.5 15h5"/></svg></span><span class="sb-txt">Disponibilidad de levadura</span></button>
+              <button class="sb-item" data-view="view-aseos-cambio"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 4.24 7 2c-.29 2.24-1.14 4.83-2.29 7.06S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A11 11 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.91 4.97"/></svg></span><span class="sb-txt">Aseos por cambio de marca</span></button>
+              <button class="sb-item" data-view="view-aseo-periodico"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.71L21 8"/><path d="M21 3v5h-5"/></svg></span><span class="sb-txt">Aseo periódico</span></button>
             </div>
           </div>
-
-          <div class="sb-group" data-group="seg">
-            <button class="sb-head" type="button">
-              <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><span class="sb-txt">Seguimiento</span
-              ><span class="sb-caret">▾</span>
-            </button>
-            <div class="sb-sub">
-              <button class="sb-item" data-view="view-tminus">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg></span
-                ><span class="sb-txt">T-Minus líneas</span>
-              </button>
-              <button class="sb-item" data-view="view-logistica">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg></span
-                ><span class="sb-txt">Acuerdos de servicio (SLA)</span>
-              </button>
-              <button class="sb-item" data-view="view-recomendaciones">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span
-                ><span class="sb-txt">Recomendaciones</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sb-group" data-group="inv">
-            <button class="sb-head" type="button">
-              <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.05 8.73-5.05M12 22.08V12"/></svg></span
-              ><span class="sb-txt">Inventario</span
-              ><span class="sb-caret">▾</span>
-            </button>
-            <div class="sb-sub">
-              <button class="sb-item" data-view="view-balance">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span
-                ><span class="sb-txt">Balance semanal</span>
-              </button>
-              <button class="sb-item" data-view="view-equipos">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4.42 0 8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5c0-1.66 3.58-3 8-3z"/><path d="M20 5c0 1.66-3.58 3-8 3s-8-1.34-8-3"/></svg></span
-                ><span class="sb-txt">Equipos / Tanques</span>
-              </button>
-              <button class="sb-item" data-view="view-cip">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 6.3 6 11.3a6 6 0 0 1-12 0c0-5 6-11.3 6-11.3z"/></svg></span
-                ><span class="sb-txt">CIP A/B/C</span>
-              </button>
-              <button class="sb-item" data-view="view-levadura">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2v17.5a2.5 2.5 0 0 1-5 0V2"/><path d="M8.5 2h7"/><path d="M9.5 15h5"/></svg></span
-                ><span class="sb-txt">Disponibilidad de levadura</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sb-group" data-group="cat">
-            <button class="sb-head" type="button">
-              <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7a4 4 0 0 0-4-4H3a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h5a3 3 0 0 1 3 3M12 7a4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-5a3 3 0 0 0-3 3M12 7v14"/></svg></span
-              ><span class="sb-txt">Catálogo</span
-              ><span class="sb-caret">▾</span>
-            </button>
-            <div class="sb-sub">
-              <button class="sb-item" data-view="view-catalogo">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span
-                ><span class="sb-txt">Catálogo de mostos</span>
-              </button>
-              <button class="sb-item" data-view="view-aseos-cambio">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 4.24 7 2c-.29 2.24-1.14 4.83-2.29 7.06S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A11 11 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.91 4.97"/></svg></span
-                ><span class="sb-txt">Aseos por cambio de marca</span>
-              </button>
-              <button class="sb-item" data-view="view-aseo-periodico">
-                <span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.71L21 8"/><path d="M21 3v5h-5"/></svg></span
-                ><span class="sb-txt">Aseo periódico</span>
-              </button>
-            </div>
-          </div>
-
         </nav>
       </aside>
 
       <main class="main-area">
         <div class="container">
+          <section class="view" id="view-inicio" data-view-el><div id="inicioPanel"></div></section>
+
           <section class="view" id="view-datos" data-view-el>
-            <p class="tab-panel-sub" style="margin: 0 0 14px">
-              Se procesan en tu navegador; no se envían a ningún servidor.
-            </p>
+            <div class="page-head"><h2>Datos de entrada</h2><p>Los archivos se procesan en tu navegador; no se envían a ningún servidor.</p></div>
 
             <div class="upload-zone" id="dropZone">
               <h2>1 · Plan de envasado (instructivo Suite 360)</h2>
@@ -225,6 +129,10 @@
               />
               <span class="i0-badge" id="i0Badge">I0: —</span>
             </div>
+            <div class="datos-extra">
+              <button class="datos-link" data-goto="view-programa-cocinas"><b>3 · Programa de cocinas real</b><span>Excel de Elaboración · opcional · se carga en «Programa real (Excel)»</span></button>
+              <button class="datos-link" data-goto="view-servicios"><b>4 · Indicadores de servicios</b><span>Excel de MED Servicios · opcional · se carga en «Consumos de servicios»</span></button>
+            </div>
             <div id="volumenPanel"></div>
           </section>
 
@@ -249,6 +157,7 @@
           <section class="view" id="view-logistica" data-view-el><div id="logisticaPanel"></div></section>
           <section class="view" id="view-recomendaciones" data-view-el><div id="recomendacionesPanel"></div></section>
           <section class="view" id="view-cip" data-view-el><div id="cipPanel"></div></section>
+          <section class="view" id="view-servicios" data-view-el><div id="serviciosPanel"></div></section>
 
           <section class="view nav-hide" id="viewEmptyState" data-view-el>
             <div class="empty-state">
@@ -577,13 +486,12 @@
         </div>
 
         <footer>
-          Plan de Envasado · procesamiento local en el navegador · sin envío de
-          datos a terceros
+          <span>T-minus · procesamiento local en el navegador, sin envío de datos a terceros</span>
+          <span class="signature">Elaborado por Ingeniería y Servicios</span>
         </footer>
       </main>
     </div>
 
-    <div class="signature">By: Ing. Andrea Villanueva</div>
     <!-- script.js dividido en módulos por área. Se cargan en este orden
          exacto (equivale byte a byte al script.js original concatenado). -->
     <script src="js/utils.js"></script>
@@ -609,6 +517,12 @@
     <script src="js/modulacion.js"></script>
     <script src="js/plan-vs-real.js"></script>
     <script src="js/trazabilidad.js"></script>
+    <script src="js/servicios-datos.js"></script>
+    <script src="js/servicios-modelos.js"></script>
+    <script src="js/servicios-prediccion.js"></script>
+    <script src="js/servicios-graficas.js"></script>
+    <script src="js/servicios.js"></script>
+    <script src="js/inicio.js"></script>
     <script src="js/asistente-datos.js"></script>
     <script src="js/asistente.js"></script>
     <script src="js/ui.js"></script>
@@ -635,6 +549,8 @@
           "view-logistica",
           "view-recomendaciones",
           "view-cip",
+          "view-servicios",
+          "view-inicio",
         ];
 
         // vista -> { show: [ids de contenedores a mostrar], panel: id de .tab-panel,
@@ -699,9 +615,11 @@
           "view-logistica": { show: ["view-logistica"] },
           "view-recomendaciones": { show: ["view-recomendaciones"] },
           "view-cip": { show: ["view-cip"] },
+          "view-servicios": { show: ["view-servicios"] },
+          "view-inicio": { show: ["view-inicio"] },
         };
 
-        var DEFAULT_VIEW = "view-datos";
+        var DEFAULT_VIEW = "view-inicio";
         var LS_KEY = "envasado-nav-view";
         var LS_COLLAPSE = "envasado-nav-collapsed";
 
@@ -789,6 +707,12 @@
           });
         });
 
+        // Con la barra contraída solo se ven íconos: el nombre va en el título.
+        nav.querySelectorAll(".sb-item, .sb-head").forEach(function (b) {
+          var t = b.querySelector(".sb-txt");
+          if (t && !b.title) b.title = t.textContent.trim();
+        });
+
         // --- Ítems hoja ---
         nav.querySelectorAll(".sb-item").forEach(function (item) {
           item.addEventListener("click", function () {
@@ -849,13 +773,13 @@
           var _origRender = window.render;
           window.render = function () {
             var r = _origRender.apply(this, arguments);
-            if (currentView === "view-datos") go("view-gantt-plan");
+            if (currentView === "view-datos" || currentView === "view-inicio") go("view-inicio");
             return r;
           };
         }
 
         // API pública mínima
-        window.FerIANav = { go: go };
+        window.FerIANav = window.TminusNav = { go: go };
       })();
     </script>
   </body>

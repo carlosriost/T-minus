@@ -57,7 +57,7 @@ let PC_PAG = 0;
 
 // CONTEXTO DE DIBUJO. Este módulo pinta dos vistas con las mismas gráficas:
 // el Excel de Elaboración (PC: es el único que leen los demás módulos —plan
-// vs. real, setpoints, inventario—) y el plan de cocinas que FerIA genera
+// vs. real, setpoints, inventario—) y el plan de cocinas que T-minus genera
 // desde el instructivo (js/programa-feria.js). PCX apunta a la vista que se
 // está pintando. PC_F / PC_SEL / PC_PAG siguen siendo siempre los del Excel.
 const PCX_EXCEL = {
@@ -571,7 +571,7 @@ function pcCargarArchivo(file) {
 }
 
 function pcRenderCuerpo() {
-  // La vista del plan FerIA tiene su propio cuerpo (js/programa-feria.js).
+  // La vista del plan T-minus tiene su propio cuerpo (js/programa-feria.js).
   if (PCX !== PCX_EXCEL && typeof pfRenderCuerpo === "function") return pfRenderCuerpo();
   const cuerpo = document.getElementById("pcCuerpo");
   if (!cuerpo) return;
@@ -606,7 +606,7 @@ function pcRenderCuerpo() {
     ${typeof pdHtmlCard === "function" ? pdHtmlCard() : ""}
     <div class="pc-layout">
       <div class="acu-card">
-        <div class="acu-card-tit">Mapa de cargues <small class="pc-sub">· una fila por día, de 00:00 a 24:00 · cada punto es un cargue · lo rayado es un aseo o paro · clic para ver todo el detalle${PCX.F.verDebio ? ' · <span class="pd-ley pd-ley-rombo"></span> rombo = cargue que debió darse (plan FerIA hacia atrás)' : ""}</small></div>
+        <div class="acu-card-tit">Mapa de cargues <small class="pc-sub">· una fila por día, de 00:00 a 24:00 · cada punto es un cargue · lo rayado es un aseo o paro · clic para ver todo el detalle${PCX.F.verDebio ? ' · <span class="pd-ley pd-ley-rombo"></span> rombo = cargue que debió darse (plan T-minus hacia atrás)' : ""}</small></div>
         <div id="pcMapa" class="pc-mapa"></div>
       </div>
       <div>
@@ -1006,7 +1006,7 @@ function pcDibujarMapa(vis) {
     // Zona de clic más grande que la marca.
     svg += `<rect x="${cx - 7}" y="${cy - Math.max(7, rowH / 2)}" width="14" height="${Math.max(14, rowH)}" class="pc-hit" data-pc-i="${idx.get(x)}"/>`;
   });
-  // Excel: rombos con lo que debió darse según el plan FerIA hacia atrás.
+  // Excel: rombos con lo que debió darse según el plan T-minus hacia atrás.
   if (PCX === PCX_EXCEL && typeof pdMarcasMapa === "function") svg += pdMarcasMapa(xh, m, rowH, nd);
   el.innerHTML = nd > 0 ? `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mapa de cargues por día y hora" class="${rowH < 9 ? "pc-compacto" : ""}">${svg}</svg>` : '<p class="empty-note">Sin días en el rango.</p>';
   el.querySelectorAll("[data-pd-tip]").forEach((n) => {
@@ -1075,7 +1075,7 @@ function pcHtmlDetalle() {
     ${x.comentarios.length ? `<div class="pc-sec">Comentarios de celda</div>${x.comentarios.map((c) => `<div class="pc-nota"><span class="pc-col">${c.col}</span><div>${escapeHtml(c.txt)}${c.autor ? ` <small class="pc-sub">— ${escapeHtml(c.autor)}</small>` : ""}</div></div>`).join("")}` : ""}`;
 }
 function pcConectarDetalle() {
-  // Del plan FerIA: abrir el cocimiento en «Del cocimiento al envasado».
+  // Del plan T-minus: abrir el cocimiento en «Del cocimiento al envasado».
   document.querySelectorAll("[data-pf-trz]").forEach((b) =>
     b.addEventListener("click", () => {
       if (typeof TRZ !== "undefined") TRZ.sel = b.dataset.pfTrz;

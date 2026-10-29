@@ -86,7 +86,7 @@ let MOSTO_CATALOG = [
 ];
 
 // Factores de dilución leídos del último Producto en proceso cargado. Se
-// guardan para que sigan valiendo al reabrir FerIA (el catálogo no se guarda).
+// guardan para que sigan valiendo al reabrir T-minus (el catálogo no se guarda).
 const PP_FACTORES_KEY = "planCocinasFactoresPP";
 const PP_FACTORES_MOSTOS = ["estandar", "pilsen", "light"];
 function aplicarFactoresDelArchivo(factores) {
@@ -392,7 +392,7 @@ function baseInventario(e, i0) {
 // El Producto en proceso no siempre está al día con la hora de su celda A1: el
 // del 20/10 11:33 traía como VACÍOS los SV Pony 1, 2 y 3 y los FV 52 a 58,
 // aunque el Programa de Cocinas los llenó el 19 y el 20/10 (su último llenado
-// registrado era del 19/10 06:35). FerIA no veía esa cerveza y marcaba como
+// registrado era del 19/10 06:35). T-minus no veía esa cerveza y marcaba como
 // «no alcanzable» el envasado que justamente sale de ahí. Ahora, si está
 // cargado el Programa de Cocinas, cada cocimiento suyo anterior al I0 cuenta
 // como cerveza en proceso cuando:

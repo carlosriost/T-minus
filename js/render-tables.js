@@ -1196,7 +1196,7 @@ let PP_AVISO_TIEMPOS = "";
         saveInventoryBalance();
         // EL PLAN ARRANCA CUANDO SE TOMÓ LA FOTO. Si el I0 queda después, lo
         // que se cocinó entre la foto y el I0 no aparece ni en el inventario
-        // ni en el plan, y FerIA ve envasado «sin cubrir» que en realidad ya
+        // ni en el plan, y T-minus ve envasado «sin cubrir» que en realidad ya
         // se cocinó. Se puede mover a mano después.
         let avisoI0 = "";
         if (filas.foto) {

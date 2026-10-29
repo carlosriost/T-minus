@@ -6,7 +6,7 @@
    envasado ya cargado (STATE.mergedByTrain), deducir el formato de un SKU,
    ubicar un instante en su semana y pintar tarjetas, barras y anillos con el
    mismo estilo del tablero de acuerdos existente.
-   Todo sale de los archivos que ya carga FerIA: no hay datos nuevos.
+   Todo sale de los archivos que ya carga T-minus: no hay datos nuevos.
    ========================================================================= */
 
 const MOD_NF = (x, d) =>

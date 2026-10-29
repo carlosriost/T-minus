@@ -1,18 +1,18 @@
 /* =========================================================================
    PLAN VS. REAL DE COCINAS
    -------------------------------------------------------------------------
-   Compara el plan de cocinas que FerIA calcula desde el plan de envasado
+   Compara el plan de cocinas que T-minus calcula desde el plan de envasado
    (STATE.seq, motor de engine.js) con el programa que de verdad publica el
    área de Cocinas (Excel «Programa_Cocinas.xlsx», que ya leyó
    programa-cocinas.js en PC.filas). Aquí NO se vuelve a leer el Excel.
 
    Por qué cada regla de la comparación:
-   · Ventana: del I0 al fin del último cocimiento del plan FerIA. Antes del I0
-     FerIA no programa nada (lo que hay es inventario) y después de su último
+   · Ventana: del I0 al fin del último cocimiento del plan T-minus. Antes del I0
+     T-minus no programa nada (lo que hay es inventario) y después de su último
      cocimiento no hay contra qué comparar. Del real solo entra lo que cae ahí.
-   · Mostos: FerIA tiene una sola Pony (GO y HG son el mismo mosto y se cuecen
+   · Mostos: T-minus tiene una sola Pony (GO y HG son el mismo mosto y se cuecen
      juntas), así que en el real Pony HG + Pony GO = Pony. Club Colombia no está
-     en el catálogo de FerIA: se muestra aparte, «solo en el real».
+     en el catálogo de T-minus: se muestra aparte, «solo en el real».
    · hL = cocimientos × hL por cocimiento del catálogo en los dos lados, para que
      la diferencia sea de cantidad y no de rendimiento de laboratorio.
    · Parejas: el n-ésimo cocimiento de un mosto en el plan contra el n-ésimo del
@@ -39,7 +39,7 @@ const PVR_MOSTOS = [
   { id: "light", nombre: "Light", cls: "pc-c3" },
   { id: "pony", nombre: "Pony (GO + HG)", cls: "pc-c4" },
 ];
-// Club Colombia: aún no está en el catálogo de mostos de FerIA (decisión de
+// Club Colombia: aún no está en el catálogo de mostos de T-minus (decisión de
 // Utilities/Elaboración: por el momento no se agrega), así que no tiene pareja.
 const PVR_CLUB = { id: "club", nombre: "Club Colombia", cls: "pc-c6" };
 // Topes de los acuerdos (los mismos que usan acuerdos.js y engine.js).
@@ -398,7 +398,7 @@ function pvrDiscrepancias(res) {
         sev: 3,
         tipo: "Envasado en riesgo",
         mosto: b.mosto,
-        txt: `El real no alcanza a tener listo «${b.etiqueta}» (tren ${b.tren || "—"}, envasa ${pvrFmt(b.deadline)}).${b.okPlan ? " FerIA sí lo cubre." : " FerIA tampoco."}`,
+        txt: `El real no alcanza a tener listo «${b.etiqueta}» (tren ${b.tren || "—"}, envasa ${pvrFmt(b.deadline)}).${b.okPlan ? " T-minus sí lo cubre." : " T-minus tampoco."}`,
         dato: b.real ? `${pvrFmtDesfase(b.retrasoRealH)} tarde` : `faltan ${b.faltanReal} coc.`,
         mag: b.real ? b.retrasoRealH : 1000 + b.faltanReal,
         // Se muestra el cocimiento del plan (está en la ventana) con su pareja real.
@@ -414,9 +414,9 @@ function pvrDiscrepancias(res) {
   Object.keys(porMosto).forEach((m) => {
     const o = porMosto[m];
     if (o.falt.length)
-      d.push({ sev: 3, tipo: "Faltan en el real", mosto: m, txt: `El plan FerIA tiene ${o.falt.length} cocimiento(s) de ${nom(m)} más que el real en la ventana (desde el ${pvrFmt(o.falt[0].plan.ms)}).`, dato: `−${o.falt.length} coc.`, mag: o.falt.length, ver: o.falt[0].plan.key });
+      d.push({ sev: 3, tipo: "Faltan en el real", mosto: m, txt: `El plan T-minus tiene ${o.falt.length} cocimiento(s) de ${nom(m)} más que el real en la ventana (desde el ${pvrFmt(o.falt[0].plan.ms)}).`, dato: `−${o.falt.length} coc.`, mag: o.falt.length, ver: o.falt[0].plan.key });
     if (o.sobr.length)
-      d.push({ sev: 1, tipo: "Sobran en el real", mosto: m, txt: `El real tiene ${o.sobr.length} cocimiento(s) de ${nom(m)} más que el plan FerIA (desde el ${pvrFmt(o.sobr[0].real.ms)}).`, dato: `+${o.sobr.length} coc.`, mag: o.sobr.length, ver: o.sobr[0].real.key });
+      d.push({ sev: 1, tipo: "Sobran en el real", mosto: m, txt: `El real tiene ${o.sobr.length} cocimiento(s) de ${nom(m)} más que el plan T-minus (desde el ${pvrFmt(o.sobr[0].real.ms)}).`, dato: `+${o.sobr.length} coc.`, mag: o.sobr.length, ver: o.sobr[0].real.key });
   });
   res.parejas
     .filter((p) => p.desfaseH != null && !p.dentro)
@@ -433,10 +433,10 @@ function pvrDiscrepancias(res) {
     );
   res.reglas.forEach((r) => {
     if (r.real.ok === false) d.push({ sev: 2, tipo: "Regla (real)", txt: `${r.nombre}: el plan real no cumple — ${r.real.txt}.`, dato: "incumple", mag: r.real.mag, ver: r.real.ver });
-    if (r.plan.ok === false) d.push({ sev: 1, tipo: "Regla (FerIA)", txt: `${r.nombre}: el plan FerIA no cumple — ${r.plan.txt}.`, dato: "incumple", mag: r.plan.mag, ver: r.plan.ver });
+    if (r.plan.ok === false) d.push({ sev: 1, tipo: "Regla (T-minus)", txt: `${r.nombre}: el plan T-minus no cumple — ${r.plan.txt}.`, dato: "incumple", mag: r.plan.mag, ver: r.plan.ver });
   });
   if (res.club.length)
-    d.push({ sev: 0, tipo: "Solo en el real", mosto: "club", txt: `${res.club.length} cocimiento(s) de Club Colombia: no está en el catálogo de FerIA, así que no tiene pareja.`, dato: `${res.club.length} coc.`, mag: res.club.length, ver: res.club[0].key });
+    d.push({ sev: 0, tipo: "Solo en el real", mosto: "club", txt: `${res.club.length} cocimiento(s) de Club Colombia: no está en el catálogo de T-minus, así que no tiene pareja.`, dato: `${res.club.length} coc.`, mag: res.club.length, ver: res.club[0].key });
   return d.sort((a, b) => b.sev - a.sev || b.mag - a.mag);
 }
 
@@ -451,7 +451,7 @@ function renderPlanVsReal() {
   // Avisos claros si falta alguno de los dos planes.
   const faltan = [];
   if (!src.cocF.length)
-    faltan.push(`<div class="pvr-falta"><b>Falta el plan FerIA.</b> Carga el plan de envasado y revisa el I0 en «Datos de entrada»: con eso FerIA calcula su plan de cocinas.<button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button></div>`);
+    faltan.push(`<div class="pvr-falta"><b>Falta el plan T-minus.</b> Carga el plan de envasado y revisa el I0 en «Datos de entrada»: con eso T-minus calcula su plan de cocinas.<button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button></div>`);
   if (!src.real || !src.real.some((x) => x.tipo === "coc"))
     faltan.push(`<div class="pvr-falta"><b>Falta el plan real.</b> Carga el Excel «Programa_Cocinas.xlsx» del área de Cocinas en el módulo «Programa de cocinas (Excel)».<button class="btn small" data-goto="view-programa-cocinas">Ir a Programa de cocinas →</button></div>`);
   if (faltan.length) {
@@ -462,7 +462,7 @@ function renderPlanVsReal() {
   // Filtros: la ventana se reinicia cuando cambian los planes.
   const finFeriaPlan = Math.max(...src.cocF.map((r) => r.end.getTime()));
   const ini = src.i0 != null ? Math.min(src.i0, src.cocF[0].start.getTime()) : src.cocF[0].start.getTime();
-  // Si el Excel real se acaba antes que el plan FerIA, la ventana se corta en
+  // Si el Excel real se acaba antes que el plan T-minus, la ventana se corta en
   // su último cargue: de ahí en adelante no hay contra qué comparar, y contar
   // esos cocimientos como «faltantes» del real sería falso.
   const ultReal = Math.max(...src.real.filter((x) => x.tipo === "coc" && x.inicio != null).map((x) => x.inicio));
@@ -494,7 +494,7 @@ function renderPlanVsReal() {
   const sinReal = !res.realTodos.some((c) => c.ms >= PVR_F.desde && c.ms <= PVR_F.hasta);
   const avisoCorte =
     PVR_F.cortadaPorReal && !sinReal
-      ? `<div class="pvr-falta"><b>El Excel real llega hasta el ${escapeHtml(pvrFmt(ultReal))}.</b> El plan FerIA sigue hasta el ${escapeHtml(pvrFmt(PVR_F.finFeriaPlan))}, así que la comparación se corta en el último cargue real. Para comparar más días, carga el Programa de cocinas actualizado.</div>`
+      ? `<div class="pvr-falta"><b>El Excel real llega hasta el ${escapeHtml(pvrFmt(ultReal))}.</b> El plan T-minus sigue hasta el ${escapeHtml(pvrFmt(PVR_F.finFeriaPlan))}, así que la comparación se corta en el último cargue real. Para comparar más días, carga el Programa de cocinas actualizado.</div>`
       : "";
   const avisoSolape = sinReal
     ? `<div class="pvr-falta"><b>El Excel real no tiene cocimientos en esta ventana.</b> Cubre del ${escapeHtml(pvrFmt(rIni))} de ${new Date(rIni).getUTCFullYear()} al ${escapeHtml(pvrFmt(rFin))} de ${new Date(rFin).getUTCFullYear()}; la ventana va del ${escapeHtml(pvrFmt(PVR_F.desde))} al ${escapeHtml(pvrFmt(PVR_F.hasta))}. Revisa el I0 o carga el programa de Cocinas de estas fechas.</div>`
@@ -502,14 +502,14 @@ function renderPlanVsReal() {
 
   cont.innerHTML = `
     <div class="panel">
-      ${titulo(`FerIA: ${src.cocF.length} cocimientos desde el I0 · Real: ${escapeHtml(src.pc.archivo || "Excel")} (${realCoc.length.toLocaleString("es-CO")} cocimientos)`)}
+      ${titulo(`T-minus: ${src.cocF.length} cocimientos desde el I0 · Real: ${escapeHtml(src.pc.archivo || "Excel")} (${realCoc.length.toLocaleString("es-CO")} cocimientos)`)}
       <div class="panel-body">
         ${pvrHtmlFiltros(res)}
         ${avisoSolape}${avisoCorte}
         <div class="acu-kpis pvr-kpis">${pvrHtmlKpis(res)}</div>
         <div class="pc-layout">
           <div class="acu-card">
-            <div class="acu-card-tit">Línea de tiempo: plan FerIA arriba, real de Cocinas abajo <small class="pc-sub">· misma escala · cada punto es un cargue · la línea une las parejas (roja si el desfase pasa de ${MOD_NF(PVR_F.tol, 1)} h) · clic para ver el detalle</small></div>
+            <div class="acu-card-tit">Línea de tiempo: plan T-minus arriba, real de Cocinas abajo <small class="pc-sub">· misma escala · cada punto es un cargue · la línea une las parejas (roja si el desfase pasa de ${MOD_NF(PVR_F.tol, 1)} h) · clic para ver el detalle</small></div>
             <div id="pvrLinea" class="pvr-linea"></div>
             ${pvrLeyenda()}
           </div>
@@ -519,7 +519,7 @@ function renderPlanVsReal() {
           <div class="acu-card"><div class="acu-card-tit">Plan vs. real por semana
             <span class="pvr-seg">${[["coc", "Cocimientos"], ["hl", "hL"]].map(([v, l]) => `<button class="pc-chip ${PVR_F.unidad === v ? "on" : ""}" data-pvr-unidad="${v}">${l}</button>`).join("")}</span></div>
             <div id="pvrBarras" class="pc-chart"></div>
-            <div class="legend pc-leyenda"><div class="item"><span class="sw pvr-sw-plan"></span>Plan FerIA (relleno)</div><div class="item"><span class="sw pvr-sw-real"></span>Real (rayado)</div>${PVR_F.unidad === "hl" && PVR_F.mostos.has("club") ? '<div class="item">Club Colombia no tiene hL de catálogo: solo se ve en «Cocimientos».</div>' : ""}</div>
+            <div class="legend pc-leyenda"><div class="item"><span class="sw pvr-sw-plan"></span>Plan T-minus (relleno)</div><div class="item"><span class="sw pvr-sw-real"></span>Real (rayado)</div>${PVR_F.unidad === "hl" && PVR_F.mostos.has("club") ? '<div class="item">Club Colombia no tiene hL de catálogo: solo se ve en «Cocimientos».</div>' : ""}</div>
           </div>
           <div class="acu-card"><div class="acu-card-tit">Por mosto y por semana <small class="pc-sub">· cocimientos y hL (cocimientos × hL del catálogo) · diferencia = real − plan</small></div>${pvrHtmlTablaSemanas(res)}</div>
         </div>
@@ -552,7 +552,7 @@ function pvrHtmlFiltros(res) {
   const esVentana = f.desde === f.ventana[0] && f.hasta === f.ventana[1];
   return `<div class="pc-filtros pvr-filtros">
     <div class="pc-fgrupo"><span class="pc-flab">Rango</span>
-      <button class="pc-chip ${esVentana ? "on" : ""}" data-pvr-ventana>I0 → último cocimiento FerIA</button>
+      <button class="pc-chip ${esVentana ? "on" : ""}" data-pvr-ventana>I0 → último cocimiento T-minus</button>
       <input type="date" class="pc-fecha" id="pvrDesde" value="${d2i(f.desde)}" aria-label="Desde">
       <span class="pc-flab">a</span>
       <input type="date" class="pc-fecha" id="pvrHasta" value="${d2i(f.hasta)}" aria-label="Hasta">
@@ -576,7 +576,7 @@ function pvrHtmlKpis(res) {
     modKpi("◍", "hL plan · real", `${MOD_NF(t.hlPlan)} <small>·</small> ${MOD_NF(t.hlReal)}`, `real − plan: ${pvrFmtDif(t.hlReal, t.hlPlan)} hL · hL del catálogo`) +
     modKpi("%", "Adherencia", a.pct == null ? "—" : `${MOD_NF(a.pct, 0)} <small>%</small>`, `${a.dentro} de ${a.base} cocimientos del plan con |desfase| ≤ ${MOD_NF(res.tol, 1)} h`, colAdh) +
     modKpi("⏱", "Desfase promedio", res.desfase.prom == null ? "—" : pvrFmtDesfase(res.desfase.prom), res.desfase.prom == null ? "Sin parejas" : `+ = el real arranca después · promedio sin signo ${pvrFmtDesfase(res.desfase.promAbs).replace(/^[+−±]/, "")}`) +
-    modKpi("⚠", "Bloques de envasado en riesgo con el real", `${c.enRiesgoReal} <small>de ${c.bloques.length}</small>`, `no alcanzan a tener la cerveza lista · con FerIA: ${c.enRiesgoPlan}`, c.enRiesgoReal ? "var(--danger)" : "var(--ok)")
+    modKpi("⚠", "Bloques de envasado en riesgo con el real", `${c.enRiesgoReal} <small>de ${c.bloques.length}</small>`, `no alcanzan a tener la cerveza lista · con T-minus: ${c.enRiesgoPlan}`, c.enRiesgoReal ? "var(--danger)" : "var(--ok)")
   );
 }
 
@@ -622,7 +622,7 @@ function pvrDibujarLinea(res) {
   // I0.
   if (res.desde === PVR_F.ventana[0]) s.push(`<line class="pvr-i0" x1="${x(res.desde)}" y1="${ejeH - 4}" x2="${x(res.desde)}" y2="${H - 8}"></line><text class="pc-ax pvr-i0-t" x="${x(res.desde) + 4}" y="${ejeH - 20}">I0</text>`);
   // Aseos (plan) y aseos/paros (real).
-  res.aseosPlan.forEach((a) => s.push(`<rect class="pc-ev pc-aseo" x="${x(a.ms)}" y="${yP + 8}" width="${Math.max(2, x(Math.min(a.fin, res.hasta)) - x(a.ms))}" height="${carril - 16}" data-pvr-tip="${escapeHtml(`Aseo FerIA · ${pvrFmt(a.ms)} → ${pvrFmt(a.fin)}`)}"></rect>`));
+  res.aseosPlan.forEach((a) => s.push(`<rect class="pc-ev pc-aseo" x="${x(a.ms)}" y="${yP + 8}" width="${Math.max(2, x(Math.min(a.fin, res.hasta)) - x(a.ms))}" height="${carril - 16}" data-pvr-tip="${escapeHtml(`Aseo T-minus · ${pvrFmt(a.ms)} → ${pvrFmt(a.fin)}`)}"></rect>`));
   res.eventosReal.forEach((e) => {
     const cls = e.id === "paro" ? "pc-paro" : e.id === "propagador" ? "pc-prop" : "pc-aseo";
     const a = Math.max(e.ms, res.desde);
@@ -639,7 +639,7 @@ function pvrDibujarLinea(res) {
   };
   res.plan.forEach((c) => s.push(punto(c, cP)));
   res.real.forEach((c) => s.push(punto(c, cR)));
-  const etiquetas = `<div class="pvr-lab" style="height:${ejeH}px"></div><div class="pvr-lab" style="height:${carril}px"><b>Plan FerIA</b><small>${res.plan.length} cargues</small></div><div class="pvr-lab pvr-lab-h" style="height:${hueco}px"><small>parejas</small></div><div class="pvr-lab" style="height:${carril}px"><b>Real (Cocinas)</b><small>${res.real.length} cargues</small></div>`;
+  const etiquetas = `<div class="pvr-lab" style="height:${ejeH}px"></div><div class="pvr-lab" style="height:${carril}px"><b>Plan T-minus</b><small>${res.plan.length} cargues</small></div><div class="pvr-lab pvr-lab-h" style="height:${hueco}px"><small>parejas</small></div><div class="pvr-lab" style="height:${carril}px"><b>Real (Cocinas)</b><small>${res.real.length} cargues</small></div>`;
   cont.innerHTML = `<div class="pvr-tl"><div class="pvr-labs">${etiquetas}</div><div class="pvr-svgwrap" id="pvrSvgWrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="pvr-svg">${s.join("")}</svg></div></div>`;
   // Centrar lo elegido si existe.
   if (PVR_SEL) {
@@ -680,7 +680,7 @@ function pvrDibujarBarras(res) {
         const v = val(o, lado);
         if (m === "club" && lado === "plan") return;
         const yy = y(v);
-        const tip = `${pvrInfo(m).nombre} · semana del ${fmtDate(new Date(w.semana))} · ${lado === "plan" ? "Plan FerIA" : "Real"}: ${MOD_NF(o[lado])} coc.${o.hlPlan != null ? ` · ${MOD_NF(lado === "plan" ? o.hlPlan : o.hlReal)} hL` : ""}`;
+        const tip = `${pvrInfo(m).nombre} · semana del ${fmtDate(new Date(w.semana))} · ${lado === "plan" ? "Plan T-minus" : "Real"}: ${MOD_NF(o[lado])} coc.${o.hlPlan != null ? ` · ${MOD_NF(lado === "plan" ? o.hlPlan : o.hlReal)} hL` : ""}`;
         s.push(`<rect class="${lado === "plan" ? pvrInfo(m).cls : "pvr-barra-real"}" ${lado === "real" ? `fill="url(#pvrRay-${m})" stroke="var(--pc-c${pvrInfo(m).cls.slice(-1)})"` : ""} x="${bx + k * bw}" y="${yy}" width="${bw - 1}" height="${Math.max(0, H - bot - yy)}" rx="1.5" data-pvr-tip="${escapeHtml(tip)}"></rect>`);
         if (v > 0 && bw >= 9) s.push(`<text class="pc-ax pvr-bv" x="${bx + k * bw + (bw - 1) / 2}" y="${yy - 3}" text-anchor="middle">${hl ? MOD_NF(v / 1000, 1) + "k" : MOD_NF(v)}</text>`);
       });
@@ -708,7 +708,7 @@ function pvrHtmlTablaSemanas(res) {
 }
 
 function pvrHtmlDiscrepancias(res) {
-  if (!res.discrepancias.length) return '<p class="empty-note">Sin discrepancias: el real sigue al plan FerIA dentro de la tolerancia.</p>';
+  if (!res.discrepancias.length) return '<p class="empty-note">Sin discrepancias: el real sigue al plan T-minus dentro de la tolerancia.</p>';
   const sev = ["Info", "Baja", "Media", "Alta"];
   return `<div class="table-scroll" style="max-height:360px;"><table class="acu-tabla pvr-disc"><thead><tr><th>Gravedad</th><th>Tipo</th><th>Qué pasa</th><th class="num">Dato</th><th></th></tr></thead><tbody>${res.discrepancias
     .map(
@@ -733,13 +733,13 @@ function pvrHtmlSecuencia(res) {
           : '<span class="pc-sub">Sin cocimientos en la ventana.</span>'
       }</div>
     </div>`;
-  return lado("Plan FerIA", res.secuencia.plan) + lado("Real (Cocinas)", res.secuencia.real);
+  return lado("Plan T-minus", res.secuencia.plan) + lado("Real (Cocinas)", res.secuencia.real);
 }
 
 function pvrHtmlReglas(res) {
   const ico = (ok) => (ok === true ? '<span class="pvr-ok">✓</span>' : ok === false ? '<span class="pvr-no">✗</span>' : '<span class="pc-sub">n/a</span>');
-  const mejor = { plan: "Plan FerIA", real: "Real", empate: "Empate", "—": "—" };
-  return `<table class="acu-tabla pvr-reglas"><thead><tr><th>Regla</th><th>Plan FerIA</th><th>Real (Cocinas)</th><th>Cumple mejor</th></tr></thead><tbody>${res.reglas
+  const mejor = { plan: "Plan T-minus", real: "Real", empate: "Empate", "—": "—" };
+  return `<table class="acu-tabla pvr-reglas"><thead><tr><th>Regla</th><th>Plan T-minus</th><th>Real (Cocinas)</th><th>Cumple mejor</th></tr></thead><tbody>${res.reglas
     .map(
       (r) => `<tr><td class="rec-imp"><b>${escapeHtml(r.nombre)}</b></td><td class="rec-imp">${ico(r.plan.ok)} ${escapeHtml(r.plan.txt)}${r.plan.ver ? ` <button class="pc-mini" data-pvr-ver="${r.plan.ver}">ver</button>` : ""}</td><td class="rec-imp">${ico(r.real.ok)} ${escapeHtml(r.real.txt)}${r.real.ver ? ` <button class="pc-mini" data-pvr-ver="${r.real.ver}">ver</button>` : ""}</td><td class="rec-imp"><b class="pvr-mejor-${r.mejor}">${mejor[r.mejor]}</b></td></tr>`,
     )
@@ -748,22 +748,22 @@ function pvrHtmlReglas(res) {
 
 function pvrHtmlCobertura(res) {
   const c = res.cobertura;
-  if (!c.bloques.length) return '<p class="empty-note">No hay bloques de envasado con fecha en el plan FerIA para los mostos elegidos.</p>';
+  if (!c.bloques.length) return '<p class="empty-note">No hay bloques de envasado con fecha en el plan T-minus para los mostos elegidos.</p>';
   const estado = (ok, ret, falt) => (ok ? `<span class="pvr-ok">✓ a tiempo</span>${ret != null ? ` <small class="pc-sub">${pvrFmtDesfase(ret)}</small>` : ""}` : falt ? `<span class="pvr-no">✗ faltan ${falt} coc.</span>` : `<span class="pvr-no">✗ ${pvrFmtDesfase(ret)} tarde</span>`);
   const orden = [...c.bloques].sort((a, b) => (a.okReal === b.okReal ? a.deadline - b.deadline : a.okReal ? 1 : -1));
   const lista = (titulo, l) => `<div class="pvr-cob-l"><b>${titulo}</b><span>${l.length ? l.map((b) => escapeHtml(b.etiqueta)).join(" · ") : "ninguno"}</span></div>`;
   return `
     <div class="pvr-cob-res">
-      ${lista(`El real NO cubre a tiempo y FerIA sí (${c.realNoFeriaSi.length})`, c.realNoFeriaSi)}
-      ${lista(`FerIA no cubre y el real sí (${c.feriaNoRealSi.length})`, c.feriaNoRealSi)}
+      ${lista(`El real NO cubre a tiempo y T-minus sí (${c.realNoFeriaSi.length})`, c.realNoFeriaSi)}
+      ${lista(`T-minus no cubre y el real sí (${c.feriaNoRealSi.length})`, c.feriaNoRealSi)}
       ${lista(`Ninguno de los dos cubre (${c.ninguno.length})`, c.ninguno)}
     </div>
-    <div class="table-scroll" style="max-height:340px;"><table class="acu-tabla pvr-cob"><thead><tr><th>Bloque de envasado</th><th>Tren</th><th>Primer envasado</th><th class="num">Coc. acumulados</th><th>Cargue a más tardar</th><th>Plan FerIA</th><th>Real</th><th></th></tr></thead><tbody>${orden
+    <div class="table-scroll" style="max-height:340px;"><table class="acu-tabla pvr-cob"><thead><tr><th>Bloque de envasado</th><th>Tren</th><th>Primer envasado</th><th class="num">Coc. acumulados</th><th>Cargue a más tardar</th><th>Plan T-minus</th><th>Real</th><th></th></tr></thead><tbody>${orden
       .map(
         (b) => `<tr class="${b.okReal ? "" : "pvr-fila-riesgo"}"><td class="rec-imp"><span class="pc-dot ${pvrInfo(b.mosto).cls}"></span>${escapeHtml(b.etiqueta)}</td><td>${escapeHtml(String(b.tren || "—"))}</td><td>${escapeHtml(pvrFmt(b.deadline))}</td><td class="num">${b.acum}</td><td>${escapeHtml(pvrFmt(b.limite))}</td><td>${estado(b.okPlan, b.retrasoPlanH, b.faltanPlan)}</td><td>${estado(b.okReal, b.retrasoRealH, b.faltanReal)}</td><td>${(b.plan || b.real) ? `<button class="btn small" data-pvr-ver="${(b.plan || b.real).key}">Ver</button>` : ""}</td></tr>`,
       )
       .join("")}</tbody></table></div>
-    <p class="acu-nota">Se asume que los cocimientos reales de cada mosto, contados desde el I0 y en orden, alimentan los mismos bloques que el plan FerIA. El tiempo entre paréntesis es la holgura (− = llegó antes del límite).</p>`;
+    <p class="acu-nota">Se asume que los cocimientos reales de cada mosto, contados desde el I0 y en orden, alimentan los mismos bloques que el plan T-minus. El tiempo entre paréntesis es la holgura (− = llegó antes del límite).</p>`;
 }
 
 function pvrHtmlParejas(res) {
@@ -807,8 +807,8 @@ function pvrHtmlDetalle(res) {
   const m = pvrInfo(c.mosto);
   const d = par ? par.desfaseH : null;
   const ladoPlan = p
-    ? `${fila("Cargue", escapeHtml(pvrFmt(p.ms)))}${fila("Fin de cocina", escapeHtml(pvrFmt(p.fin)))}${fila("Bloque", escapeHtml(p.row.blockLabel || "—"))}${fila("Tren", escapeHtml(String(p.row.tren || "—")))}${fila("Primer envasado", escapeHtml(pvrFmt(p.row.deadline && p.row.deadline.getTime())))}${p.row.violaDeadline ? fila("Ojo", '<span class="pvr-no">FerIA también llega tarde a este bloque</span>') : ""}`
-    : `<p class="empty-note">${c.mosto === "club" ? "Club Colombia no está en el catálogo de FerIA." : !enVentana ? "Este cocimiento está fuera de la ventana de comparación: no tiene pareja." : "El plan FerIA no tiene este cocimiento: sobra en el real."}</p>`;
+    ? `${fila("Cargue", escapeHtml(pvrFmt(p.ms)))}${fila("Fin de cocina", escapeHtml(pvrFmt(p.fin)))}${fila("Bloque", escapeHtml(p.row.blockLabel || "—"))}${fila("Tren", escapeHtml(String(p.row.tren || "—")))}${fila("Primer envasado", escapeHtml(pvrFmt(p.row.deadline && p.row.deadline.getTime())))}${p.row.violaDeadline ? fila("Ojo", '<span class="pvr-no">T-minus también llega tarde a este bloque</span>') : ""}`
+    : `<p class="empty-note">${c.mosto === "club" ? "Club Colombia no está en el catálogo de T-minus." : !enVentana ? "Este cocimiento está fuera de la ventana de comparación: no tiene pareja." : "El plan T-minus no tiene este cocimiento: sobra en el real."}</p>`;
   const x = r ? r.x : null;
   const ladoReal = r
     ? `${fila("N.º", x.n != null ? "#" + x.n : "—")}${fila("Cargue (D)", escapeHtml(pvrFmt(r.ms)))}${fila("Fin (F)", escapeHtml(pvrFmt(x.fin)))}${fila("Equipo destino (G)", x.equipo ? `${escapeHtml(x.equipo)} <small class="pc-sub">· ${escapeHtml(x.grupo || "")}</small>` : "—")}${x.lev ? fila("Levadura", escapeHtml(`${x.lev.tanque}${x.lev.lote ? " · lote " + x.lev.lote : ""}`)) : ""}${x.ef && x.ef.volFrio != null ? fila("Mosto frío (EFICIENCIAS)", MOD_NF(x.ef.volFrio) + " hL") : ""}${fila("Texto en el Excel", escapeHtml(x.texto))}
@@ -817,7 +817,7 @@ function pvrHtmlDetalle(res) {
     : `<p class="empty-note">${!enVentana ? "Este cocimiento está fuera de la ventana de comparación: no tiene pareja." : "El real no tiene este cocimiento en la ventana: falta."}</p>`;
   return `<div class="acu-card-tit pc-det-tit"><span class="pc-dot ${m.cls}"></span>${escapeHtml(m.nombre)}${par ? ` · n.º ${par.k}` : ""}</div>
     <div class="pvr-desf ${d == null ? "" : par.dentro ? "ok" : "mal"}"><span>Desfase de arranque</span><b>${pvrFmtDesfase(d)}</b><small>${d == null ? (enVentana ? "sin pareja" : "fuera de la ventana") : d > 0 ? "el real arranca después" : d < 0 ? "el real arranca antes" : "a la misma hora"} · tolerancia ±${MOD_NF(PVR_F.tol, 1)} h</small></div>
-    <div class="pc-sec">Plan FerIA</div>${ladoPlan}
+    <div class="pc-sec">Plan T-minus</div>${ladoPlan}
     <div class="pc-sec">Real (Cocinas)</div>${ladoReal}`;
 }
 
@@ -854,7 +854,7 @@ function pvrConectarLinea() {
       const c = [...res.plan, ...res.real].find((z) => z.key === k);
       if (!c) return;
       const par = c.par;
-      const lineas = [{ v: pvrFmt(c.ms), l: c.lado === "plan" ? "cargue plan FerIA" : "cargue real", cls: pvrInfo(c.mosto).cls }];
+      const lineas = [{ v: pvrFmt(c.ms), l: c.lado === "plan" ? "cargue plan T-minus" : "cargue real", cls: pvrInfo(c.mosto).cls }];
       if (par && par.plan && par.real) lineas.push({ v: pvrFmt(c.lado === "plan" ? par.real.ms : par.plan.ms), l: c.lado === "plan" ? "cargue real" : "cargue plan" }, { v: pvrFmtDesfase(par.desfaseH), l: "desfase" });
       else lineas.push({ v: c.mosto === "club" ? "solo en el real" : c.lado === "plan" ? "falta en el real" : "sobra en el real", l: "" });
       if (c.lado === "real" && c.x.equipo) lineas.push({ v: c.x.equipo, l: "equipo" });

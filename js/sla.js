@@ -6,7 +6,7 @@
    tema accent6, #70AD47): son 15 de los 100. El resto (azul claro, amarillo,
    blanco o sin color) no se incluye.
 
-   Cada acuerdo se mide, cuando se puede, sobre lo que FerIA ya calcula:
+   Cada acuerdo se mide, cuando se puede, sobre lo que T-minus ya calcula:
      · la programación de cocinas (secuencia de cocimientos),
      · el plan de envasado cargado (líneas, formatos, hL),
      · el plan de filtración (si se llenó),
@@ -263,7 +263,7 @@ function evaluarSLA() {
       detalle: e
         ? e.detalle
         : a.n === 19
-          ? "Pide el inventario de BBT por marca justo antes de cada filtración; FerIA todavía no lo calcula. Se sigue en el histórico del Excel."
+          ? "Pide el inventario de BBT por marca justo antes de cada filtración; T-minus todavía no lo calcula. Se sigue en el histórico del Excel."
           : a.n === 26
             ? "Llena el Gantt de filtración (flujo, I0, tamaño de ciclo y secuencia) para medirlo."
             : "Carga el plan de envasado (y la programación de cocinas) para medirlo.",

@@ -1,13 +1,13 @@
 /* =========================================================================
-   ASISTENTE DE FerIA (chatbot)
+   ASISTENTE DE T-minus (chatbot)
    -------------------------------------------------------------------------
    Responde preguntas sobre el plan cargado. Dos modos:
-   · Respuestas de FerIA (siempre): se calculan aquí mismo con los datos de
+   · Respuestas de T-minus (siempre): se calculan aquí mismo con los datos de
      la app —plan de cocinas, trazabilidad, tanques, setpoints, frío, alertas—,
      así que son exactas y no salen del navegador.
    · Respuestas con IA (opcional): si Utilities lo activa con su propia clave
      de la API de Claude, la pregunta se manda junto con un resumen del plan y
-     la respuesta calculada por FerIA, para que la IA redacte o razone sobre
+     la respuesta calculada por T-minus, para que la IA redacte o razone sobre
      preguntas más abiertas. Apagado por defecto: activarlo envía datos del plan
      a la API de Anthropic, y así se le dice al usuario.
    ========================================================================= */
@@ -149,7 +149,7 @@ function asFichaCoc(c, t) {
   const fv = c.fv && c.fv.length ? c.fv.map((x) => x.tanque).join(", ") : c.mostoId === "pony" ? "— (la Pony no fermenta: va directo a SV Pony)" : "— (sin FV asignado)";
   return `<p><b>${asEsc(asNom(c.mostoId))} · cocimiento n.º ${c.n}</b> — cargue ${asEsc(asF(c.ms))}, fin de cocina ${asEsc(asF(c.fin))}.</p>
     <p>Fermenta en <b>${asEsc(fv)}</b>, se trasiega a maduración el ${asEsc(asF(c.trasiego))}${c.sv && c.sv.length ? ` (${asEsc(c.sv.join(", "))})` : ""} y queda listo el ${asEsc(asF(c.listo))}.${c.tarde || c.tardeTanque ? ' <span class="pvr-no">⚠ Llega tarde a su envasado.</span>' : ""}</p>
-    <p>Se envasa en:</p>${asDestinos(c)}<p class="as-sub">Estado a las ${asEsc(asF(t != null ? t : asAhora()))}: ${asEsc(e.txt)}.</p>${typeof asFuente === "function" ? asFuente("plan FerIA calculado desde el I0 y asignación de tanques.") : ""}${asVer(c.key)}`;
+    <p>Se envasa en:</p>${asDestinos(c)}<p class="as-sub">Estado a las ${asEsc(asF(t != null ? t : asAhora()))}: ${asEsc(e.txt)}.</p>${typeof asFuente === "function" ? asFuente("plan T-minus calculado desde el I0 y asignación de tanques.") : ""}${asVer(c.key)}`;
 }
 
 // Motor local: devuelve {html, texto} con la respuesta calculada.
@@ -159,7 +159,7 @@ function asResponderLocal(q) {
   const n = typeof asCorregir === "function" ? asCorregir(asNorm(q)) : asNorm(q);
   q = n;
   const d = asDatos();
-  const sinPlan = '<p>Todavía no hay un plan cargado. Carga el plan de envasado en «Datos de entrada» y revisa el I0: con eso FerIA calcula el plan de cocinas y puedo responder.</p><button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>';
+  const sinPlan = '<p>Todavía no hay un plan cargado. Carga el plan de envasado en «Datos de entrada» y revisa el I0: con eso T-minus calcula el plan de cocinas y puedo responder.</p><button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>';
 
   if (/^(hola|buenas|buenos dias|buenas tardes)\b/.test(n) && n.length < 25)
     return { html: `<p>¡Hola! Pregúntame por el plan de cocinas: qué se está cocinando, a dónde va cada cocimiento, de dónde sale un envasado, alertas, frío o setpoints.</p>${asHtmlEjemplos()}` };
@@ -229,7 +229,7 @@ function asResponderLocal(q) {
     const otros = enProceso.filter((x) => x !== c);
     if (otros.length)
       nota += `<p class="as-sub">También estaban en la cocina: ${otros.map((x) => `${asEsc(asNom(x.mostoId))} n.º ${x.n} (cargue ${asEsc(asF(x.ms))})`).join(", ")}.</p>`;
-    if (!c) return { html: `<p>El ${asEsc(asF(t.ms))} no hay ningún cocimiento en la cocina según el plan FerIA${t.ms < d.desde || t.ms > d.hasta ? ` (el plan cargado va del ${asEsc(asF(d.desde))} al ${asEsc(asF(d.hasta))})` : ""}.</p>` };
+    if (!c) return { html: `<p>El ${asEsc(asF(t.ms))} no hay ningún cocimiento en la cocina según el plan T-minus${t.ms < d.desde || t.ms > d.hasta ? ` (el plan cargado va del ${asEsc(asF(d.desde))} al ${asEsc(asF(d.hasta))})` : ""}.</p>` };
     return { html: `<p>El ${asEsc(asF(t.ms))} en la cocina está:</p>${nota}${asFichaCoc(c, t.ms)}` };
   }
 
@@ -290,7 +290,7 @@ function asResponderLocal(q) {
     const mm = asMosto(q);
     const keys = Object.keys(porM).filter((k) => !mm || k === mm);
     return {
-      html: `<p>Plan FerIA: <b>${d.cocs.length}</b> cocimientos.</p><table class="acu-tabla as-tabla"><thead><tr><th>Mosto</th><th class="num">Cocimientos</th><th class="num">hL a envasar que cubren</th></tr></thead><tbody>${keys.map((k) => `<tr><td>${asEsc(asNom(k))}</td><td class="num">${porM[k].n}</td><td class="num">${MOD_NF(porM[k].hl)}</td></tr>`).join("")}</tbody></table><p class="as-sub">Lo que cubre el inventario no genera cocimientos.</p>`,
+      html: `<p>Plan T-minus: <b>${d.cocs.length}</b> cocimientos.</p><table class="acu-tabla as-tabla"><thead><tr><th>Mosto</th><th class="num">Cocimientos</th><th class="num">hL a envasar que cubren</th></tr></thead><tbody>${keys.map((k) => `<tr><td>${asEsc(asNom(k))}</td><td class="num">${porM[k].n}</td><td class="num">${MOD_NF(porM[k].hl)}</td></tr>`).join("")}</tbody></table><p class="as-sub">Lo que cubre el inventario no genera cocimientos.</p>`,
     };
   }
 
@@ -328,12 +328,12 @@ function asResponderLocal(q) {
     const pc = typeof PC !== "undefined" ? PC : null;
     const inv = typeof INVENTORY_BALANCE !== "undefined" && Array.isArray(INVENTORY_BALANCE) && INVENTORY_BALANCE.length;
     const nota = inv
-      ? "<p>Ojo: el archivo «PRODUCTO EN PROCESO» es el <b>inventario</b> de FV, SV y BBT (lo que ya está fermentando, madurando o listo). FerIA lo usa para descontar lo que no hay que cocinar, pero no es el plan de cocinas.</p>"
+      ? "<p>Ojo: el archivo «PRODUCTO EN PROCESO» es el <b>inventario</b> de FV, SV y BBT (lo que ya está fermentando, madurando o listo). T-minus lo usa para descontar lo que no hay que cocinar, pero no es el plan de cocinas.</p>"
       : "";
     const coc = pc && pc.filas ? pc.filas.filter((x) => x.tipo === "coc" && x.inicio != null) : [];
     if (!coc.length)
       return {
-        html: `<p>No aparece porque el <b>plan real de cocinas</b> sale de otro archivo: el Excel «Programa_Cocinas.xlsx» del área de Cocinas, que se carga en el módulo «Programa de cocinas (Excel)». En este navegador todavía no hay ninguno cargado.</p>${nota}<p>Lo que sí está: el plan de cocinas que FerIA calcula desde el instructivo de envasado (${d.cocs.length} cocimientos).</p><button class="btn small" data-goto="view-programa-cocinas">Ir a Programa de cocinas (Excel) →</button>`,
+        html: `<p>No aparece porque el <b>plan real de cocinas</b> sale de otro archivo: el Excel «Programa_Cocinas.xlsx» del área de Cocinas, que se carga en el módulo «Programa de cocinas (Excel)». En este navegador todavía no hay ninguno cargado.</p>${nota}<p>Lo que sí está: el plan de cocinas que T-minus calcula desde el instructivo de envasado (${d.cocs.length} cocimientos).</p><button class="btn small" data-goto="view-programa-cocinas">Ir a Programa de cocinas (Excel) →</button>`,
       };
     const ini = Math.min(...coc.map((x) => x.inicio));
     const fin = Math.max(...coc.map((x) => x.inicio));
@@ -343,7 +343,7 @@ function asResponderLocal(q) {
     const enVentana = coc.filter((x) => x.inicio >= i0 && x.inicio <= ultFeria + 9 * AS_H).length;
     return {
       html: `<p>Sí hay un plan real cargado: <b>${asEsc(pc.archivo || "Programa de cocinas")}</b>, con cargues del ${asEsc(asF(ini))} de ${new Date(ini).getUTCFullYear()} al ${asEsc(asF(fin))}.</p>
-        <p>Plan vs. real compara desde el I0 (${asEsc(asF(i0))}) hasta el último cocimiento de FerIA (${asEsc(asF(ultFeria))}). En esa ventana el Excel real tiene <b>${enVentana}</b> cocimiento(s).${
+        <p>Plan vs. real compara desde el I0 (${asEsc(asF(i0))}) hasta el último cocimiento de T-minus (${asEsc(asF(ultFeria))}). En esa ventana el Excel real tiene <b>${enVentana}</b> cocimiento(s).${
           enVentana
             ? ""
             : fin < i0
@@ -356,7 +356,7 @@ function asResponderLocal(q) {
   // Plan vs. real.
   if (/real|adherencia|compar/.test(n) && typeof PVR_ULTIMO !== "undefined" && PVR_ULTIMO) {
     const r = PVR_ULTIMO;
-    return { html: `<p>Plan FerIA vs. real (última comparación abierta): ${r.tot.cocPlan} vs. ${r.tot.cocReal} cocimientos, adherencia ${r.adherencia.pct == null ? "—" : MOD_NF(r.adherencia.pct, 0) + " %"} con ±${MOD_NF(r.tol, 1)} h, desfase promedio ${typeof pvrFmtDesfase === "function" ? pvrFmtDesfase(r.desfase.prom) : "—"}, ${r.cobertura.enRiesgoReal} bloque(s) de envasado en riesgo con el real.</p><button class="btn small" data-goto="view-plan-vs-real">Ver Plan vs. real →</button>` };
+    return { html: `<p>Plan T-minus vs. real (última comparación abierta): ${r.tot.cocPlan} vs. ${r.tot.cocReal} cocimientos, adherencia ${r.adherencia.pct == null ? "—" : MOD_NF(r.adherencia.pct, 0) + " %"} con ±${MOD_NF(r.tol, 1)} h, desfase promedio ${typeof pvrFmtDesfase === "function" ? pvrFmtDesfase(r.desfase.prom) : "—"}, ${r.cobertura.enRiesgoReal} bloque(s) de envasado en riesgo con el real.</p><button class="btn small" data-goto="view-plan-vs-real">Ver Plan vs. real →</button>` };
   }
 
   return {
@@ -372,7 +372,7 @@ function asHtmlReglas() {
   const cat = (MOSTO_CATALOG || [])
     .map((m) => `<li><b>${asEsc(m.nombre)}</b>: factor ${MOD_NF(m.factorDilucion, 2)}, ${MOD_NF(m.volumenPorCocimiento)} hL por cocimiento, cocina ${MOD_NF(m.tiempoCocinaHoras, 2)} h, fermentación ${MOD_NF(m.tiempoFermentacionHoras)} h, maduración ${MOD_NF(m.tiempoMaduracionHoras)} h${m.tiempoMaxBBTHoras ? `, máx. ${MOD_NF(m.tiempoMaxBBTHoras)} h en BBT` : ""}.</li>`)
     .join("");
-  return `<p>Cómo arma FerIA el plan de cocinas:</p><ol>
+  return `<p>Cómo arma T-minus el plan de cocinas:</p><ol>
     <li>Toma lo que falta por envasar y le descuenta el inventario del Producto en proceso, cada tanque solo desde que está listo (días contados hasta la hora de la foto).</li>
     <li>Arma la demanda en el tiempo por mosto: el cocimiento n.º k se necesita cuando la demanda acumulada pasa de k rendimientos (factor × hL por cocimiento).</li>
     <li>Cargue a más tardar de cada cocimiento = necesidad − maduración − fermentación − cocina.</li>
@@ -425,12 +425,12 @@ async function asResponderIA(pregunta, local) {
     .filter((m) => m.texto)
     .slice(-6)
     .map((m) => ({ role: m.rol === "yo" ? "user" : "assistant", content: m.texto }));
-  const sistema = `Eres el asistente de FerIA, la app de planeación de la Cervecería de Itagüí (Bavaria). Respondes en español, claro y breve, a personal de Utilities y Planeación.
+  const sistema = `Eres el asistente de T-minus, la app de planeación de la Cervecería de Itagüí (Bavaria). Respondes en español, claro y breve, a personal de Utilities y Planeación.
 Usa SOLO los datos del plan que vienen en el contexto (JSON). Las fechas están en hora local de planta (Bogotá). Si algo no está en los datos, dilo; no inventes. No hagas cuentas aproximadas: si una cifra no está en el contexto ni en la respuesta calculada, di que no la tienes. Al final di de qué dato del contexto sale la respuesta (fuente).
-Si viene una «respuesta calculada por FerIA», es exacta: úsala como base y amplíala si la pregunta lo pide.
+Si viene una «respuesta calculada por T-minus», es exacta: úsala como base y amplíala si la pregunta lo pide.
 CONTEXTO:
 ${JSON.stringify(asContextoIA())}`;
-  const msgs = [...historia, { role: "user", content: `${pregunta}${local && !local.sinEntender ? `\n\n(Respuesta calculada por FerIA: ${asTexto(local.html)})` : ""}` }];
+  const msgs = [...historia, { role: "user", content: `${pregunta}${local && !local.sinEntender ? `\n\n(Respuesta calculada por T-minus: ${asTexto(local.html)})` : ""}` }];
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -479,8 +479,9 @@ function asMontar() {
   fab.id = "asFab";
   fab.className = "as-fab";
   fab.type = "button";
-  fab.title = "Preguntarle a FerIA";
-  fab.innerHTML = '<span aria-hidden="true">💬</span><span class="as-fab-t">Pregúntale a FerIA</span>';
+  fab.title = "Preguntarle a T-minus";
+  fab.setAttribute("aria-label", "Preguntarle a T-minus");
+  fab.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg><span class="as-fab-t">Pregúntale a T-minus</span>';
   document.body.appendChild(fab);
   const panel = document.createElement("div");
   panel.id = "asPanel";
@@ -501,9 +502,9 @@ function asPintar() {
   const cfg = asConfig();
   const msgs = AS.msgs.length
     ? AS.msgs.map((m) => `<div class="as-msg as-${m.rol}">${m.rol === "yo" ? `<p>${asEsc(m.texto)}</p>` : m.html}${m.fuente ? `<div class="as-fuente">${asEsc(m.fuente)}</div>` : ""}</div>`).join("")
-    : `<div class="as-msg as-bot"><p>Hola, soy el asistente de FerIA. Respondo con el plan cargado: cocimientos, a dónde va cada uno, de dónde sale cada envasado, tanques, alertas, frío y setpoints.</p>${asHtmlEjemplos()}</div>`;
+    : `<div class="as-msg as-bot"><p>Hola, soy el asistente de T-minus. Respondo con el plan cargado: cocimientos, a dónde va cada uno, de dónde sale cada envasado, tanques, alertas, frío y setpoints.</p>${asHtmlEjemplos()}</div>`;
   panel.innerHTML = `
-    <div class="as-head"><b>Asistente FerIA</b><span class="as-modo">${cfg.ia && cfg.clave ? "IA activada" : "Respuestas de FerIA"}</span>
+    <div class="as-head"><b>Asistente T-minus</b><span class="as-modo">${cfg.ia && cfg.clave ? "IA activada" : "Respuestas de T-minus"}</span>
       <button class="as-icon" data-as-conf title="Configuración">⚙</button><button class="as-icon" data-as-limpiar title="Borrar conversación">⟲</button><button class="as-icon" data-as-cerrar title="Cerrar">✕</button></div>
     <div class="as-conf" id="asConf" hidden>
       <label class="as-check"><input type="checkbox" id="asIa" ${cfg.ia ? "checked" : ""}> Respuestas con IA (Claude)</label>
@@ -541,9 +542,9 @@ async function asPreguntar(texto) {
     asPintar();
     try {
       const r = await asResponderIA(texto, local);
-      AS.msgs.push({ rol: "bot", html: asMarkdown(r) + (local && !local.sinEntender ? `<details class="as-det"><summary>Datos calculados por FerIA</summary>${local.html}</details>` : ""), texto: r, fuente: `IA · ${cfg.modelo}` });
+      AS.msgs.push({ rol: "bot", html: asMarkdown(r) + (local && !local.sinEntender ? `<details class="as-det"><summary>Datos calculados por T-minus</summary>${local.html}</details>` : ""), texto: r, fuente: `IA · ${cfg.modelo}` });
     } catch (e) {
-      AS.msgs.push({ rol: "bot", html: local.html, texto: asTexto(local.html), fuente: `Respuesta de FerIA (no se pudo usar la IA: ${e.message})` });
+      AS.msgs.push({ rol: "bot", html: local.html, texto: asTexto(local.html), fuente: `Respuesta de T-minus (no se pudo usar la IA: ${e.message})` });
     }
     AS.cargando = false;
   } else AS.msgs.push({ rol: "bot", html: local.html, texto: asTexto(local.html), fuente: "Calculado con el plan cargado" });

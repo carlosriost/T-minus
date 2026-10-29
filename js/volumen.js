@@ -332,7 +332,7 @@ function renderVolumen() {
             (d) =>
               `<tr><td>${escapeHtml(d.semana)}</td><td>${escapeHtml(d.codigo)}</td><td style="font-family:var(--sans);color:var(--text);">${escapeHtml(d.marca)}</td><td class="num">${MOD_NF(d.pedido)}</td><td class="num">${MOD_NF(d.programado)}</td><td class="num" style="color:${d.dif < 0 ? "var(--danger)" : "var(--warn)"};"><b>${d.dif > 0 ? "+" : "−"}${MOD_NF(Math.abs(d.dif))}</b></td></tr>`,
           )
-          .join("")}</tbody></table></div><p class="acu-nota">FerIA programa las cocinas con las filas por día (lo que de verdad se va a envasar y cuándo). Si la tabla resumen es la que vale, hay que corregir las filas del instructivo.</p></div>`
+          .join("")}</tbody></table></div><p class="acu-nota">T-minus programa las cocinas con las filas por día (lo que de verdad se va a envasar y cuándo). Si la tabla resumen es la que vale, hay que corregir las filas del instructivo.</p></div>`
       : "";
 
   const famItems = Object.entries(r.porFamilia)
@@ -354,7 +354,7 @@ function renderVolumen() {
 
   cont.innerHTML = `
     <div class="panel" style="margin-top:18px;">
-      <div class="panel-head"><h3>Plan de volumen cargado</h3><span class="sub">Lo que FerIA leyó del instructivo, antes de programar</span></div>
+      <div class="panel-head"><h3>Plan de volumen cargado</h3><span class="sub">Lo que T-minus leyó del instructivo, antes de programar</span></div>
       <div class="panel-body">
         <div class="acu-kpis">${kpis}</div>
         <div class="acu-card">

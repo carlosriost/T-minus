@@ -22,7 +22,7 @@
      · «PET» = algún tren envasando un SKU PET (envaseDeSKU del catálogo).
      · «Cocina trabajando» = hay al menos un cocimiento entre su cargue y su fin.
        Los aseos de cocina cuentan como cocina PARADA (lo definió Utilities).
-     · Las cocinas salen del plan FerIA (programación calculada) o del plan real
+     · Las cocinas salen del plan T-minus (programación calculada) o del plan real
        del área de Cocinas (Excel «Programa Cocinas»), según el selector. Fuera
        del rango que cubre ese plan no se sabe si la cocina trabaja: el tramo
        sale como «sin plan de cocinas» en vez de inventar un setpoint.
@@ -88,11 +88,11 @@ function spCocinas(fuentePedida) {
     const i0ms = i0.getTime();
     const out = {
       fuente: "feria",
-      nombre: "Plan FerIA (programación calculada)",
+      nombre: "Plan T-minus (programación calculada)",
       intervalos: rows.map((r) => [r.start.getTime(), r.end.getTime()]),
       cobertura: [Math.min(i0ms, ...rows.map((r) => r.start.getTime())), Math.max(...rows.map((r) => r.end.getTime()))],
     };
-    // ANTES DEL I0 el plan FerIA no existe: lo que pasó en la cocina es lo del
+    // ANTES DEL I0 el plan T-minus no existe: lo que pasó en la cocina es lo del
     // Programa de Cocinas real. Si está cargado y cubre ese tramo, se usa para
     // él (cocimientos que arrancaron antes del I0, recortados al I0). Antes
     // ese tramo salía «?» en el aire y el vapor.
@@ -102,7 +102,7 @@ function spCocinas(fuentePedida) {
       if (iniReal < out.cobertura[0]) {
         fs.filter((x) => x.inicio < i0ms).forEach((x) => out.intervalos.push([x.inicio, Math.min(x.fin, i0ms)]));
         out.cobertura[0] = iniReal;
-        out.nombre = `Plan FerIA desde el I0 · Programa de Cocinas real antes (${PC.archivo || "Excel"})`;
+        out.nombre = `Plan T-minus desde el I0 · Programa de Cocinas real antes (${PC.archivo || "Excel"})`;
       }
     }
     return out;
@@ -126,8 +126,8 @@ function spCocinas(fuentePedida) {
       ...otro,
       aviso:
         fuentePedida === "real"
-          ? "No hay plan real de Cocinas cargado (módulo «Programa de cocinas (Excel)»): se usa el plan FerIA."
-          : "No hay plan FerIA calculado: se usa el plan real de Cocinas.",
+          ? "No hay plan real de Cocinas cargado (módulo «Programa de cocinas (Excel)»): se usa el plan T-minus."
+          : "No hay plan T-minus calculado: se usa el plan real de Cocinas.",
     };
   return { fuente: null, nombre: "Sin plan de cocinas", intervalos: [], cobertura: null, aviso: "No hay ningún plan de cocinas: el aire y el vapor sin líneas quedan sin definir." };
 }
@@ -348,7 +348,7 @@ function htmlPanelSetpoints(mergedByTrain) {
       <div class="sp-head">
         <b class="util-title">Setpoints para el operador</b>
         <span class="util-ctl"><span class="util-ctl-label">Cocinas según</span>
-          <button type="button" class="btn small ${cfg.fuente === "feria" ? "primary" : ""}" data-sp-fuente="feria">Plan FerIA</button>
+          <button type="button" class="btn small ${cfg.fuente === "feria" ? "primary" : ""}" data-sp-fuente="feria">Plan T-minus</button>
           <button type="button" class="btn small ${cfg.fuente === "real" ? "primary" : ""}" data-sp-fuente="real">Plan real (Excel)</button>
         </span>
         ${sp.coc.aviso ? `<span class="sp-aviso">⚠ ${escapeHtml(sp.coc.aviso)}</span>` : `<span class="util-note">Usando: ${escapeHtml(sp.coc.nombre)}</span>`}

@@ -241,7 +241,7 @@ function asRespInventario(n, t) {
   const inv = (typeof INVENTORY_BALANCE !== "undefined" && INVENTORY_BALANCE) || [];
   const fu = asFuentes();
   if (!inv.length)
-    return { html: '<p>No hay inventario cargado. Sube el «PRODUCTO EN PROCESO» en Datos de entrada para que FerIA sepa qué hay en cada FV, SV y BBT.</p><button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>' };
+    return { html: '<p>No hay inventario cargado. Sube el «PRODUCTO EN PROCESO» en Datos de entrada para que T-minus sepa qué hay en cada FV, SV y BBT.</p><button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>' };
   const fuenteTxt = `Producto en proceso${fu.pep && fu.pep.foto ? ` (foto del ${asF(fu.pep.foto)}${fu.pep.corte ? `, último llenado registrado ${asF(fu.pep.corte)}` : ""})` : ""}`;
   const lotes = inventoryBatchesByMosto(MOSTO_CATALOG);
   const loteDe = (equipo) => Object.values(lotes).flat().find((l) => l.equipo === equipo);
@@ -262,7 +262,7 @@ function asRespInventario(n, t) {
         e.cocinadoEn ? `<p>${/llenado/.test(e.cocinadoNota || "") ? "Terminó de llenarse desde cocinas" : "Cocinado"} el <b>${asEsc(asF(Date.parse(e.cocinadoEn)))}</b>${e.cocinadoNota ? ` (${asEsc(e.cocinadoNota)})` : ""}.</p>` : ""
       }${e.vacioMinEn ? `<p>La planta lo puede vaciar desde el <b>${asEsc(asF(Date.parse(e.vacioMinEn)))}</b> (fecha tanque vacío mín.).</p>` : ""}${l ? `<p>Listo para envasar desde el <b>${asEsc(asF(new Date(l.listoEn).getTime()))}</b>.</p>` : ""}${
         c.length
-          ? `<p>FerIA lo usa para:</p><ul>${c.map((x) => `<li>L${asEsc(x.train)} · ${asEsc(x.name)}: ${asEsc(asF(x.desde))} → ${asEsc(asF(x.hasta))} (${asHL(x.hL)})</li>`).join("")}</ul>`
+          ? `<p>T-minus lo usa para:</p><ul>${c.map((x) => `<li>L${asEsc(x.train)} · ${asEsc(x.name)}: ${asEsc(asF(x.desde))} → ${asEsc(asF(x.hasta))} (${asHL(x.hL)})</li>`).join("")}</ul>`
           : e.vacio || esLevaduraEnMadurador(e)
             ? ""
             : "<p>No cubre ningún envasado cargado (está listo después de lo que pide el instructivo, o no hay demanda de su marca a tiempo).</p>"
@@ -275,10 +275,10 @@ function asRespInventario(n, t) {
         : "",
       o && !o.vacio && o.fecha ? `<p class="as-sub">Ocupado hasta el ${asEsc(asF(o.fecha.getTime()))}${o.delPrograma ? " (por los cocimientos del Programa de Cocinas)" : ""}.</p>` : "",
       progr.length
-        ? `<p>En el plan FerIA recibe ${progr.length} cocimiento(s): ${[...new Set(progr.map((r) => asNom(r.mostoId)))].map(asEsc).join(", ")} desde el ${asEsc(asF(Math.min(...progr.map((r) => r.start.getTime()))))}.</p>`
+        ? `<p>En el plan T-minus recibe ${progr.length} cocimiento(s): ${[...new Set(progr.map((r) => asNom(r.mostoId)))].map(asEsc).join(", ")} desde el ${asEsc(asF(Math.min(...progr.map((r) => r.start.getTime()))))}.</p>`
         : "",
     ].join("");
-    return { html: partes.join("") + extra + asFuente(`${fuenteTxt}${delPrograma.length ? " y Programa de Cocinas" : ""}; asignación de tanques del plan FerIA.`) };
+    return { html: partes.join("") + extra + asFuente(`${fuenteTxt}${delPrograma.length ? " y Programa de Cocinas" : ""}; asignación de tanques del plan T-minus.`) };
   }
   // Tanques libres.
   if (/(libre|vacio|disponible)/.test(n)) {
@@ -316,7 +316,7 @@ function asRespFaltantes(n) {
   const mm = asMosto(n);
   const lista = na.filter((x) => x.hL >= 1 && (!mm || x.mostoId === mm));
   if (!lista.length)
-    return { html: `<p>No hay envasado sin cerveza${mm ? ` de ${asEsc(asNom(mm))}` : ""}: todo lo que pide el instructivo desde el I0 lo cubre el inventario o un cocimiento del plan.</p>${asFuente("plan FerIA calculado con el instructivo y el Producto en proceso.")}` };
+    return { html: `<p>No hay envasado sin cerveza${mm ? ` de ${asEsc(asNom(mm))}` : ""}: todo lo que pide el instructivo desde el I0 lo cubre el inventario o un cocimiento del plan.</p>${asFuente("plan T-minus calculado con el instructivo y el Producto en proceso.")}` };
   const porM = {};
   lista.forEach((x) => (porM[x.mostoId] = (porM[x.mostoId] || 0) + x.hL));
   return {
@@ -355,7 +355,7 @@ function asRespLevadura(n, t) {
   return {
     html: `<p>La Light solo se cocina con levadura Light. Cosechas Light previstas (a los 6 días de fermentación, solo de FV EXT):</p><ul>${light.map((c) => `<li>${asEsc(c.fuente)}: desde el <b>${asEsc(asF(c.fechaDisponible.getTime()))}</b></li>`).join("") || "<li>—</li>"}</ul>${
       ev.length ? `<p>Campañas de Light del plan:</p><ul>${ev.map((e) => `<li>${asEsc(e.blockLabel)} · ${asEsc(e.estado)}${e.fuente ? ` · levadura de ${asEsc(e.fuente)}` : ""}${e.inicio ? ` · arranca ${asEsc(asF(new Date(e.inicio).getTime()))}` : ""}</li>`).join("")}</ul>` : ""
-    }${asFuente("Producto en proceso (FV EXT con Light) y asignación de tanques del plan FerIA.")}`,
+    }${asFuente("Producto en proceso (FV EXT con Light) y asignación de tanques del plan T-minus.")}`,
   };
 }
 
@@ -376,7 +376,7 @@ function asRespResumen() {
       .join(" · ")}); <b>${tarde.length}</b> llega(n) tarde.</p>
       <p>Envasado desde el I0: ${asHL(dem)} — ${asPct(inv, dem)} sale del inventario, ${asPct(dem - inv - na, dem)} de cocimientos nuevos${na >= 1 ? ` y <span class="pvr-no">${asPct(na, dem)} (${MOD_NF(na)} hL) no tiene cerveza a tiempo</span>` : ""}.</p>
       ${r ? `<p>Instructivo: ${r.semanas.length} semanas, ${asHL(r.total)}, <b>malta ${asPct(r.repartoTotal.malta, r.repartoTotal.total)}</b> / cerveza ${asPct(r.repartoTotal.cerveza, r.repartoTotal.total)}.</p>` : ""}
-      ${asFuente(`instructivo${fu.pep ? ", Producto en proceso" : ""}${fu.pc ? ", Programa de Cocinas" : ""}; plan FerIA calculado en este navegador.`)}`,
+      ${asFuente(`instructivo${fu.pep ? ", Producto en proceso" : ""}${fu.pc ? ", Programa de Cocinas" : ""}; plan T-minus calculado en este navegador.`)}`,
   };
 }
 
@@ -395,15 +395,15 @@ function asRespRevisar() {
     .filter((w) => ["ponyseguidas", "ponysuelta", "levadura", "aseocorto"].includes(w.tipo))
     .forEach((w) => items.push({ peso: 1, txt: asEsc(String(w.detalle || w.tipo).split(". ")[0]) + "." }));
   const fu = asFuentes();
-  if (fu.pc && fu.pc.extra.length) items.push({ peso: 1, txt: `El Producto en proceso no está al día: ${fu.pc.extra.length} cocimientos del Programa de Cocinas llenaron tanques que ahí salen vacíos (último llenado registrado ${asEsc(asF(fu.pep && fu.pep.corte))}). FerIA ya los cuenta.` });
+  if (fu.pc && fu.pc.extra.length) items.push({ peso: 1, txt: `El Producto en proceso no está al día: ${fu.pc.extra.length} cocimientos del Programa de Cocinas llenaron tanques que ahí salen vacíos (último llenado registrado ${asEsc(asF(fu.pep && fu.pep.corte))}). T-minus ya los cuenta.` });
   if (fu.pc && fu.i0 && fu.pc.hasta < fu.i0) items.push({ peso: 2, txt: "El Programa de Cocinas cargado termina antes del I0: cárgalo actualizado para comparar plan vs. real." });
   if (typeof PP_AVISO_TIEMPOS !== "undefined" && PP_AVISO_TIEMPOS) items.push({ peso: 1, txt: asEsc(PP_AVISO_TIEMPOS) });
   const cu = asCuadrePlan();
   const roto = cu && Object.entries(cu).filter(([, x]) => Math.abs(x.dif) >= 1);
-  if (roto && roto.length) items.push({ peso: 4, txt: `<span class="pvr-no">El plan no cuadra</span> en ${roto.map(([k, x]) => `${asEsc(asNom(k))} (${MOD_NF(x.dif)} hL)`).join(", ")}: avísale a quien mantiene FerIA.` });
+  if (roto && roto.length) items.push({ peso: 4, txt: `<span class="pvr-no">El plan no cuadra</span> en ${roto.map(([k, x]) => `${asEsc(asNom(k))} (${MOD_NF(x.dif)} hL)`).join(", ")}: avísale a quien mantiene T-minus.` });
   if (!items.length) return { html: "<p>No veo nada que revisar: todo el envasado tiene cerveza a tiempo, ningún cocimiento llega tarde y el plan cuadra.</p>" };
   items.sort((a, b) => b.peso - a.peso);
-  return { html: `<p>Lo que yo revisaría, de más a menos importante:</p><ol>${items.map((i) => `<li>${i.txt}</li>`).join("")}</ol>${asFuente("plan FerIA, avisos del motor y los archivos cargados.")}` };
+  return { html: `<p>Lo que yo revisaría, de más a menos importante:</p><ol>${items.map((i) => `<li>${i.txt}</li>`).join("")}</ol>${asFuente("plan T-minus, avisos del motor y los archivos cargados.")}` };
 }
 
 function asRespFuentes() {
@@ -427,7 +427,7 @@ function asRespFuentes() {
       ? `<li><b>Programa de Cocinas</b> (${asEsc(fu.pc.archivo)}): cargues hasta el ${asEsc(asF(fu.pc.hasta))}${fu.pc.extra.length ? `; ${fu.pc.extra.length} cocimientos suyos cuentan como cerveza en proceso` : ""}.</li>`
       : "<li><b>Programa de Cocinas</b>: no cargado.</li>",
   );
-  li.push(`<li><b>Plan FerIA</b>: calculado en este navegador desde el I0 ${asEsc(asF(fu.i0))}.</li>`);
+  li.push(`<li><b>Plan T-minus</b>: calculado en este navegador desde el I0 ${asEsc(asF(fu.i0))}.</li>`);
   const ok = checks.filter((c) => c.ok).length;
   const cuadraTodo = cu && Object.values(cu).every((x) => Math.abs(x.dif) < 1);
   return {

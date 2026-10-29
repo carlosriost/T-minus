@@ -1,10 +1,10 @@
 /* =========================================================================
-   PROGRAMA DE COCINAS (FerIA) — el plan que FerIA genera desde el
+   PROGRAMA DE COCINAS (T-minus) — el plan que T-minus genera desde el
    instructivo de envasado, con las mismas gráficas que el Excel de
    Elaboración (js/programa-cocinas.js).
 
    Dos escenarios:
-   · «Plan actual»: el de todo FerIA, desde el I0 y descontando el
+   · «Plan actual»: el de todo T-minus, desde el I0 y descontando el
      inventario del Producto en proceso.
    · «Plan completo hacia atrás»: qué había que cocinar, y cuándo, para que
      TODO el instructivo —también lo que se está envasando hoy— se pueda
@@ -12,7 +12,7 @@
      lo bastante atrás para que todo cocimiento alcance su envasado. La
      parte anterior al I0 es el «plan pasado»: se compara con lo que el
      Programa de Cocinas real cocinó en esas mismas fechas.
-   Nada de esto cambia el plan de FerIA ni el resto de módulos: el
+   Nada de esto cambia el plan de T-minus ni el resto de módulos: el
    escenario hacia atrás se calcula aparte y se descarta al terminar.
    ========================================================================= */
 
@@ -88,7 +88,7 @@ function pfFilas(seq, trz) {
       desdeAnterior: prev ? c.ms - prev.ms : null,
       mostoAnterior: prev ? prev.mostoId : null,
       ef: null,
-      // Lo propio del plan FerIA.
+      // Lo propio del plan T-minus.
       destinos: c.consumo,
       listo: c.listo || null,
       trasiego: c.trasiego || null,
@@ -157,7 +157,7 @@ function pfCuadre(plan, i0) {
 // PF_DIAS_ATRAS días antes del primer envasado, SIN inventario (todo lo
 // del instructivo sale de un cocimiento) y con levadura Light disponible
 // desde ese I0 (sin inventario no hay de dónde cosecharla). Todo lo que se
-// toca se restaura en el finally: el plan de FerIA no cambia.
+// toca se restaura en el finally: el plan de T-minus no cambia.
 function pfCalcularHaciaAtras() {
   if (!(STATE && STATE.parsed && STATE.mergedByTrain)) return null;
   const inp = document.getElementById("programI0Input");
@@ -215,7 +215,7 @@ function pfDatos(escenario) {
   const datos = {
     fuente: "feria",
     escenario,
-    archivo: escenario === "atras" ? "Plan FerIA completo hacia atrás" : "Plan FerIA",
+    archivo: escenario === "atras" ? "Plan T-minus completo hacia atrás" : "Plan T-minus",
     filas: pfFilas(base.seq, base.trz),
     mostos: PF_MOSTOS,
     eventos: PF_EVENTOS,
@@ -254,8 +254,8 @@ function renderProgramaFeria() {
   const i0d = typeof getI0Date === "function" ? getI0Date() : null;
   const cab = `
     <div class="panel">
-      <div class="panel-head"><h3>Programa de cocinas (FerIA)</h3>
-        <span class="sub">El plan que FerIA genera desde el instructivo de envasado${i0d ? ` · I0 ${escapeHtml(fmtDateTime(i0d))}` : ""}</span>
+      <div class="panel-head"><h3>Plan de cocinas</h3>
+        <span class="sub">El plan que T-minus genera desde el instructivo de envasado${i0d ? ` · I0 ${escapeHtml(fmtDateTime(i0d))}` : ""}</span>
       </div>
       <div class="panel-body">
         <div class="pf-esc">
@@ -265,8 +265,8 @@ function renderProgramaFeria() {
         </div>
         <p class="acu-nota pf-esc-nota">${
           esc === "atras"
-            ? `Qué había que cocinar, y cuándo, para que <b>todo</b> lo que pide el instructivo —también lo que se está envasando hoy— tenga cerveza a tiempo. Se calcula sin inventario (todo sale de un cocimiento), con levadura Light disponible y con las mismas reglas del plan, salvo que la cerveza se puede cocinar hasta ${2 + PF_ADELANTO_ATRAS_DIAS} días antes de su inicio ideal (Light ${3 + PF_ADELANTO_ATRAS_DIAS}) en vez de 2 (Light 3): así se cocinó en la planta la cerveza que hoy está en tanques. Lo que queda antes del I0 es el <b>plan pasado</b>. No cambia el plan de FerIA.`
-            : "El plan de cocinas de FerIA: desde el I0, descontando lo que ya está en los tanques (Producto en proceso y, si está cargado, el Programa de Cocinas)."
+            ? `Qué había que cocinar, y cuándo, para que <b>todo</b> lo que pide el instructivo —también lo que se está envasando hoy— tenga cerveza a tiempo. Se calcula sin inventario (todo sale de un cocimiento), con levadura Light disponible y con las mismas reglas del plan, salvo que la cerveza se puede cocinar hasta ${2 + PF_ADELANTO_ATRAS_DIAS} días antes de su inicio ideal (Light ${3 + PF_ADELANTO_ATRAS_DIAS}) en vez de 2 (Light 3): así se cocinó en la planta la cerveza que hoy está en tanques. Lo que queda antes del I0 es el <b>plan pasado</b>. No cambia el plan de T-minus.`
+            : "El plan de cocinas de T-minus: desde el I0, descontando lo que ya está en los tanques (Producto en proceso y, si está cargado, el Programa de Cocinas)."
         }</p>
         <div id="pcCuerpo"></div>
       </div>
@@ -356,8 +356,8 @@ function pfRenderCuerpo() {
       <div id="pcTabla"></div>
     </div>
     <div class="vol-grid3">
-      <div class="acu-card pc-span2"><div class="acu-card-tit">Tiempos entre cargues al cambiar de marca <small class="pc-sub">· mediana del plan FerIA en el rango${typeof PC !== "undefined" && PC ? " vs. el Programa de Cocinas real (mismo rango)" : ""}</small></div><div id="pfMatriz"></div></div>
-      <div class="acu-card"><div class="acu-card-tit">Tiempos por mosto <small class="pc-sub">· catálogo de FerIA</small></div><div id="pfCiclo"></div></div>
+      <div class="acu-card pc-span2"><div class="acu-card-tit">Tiempos entre cargues al cambiar de marca <small class="pc-sub">· mediana del plan T-minus en el rango${typeof PC !== "undefined" && PC ? " vs. el Programa de Cocinas real (mismo rango)" : ""}</small></div><div id="pfMatriz"></div></div>
+      <div class="acu-card"><div class="acu-card-tit">Tiempos por mosto <small class="pc-sub">· catálogo de T-minus</small></div><div id="pfCiclo"></div></div>
     </div>
     <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Cuadre del plan <small class="pc-sub">· envasado del instructivo desde el I0${D.escenario === "atras" ? " del escenario" : ""} = inventario + cocimientos + no alcanzable</small></div><div id="pfCuadre"></div></div>`;
 
@@ -487,7 +487,7 @@ function pfDibujarMatriz(coc) {
   const el = document.getElementById("pfMatriz");
   if (!el) return;
   const fe = pfMedianasCambio(coc, (id) => id);
-  // Lo real en el mismo rango (Pony GO/HG del Excel = Pony en FerIA).
+  // Lo real en el mismo rango (Pony GO/HG del Excel = Pony en T-minus).
   let re = null;
   if (typeof PC !== "undefined" && PC && PC.filas) {
     const enRango = PC.filas.filter((x) => x.tipo === "coc" && x.inicio != null && x.inicio >= PCX.F.desde && x.inicio < PCX.F.hasta);
@@ -499,7 +499,7 @@ function pfDibujarMatriz(coc) {
     const f = fe[k];
     const r = re && re[k];
     if (!f && !r) return '<td class="pc-mz vac">—</td>';
-    return `<td class="pc-mz" style="--t:${f ? Math.min(1, f.v / 480).toFixed(2) : 0}" title="De ${a} a ${b}${f ? ` · FerIA ${fmtHM(f.v)} h (${f.n})` : ""}${r ? ` · real ${fmtHM(r.v)} h (${r.n})` : ""}"><b>${f ? fmtHM(f.v) : "—"}</b>${r ? `<small>real ${fmtHM(r.v)}</small>` : ""}</td>`;
+    return `<td class="pc-mz" style="--t:${f ? Math.min(1, f.v / 480).toFixed(2) : 0}" title="De ${a} a ${b}${f ? ` · T-minus ${fmtHM(f.v)} h (${f.n})` : ""}${r ? ` · real ${fmtHM(r.v)} h (${r.n})` : ""}"><b>${f ? fmtHM(f.v) : "—"}</b>${r ? `<small>real ${fmtHM(r.v)}</small>` : ""}</td>`;
   };
   el.innerHTML = `<div class="table-scroll mod-noclip"><table class="pc-matriz"><thead><tr><th>De ↓ / A →</th>${PF_MOSTOS.map((m) => `<th>${m.nombre}</th>`).join("")}</tr></thead><tbody>${PF_MOSTOS.map((m) => `<tr><th>${m.nombre}</th>${ids.map((b) => celda(m.id, b)).join("")}</tr>`).join("")}</tbody></table></div><p class="acu-nota">Horas:minutos entre un cargue y el siguiente (incluye el aseo cuando cambia la marca). Mediana del rango elegido; entre paréntesis en el globo, cuántos cambios. Más oscuro = más tiempo.</p>`;
 }

@@ -31,6 +31,22 @@ initTabs("resultTabs");
    ========================================================================= */
 let STATE = null;
 
+// Cabecera: una píldora corta («Semanas 43–46 · I0 Mar 20/10 11:33»). El
+// detalle completo (primer día, fecha de envío del plan) queda en el título
+// emergente, para no llenar la cabecera de texto.
+function setWeekMeta(parsed, i0) {
+  const el = document.getElementById("weekMeta");
+  if (!el || !parsed) return;
+  const n = String(parsed.weekLabel || "").match(/\d+/g) || [];
+  const sem = !n.length ? "" : n.length === 1 ? "Semana " + n[0] : "Semanas " + n[0] + "–" + n[n.length - 1];
+  el.textContent = [sem, i0 ? "I0 " + fmtDateTime(i0) : ""].filter(Boolean).join("  ·  ");
+  el.title =
+    (parsed.weekLabel || "") +
+    (parsed.weekStartDate ? "\nPrimer día: " + fmtDate(parsed.weekStartDate) : "") +
+    (parsed.headerDate ? "\nPlan enviado: " + fmtDate(parsed.headerDate) : "") +
+    (i0 ? "\nI0: " + fmtDateTime(i0) : "");
+}
+
 function render(parsed) {
   const mergedByTrain = {};
   TRAINS.forEach((t) => (mergedByTrain[t] = mergeEvents(parsed.rawEvents[t])));
@@ -38,16 +54,7 @@ function render(parsed) {
 
   STATE = { parsed, mergedByTrain, brands };
 
-  const i0 = getI0Date();
-  document.getElementById("weekMeta").textContent =
-    (parsed.weekLabel || "") +
-    (parsed.weekStartDate
-      ? "  ·  primer día: " + fmtDate(parsed.weekStartDate)
-      : "") +
-    (parsed.headerDate
-      ? "  ·  plan enviado: " + fmtDate(parsed.headerDate)
-      : "") +
-    (i0 ? "  ·  I0: " + fmtDateTime(i0) : "");
+  setWeekMeta(parsed, getI0Date());
 
   // Aquí arriba solo va lo que exige una acción. Lo que salía antes —el aviso
   // verde de las hojas leídas y el del corte en el I0— era confirmación de que

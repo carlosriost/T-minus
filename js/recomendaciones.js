@@ -1,7 +1,7 @@
 /* =========================================================================
    RECOMENDACIONES PARA MEJORAR EL PLAN
    -------------------------------------------------------------------------
-   Reúne en una sola lista priorizada lo que FerIA ya detecta en distintos
+   Reúne en una sola lista priorizada lo que T-minus ya detecta en distintos
    lugares, con una acción sugerida y a dónde ir para revisarlo:
      · Alertas de la secuencia de cocina (fechas límite, BBT, Pony, levadura…)
      · Cocimientos sin tanque y marcas sin homologar
@@ -321,7 +321,7 @@ function recCalExportar(formato) {
   } else {
     txt = JSON.stringify(
       {
-        formato: "FerIA · calificaciones de recomendaciones",
+        formato: "T-minus · calificaciones de recomendaciones",
         version: 1,
         exportado: new Date().toISOString(),
         descripcion: "Cada ítem: la recomendación como se mostró (recomendacion), cuántas estrellas le dieron (1 = no sirve, 5 = muy útil), el comentario y el contexto del plan (semana, I0, score, cuántas recomendaciones había). «regla» agrupa las recomendaciones del mismo tipo.",
@@ -335,7 +335,7 @@ function recCalExportar(formato) {
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([txt], { type: tipo }));
-  a.download = `FerIA_calificaciones_recomendaciones_${new Date().toISOString().slice(0, 10)}.${ext}`;
+  a.download = `T-minus_calificaciones_recomendaciones_${new Date().toISOString().slice(0, 10)}.${ext}`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => (URL.revokeObjectURL(a.href), a.remove()), 1000);
@@ -345,7 +345,7 @@ function recCalExportar(formato) {
 function recCalImportar(texto) {
   const g = JSON.parse(texto);
   const lista = Array.isArray(g) ? g : g && Array.isArray(g.items) ? g.items : null;
-  if (!lista) throw new Error("El archivo no trae calificaciones de FerIA.");
+  if (!lista) throw new Error("El archivo no trae calificaciones de T-minus.");
   const db = recCalLeer();
   let nuevas = 0;
   let actualizadas = 0;
@@ -405,7 +405,7 @@ function renderRecomendacionesPlan() {
           <td class="acu-c"><button class="btn small" data-goto="${r.ir}">Revisar →</button></td></tr>`;
         })
         .join("")
-    : '<tr><td colspan="5"><p class="empty-note">Sin hallazgos: el plan cumple las reglas que FerIA puede medir.</p></td></tr>';
+    : '<tr><td colspan="5"><p class="empty-note">Sin hallazgos: el plan cumple las reglas que T-minus puede medir.</p></td></tr>';
   const todas = Object.values(recCalLeer().items);
   const nCal = todas.length;
   const promCal = nCal ? todas.reduce((a, x) => a + (Number(x.estrellas) || 0), 0) / nCal : null;
@@ -565,6 +565,8 @@ function renderModulosSeguimiento() {
   seguro(renderRecomendacionesPlan);
   if (typeof renderPlanVsReal === "function") seguro(renderPlanVsReal);
   if (typeof renderTrazabilidad === "function") seguro(renderTrazabilidad);
+  if (typeof renderServicios === "function") seguro(renderServicios);
+  if (typeof renderInicio === "function") seguro(renderInicio);
 }
 // Al abrir una vista del menú se repinta su módulo, para que tome cambios
 // hechos en otras pantallas (p. ej. el plan de filtración o el catálogo).
@@ -582,6 +584,8 @@ function alAbrirVista(view) {
     },
     "view-plan-vs-real": typeof renderPlanVsReal === "function" ? renderPlanVsReal : null,
     "view-trazabilidad": typeof renderTrazabilidad === "function" ? renderTrazabilidad : null,
+    "view-servicios": typeof renderServicios === "function" ? renderServicios : null,
+    "view-inicio": typeof renderInicio === "function" ? renderInicio : null,
   }[view];
   if (m)
     try {
