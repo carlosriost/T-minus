@@ -43,6 +43,7 @@
   };
   const HOJAS = ["MAESTRA", "DATOS SEMANA", "Electria L5", "Electrica L7", "Electrica L8", "Electrica L9", "Vapor Envasado", "Agua Semanal"];
   const LINEA_AUX = "AUX";
+  const HOJAS_ELAB_EXTRA = ["Contadores vapor", "ENERGIA ELECTRICA", "AGUA SERV-PERI"];
   const GRAVEDAD = { vacio: 6, residuo: 5, imputado: 4, valor_fijo: 2, ajuste_manual: 1, medicion: 0 };
 
   /* ------------------------------------------------------------ utilidades */
@@ -419,7 +420,8 @@
 
   // Lee un ArrayBuffer/Buffer con SheetJS (solo las hojas necesarias).
   function leerLibro(XLSXlib, datos, tipo) {
-    return XLSXlib.read(datos, { type: tipo || "array", cellFormula: true, cellDates: false, cellNF: true, cellStyles: false, sheets: HOJAS });
+    // También las hojas de elaboración (si no están, solo falla ese módulo).
+    return XLSXlib.read(datos, { type: tipo || "array", cellFormula: true, cellDates: false, cellNF: true, cellStyles: false, sheets: HOJAS.concat(HOJAS_ELAB_EXTRA) });
   }
   function hojasDelLibro(XLSXlib, datos, tipo) {
     const b = XLSXlib.read(datos, { type: tipo || "array", bookSheets: true, bookProps: true });

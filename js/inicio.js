@@ -131,7 +131,8 @@
         ${cifra(nf(p.electricidad / 1000), "MWh", "electricidad")}
         ${cifra(nf(p.agua / 10), "m³", "agua")}
       </div>
-      <p class="ini-nota">${p.dias} días del plan${p.sinVapor && p.sinVapor.length ? ` · vapor sin ${esc(p.sinVapor.join(", "))} (sin modelo confiable)` : ""}</p>`);
+      <p class="ini-nota">Envasado, ${p.dias} días del plan${p.sinVapor && p.sinVapor.length ? ` · vapor sin ${esc(p.sinVapor.join(", "))} (sin modelo confiable)` : ""}</p>
+      ${r.elab ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.elab.vapor / 1000), "t", "vapor elab.")}${cifra(nf(r.elab.electricidad / 1000), "MWh", "electricidad elab.")}${cifra(nf(r.elab.agua / 10), "m³", "agua elab.")}</div><p class="ini-nota">Elaboración, ${r.elab.dias} días del plan de cocinas</p>` : ""}`);
   }
 
   function atencion() {

@@ -3337,3 +3337,6 @@ body.theme-light { --pc-c1: #4a7fc1; --pc-c2: #d0703f; --pc-c3: #3a9a76; --pc-c4
   .main-area .container { padding: 18px 16px 32px; }
   footer { padding: 16px; }
 }
+.ini-sep { border-top: 1px solid var(--line); padding-top: 12px; }
+.srv-elab-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+.srv-elab-res .srv-tabla td, .srv-elab-res .srv-tabla th { padding: 6px 8px; }

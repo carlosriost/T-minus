@@ -152,7 +152,7 @@
     const f = marco(el, W, H, m, [0, n], [0, y1], Object.assign({}, o, { xFecha: false }));
     let s = f.s.replace(/<text x="[^"]*" y="[^"]*" text-anchor="middle">[^<]*<\/text>/g, "");
     const bw = f.iw / n;
-    const cada = Math.max(1, Math.ceil(n / 16));
+    const cada = Math.max(1, Math.ceil(n / (o.maxEtiquetas || 16)));
     for (let i = 0; i < n; i++) {
       const x = m.l + i * bw + bw * 0.14, w = bw * 0.72;
       let acum = 0;
