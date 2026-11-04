@@ -593,6 +593,30 @@
       }
     }
   }
+  // Estimación de respaldo cuando el modelo no pasa la prueba final (p. ej. un cambio
+  // de nivel reciente): consumo específico de los últimos 60 días (C = k·P). Se valida
+  // igual, sin mirar el futuro: k con los 60 días anteriores a las últimas 3 semanas y
+  // error medido en esas 3 semanas. El margen sale de los residuos relativos recientes.
+  function respaldoReciente(x) {
+    const dias = (f) => Date.parse(f + "T00:00:00Z") / 86400000;
+    const ok = x.filter((r) => r.produccion_hL > 0 && r.consumo > 0);
+    if (ok.length < 30) return null;
+    const fin = dias(ok[ok.length - 1].fecha);
+    const k = (rows) => rows.reduce((a, r) => a + r.consumo, 0) / rows.reduce((a, r) => a + r.produccion_hL, 0);
+    const te = ok.filter((r) => dias(r.fecha) > fin - 21), tr = ok.filter((r) => dias(r.fecha) <= fin - 21 && dias(r.fecha) > fin - 81);
+    const rec = ok.filter((r) => dias(r.fecha) > fin - 60);
+    if (te.length < 7 || tr.length < 15 || rec.length < 15) return null;
+    // Dos formas simples: proporcional al volumen (k·P) o consumo fijo del día (promedio).
+    // Queda la que menos se equivoca en las 3 semanas de validación.
+    const prom = (rows) => rows.reduce((a, r) => a + r.consumo, 0) / rows.length;
+    const sy = te.reduce((a, r) => a + r.consumo, 0);
+    const wRatio = te.reduce((a, r) => a + Math.abs(k(tr) * r.produccion_hL - r.consumo), 0) / sy;
+    const wMedia = te.reduce((a, r) => a + Math.abs(prom(tr) - r.consumo), 0) / sy;
+    const tipo = wMedia < wRatio ? "media" : "ratio";
+    const kf = tipo === "ratio" ? k(rec) : 0, mu = tipo === "media" ? prom(rec) : 0;
+    const rel = rec.map((r) => r.consumo / (tipo === "ratio" ? kf * r.produccion_hL : mu) - 1);
+    return { tipo, k: kf, media: mu, n: rec.length, desde: rec[0].fecha, hasta: rec[rec.length - 1].fecha, wape_validacion: Math.min(wRatio, wMedia), n_validacion: te.length, q: [cuantil(rel, 0.05), cuantil(rel, 0.95)] };
+  }
   function tablaEscenarios(x, u, res) {
     const P = x.map((r) => r.produccion_hL), C = x.map((r) => r.consumo);
     const tp = (res.test && res.test.por_escenario) || {}, q = res.cuantiles || {}, m = res.modelo;
@@ -641,6 +665,7 @@
         n_validos: res.n_total, n_entrenamiento: res.n_entrenamiento, n_test: res.n_test, corte_test: res.corte_test,
         base_sin_produccion: consumoBase(ds.filas, s, ln), correlaciones: correlaciones(x), estabilidad: est,
       };
+      if (!res.habilitado) spec.respaldo = respaldoReciente(x);
       if (res.modelo) {
         const m = res.modelo;
         Object.assign(spec, {

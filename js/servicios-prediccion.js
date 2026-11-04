@@ -54,6 +54,16 @@
 
   function predecirCombinacion(m, P) {
     const out = { servicio: m.servicio, linea: m.linea, unidad: m.unidad, P_hL: P };
+    if (!m.habilitado && m.respaldo && P > 0) {
+      // Sin modelo validado: consumo específico reciente, marcado como de baja confianza.
+      const R = m.respaldo, media = R.tipo === "media", y = media ? R.media : R.k * P;
+      return Object.assign(out, {
+        habilitado: true, respaldo: true, estimado: y, intervalo: [Math.max(0, y * (1 + R.q[0])), y * (1 + R.q[1])], especifico: y / P,
+        modelo: media ? "Respaldo: consumo promedio de los últimos 60 días" : "Respaldo: consumo específico de los últimos 60 días", calidad: "Respaldo · baja confianza",
+        calidad_nota: `El modelo no pasó la prueba final (${m.motivo || "sin modelo confiable"}). Se usa ${media ? `el consumo promedio diario de ${R.desde} a ${R.hasta} (${fmt0(R.media)} ${m.unidad}/día; casi no depende del volumen)` : `${String(Math.round(R.k * 100) / 100).replace(".", ",")} ${m.unidad}/hL, el consumo específico de ${R.desde} a ${R.hasta}`}; probado en las últimas 3 semanas, el error fue ${Math.round(R.wape_validacion * 100)} %.`,
+        aviso: "Estimación de respaldo (sin modelo validado): úsela con cuidado.",
+      });
+    }
     if (!m.habilitado) return Object.assign(out, { habilitado: false, motivo: m.motivo || "Sin modelo confiable." });
     if (P === 0) {
       const b = m.base_sin_produccion || {};
@@ -111,15 +121,16 @@
     const totales = {};
     for (const s of SERVICIOS) {
       let est = 0, lo = 0, hi = 0;
-      const faltan = [];
+      const faltan = [], respaldo = [];
       for (const ln of Object.keys(lineas)) {
         const r = lineas[ln], x = r.servicios[s];
         if (r.P_hL === 0 && !x.habilitado) continue;
         if (!x.habilitado || x.estimado === null || x.estimado === undefined) { faltan.push(ln); continue; }
+        if (x.respaldo) respaldo.push(ln);
         est += x.estimado;
         if (x.intervalo) { lo += x.intervalo[0]; hi += x.intervalo[1]; }
       }
-      totales[s] = { estimado: est, intervalo_conservador: [lo, hi], completo: faltan.length === 0, lineas_sin_modelo: faltan };
+      totales[s] = { estimado: est, intervalo_conservador: [lo, hi], completo: faltan.length === 0, lineas_sin_modelo: faltan, lineas_respaldo: respaldo };
     }
     const aux = bundle.modelos["electricidad|" + LINEA_AUX];
     const reparte = (bundle.auxiliares && bundle.auxiliares.reparte_entre) || [];

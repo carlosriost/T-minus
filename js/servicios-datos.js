@@ -22,7 +22,10 @@
       validacion: { hoja: "DATOS SEMANA", colFecha: "C", fila: 6, columnas: { L5: "CC", L7: "CE", L8: "CG", L9: "CI" } } },
     vapor: { hoja: "MAESTRA", colFecha: "A", fila: 4,
       lineas: { L7: { total: "BS", comp: { lavadora: "BQ", pasteurizadora: "BR" } }, L5: { total: "BW", comp: { lavadora: "BU", pasteurizadora: "BV" } },
-        L8: { total: "CA", comp: { lavadora: "BY", pasteurizadora: "BZ" } }, L9: { total: "CC", comp: {} } },
+        L8: { total: "CA", comp: { lavadora: "BY", pasteurizadora: "BZ" } },
+        // Línea 9 = PET: se usa la columna CC de MAESTRA tal cual (decisión de la planta),
+        // aunque algunos días la fórmula sea vapor de envase menos las otras líneas.
+        L9: { total: "CC", comp: {}, usar_tal_cual: true } },
       pet: { linea: "L9", hoja: "Vapor Envasado", colFecha: "A", fila: 6, tunel: "U", flash: "V" } },
     electricidad: {
       lineas: { L5: { hoja: "Electria L5", recibe: true }, L7: { hoja: "Electrica L7", recibe: true }, L8: { hoja: "Electrica L8", recibe: true }, L9: { hoja: "Electrica L9", recibe: false } },
@@ -274,7 +277,7 @@
       const proc = peor(procs);
       const comps = Object.values(d.comp);
       const fuente = `${Vp.hoja}!${d.total}${r}` + (comps.length ? ` (= ${comps.map((c) => c + r).join(" + ")})` : "");
-      if (ln === pet.linea && fpet.has(fecha)) {
+      if (ln === pet.linea && fpet.has(fecha) && !d.usar_tal_cual) {
         const rr = fpet.get(fecha);
         const tun = aNumero(valor(wb, pet.hoja, pet.tunel, rr)), fla = aNumero(valor(wb, pet.hoja, pet.flash, rr));
         const ft = formula(wb, pet.hoja, pet.tunel, rr), ff = formula(wb, pet.hoja, pet.flash, rr);
@@ -285,6 +288,10 @@
             peor([procedencia(ft, tun), procedencia(ff, fla)]), { procedencia_maestra: proc[0] });
           continue;
         }
+      }
+      if (d.usar_tal_cual && proc[0] === "residuo") {
+        agregar(fecha, ln, "vapor", v, "kg", fuente, f, ["medicion", 0], { pet_por_diferencia: true });
+        continue;
       }
       agregar(fecha, ln, "vapor", v, "kg", fuente, f, proc);
     }
@@ -305,7 +312,8 @@
         if (!(env > 0) || otras.some((v) => v === null) || l9.fuera_de_periodo || l9.procedencia === "residuo") continue;
         const disponible = env * 1000 - otras.reduce((a, b) => a + b, 0);
         if (disponible < 0) continue;
-        if (l9.consumo > disponible + 0.05 * env * 1000) { l9.balance_imposible = true; balanceL9.push({ fecha, L9: l9.consumo, disponible, envase: env * 1000 }); }
+        // Solo informativo: la L9 se toma tal cual de PET (columna CC).
+        if (l9.consumo > disponible + 0.05 * env * 1000) balanceL9.push({ fecha, L9: l9.consumo, disponible, envase: env * 1000 });
       }
     }
     // Electricidad (contador directo, sin auxiliares) + auxiliares compartidos.
@@ -385,6 +393,7 @@
       if (e === "valido" || e === "sin_produccion") {
         if (r.procedencia === "ajuste_manual") r.marca = `La fórmula del Excel suma o resta un número escrito a mano al contador (ajuste manual de ${numEs(r.ajuste_manual || 0, 0, true)}).`;
         if (r.procedencia === "valor_fijo") r.marca = "Valor escrito a mano en la celda (no viene del archivo de contadores).";
+        if (r.pet_por_diferencia) r.marca = "PET (MAESTRA CC): ese día la fórmula es vapor de envase de calderas menos las otras líneas.";
       }
       r.dudoso = r.marca !== "";
     }
@@ -424,7 +433,7 @@
       const nd = ds.petVsMaestra.filter((x) => Math.abs(x.diferencia) > 0.5).length;
       add("Vapor PET: MAESTRA (cuando es medición) = túnel + flash", nd ? `${nd} diferencias` : "OK", `${ds.petVsMaestra.length} días comparados.`);
     }
-    if (ds.balanceL9) add("Vapor L9 ≤ vapor de envase − líneas 5, 7 y 8", ds.balanceL9.length ? `${ds.balanceL9.length} días imposibles (excluidos)` : "OK", ds.balanceL9.length ? `Días: ${ds.balanceL9.slice(0, 12).map((x) => x.fecha.slice(8, 10) + "/" + x.fecha.slice(5, 7)).join(", ")}${ds.balanceL9.length > 12 ? "…" : ""}. En esos días los contadores PET marcan más vapor del que queda en el cabezal de envase.` : "Los contadores PET cuadran con el vapor de envase.");
+    if (ds.balanceL9) add("Vapor L9 ≤ vapor de envase − líneas 5, 7 y 8", ds.balanceL9.length ? `${ds.balanceL9.length} días por encima del balance (se usan igual: L9 = PET)` : "OK", ds.balanceL9.length ? `Días: ${ds.balanceL9.slice(0, 12).map((x) => x.fecha.slice(8, 10) + "/" + x.fecha.slice(5, 7)).join(", ")}${ds.balanceL9.length > 12 ? "…" : ""}. En esos días PET marca más vapor del que queda en el cabezal de envase después de las líneas 5, 7 y 8; por decisión de la planta la L9 se toma tal cual de la columna CC.` : "Los contadores PET cuadran con el vapor de envase.");
     add("Agua de envase = suma de las 4 líneas", ds.difsAgua.length ? `${ds.difsAgua.length} días no cuadran` : "OK",
       ds.difsAgua.length ? ds.difsAgua.map((r) => `${r.fecha}: ${numEs(r.diferencia, 0, true)} hL`).join("; ") : "Todos los días cuadran.");
     const x = ds.filas.filter((r) => !r.fuera_de_periodo && r.servicio === "electricidad");
