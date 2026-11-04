@@ -171,9 +171,18 @@
     const sel = R.filas.filter((f) => f.area === U.area);
     const A = AREAS.find((a) => a.id === U.area) || AREAS[0];
     const guardado = B.guardado_en ? new Date(B.guardado_en).toLocaleString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    // Una fila por área y una columna por servicio: carga base (mediana de los días parados)
+    // y cuánto es frente al promedio con el área operando.
+    const COLS = [["electricidad", "Electricidad"], ["vapor", "Vapor"], ["agua", "Agua"]];
+    const celda = (f) => {
+      if (!f) return '<td class="n muted">—</td>';
+      if (!f.n) return `<td class="n"><span class="muted">sin días</span>${f.fijo_en_marcha != null ? `<br><small class="muted" title="Fijo con el área en marcha (corte de la recta), no es una medición con el área parada">fijo ≈ ${nf(f.fijo_en_marcha)} ${f.unidad}</small>` : ""}</td>`;
+      return `<td class="n" title="${f.n} día(s) · rango ${nf(f.p10)} – ${nf(f.p90)} ${f.unidad}">${nf(f.mediana)} <small class="muted">${f.unidad}</small>${f.operando ? `<br><small class="muted">${pct(f.mediana / f.operando)} de operando (${nf(f.operando)})</small>` : ""}</td>`;
+    };
     const resumen = areas.map((a) => {
-      const e = R.filas.find((f) => f.area === a.id && f.servicio === "electricidad");
-      return `<tr class="${a.id === U.area ? "sel" : ""}"><td><button class="srv-link" data-cba="${a.id}">${esc(a.nombre)}</button><br><small class="muted">${esc(a.texto)}</small></td><td class="n">${e ? e.dias_parada : "—"}</td><td class="n">${e && e.n ? nf(e.mediana) + " kWh" : "—"}</td><td class="n">${e && e.n ? `${nf(e.p10)} – ${nf(e.p90)}` : "—"}</td><td class="n">${e ? nf(e.operando) + " kWh" : "—"}</td><td class="n">${e && e.n && e.operando ? pct(e.mediana / e.operando) : "—"}</td></tr>`;
+      const fs = R.filas.filter((f) => f.area === a.id);
+      const d = fs[0] ? fs[0].dias_parada : 0;
+      return `<tr class="${a.id === U.area ? "sel" : ""}"><td><button class="srv-link" data-cba="${a.id}">${esc(a.nombre)}</button><br><small class="muted">${esc(a.texto)}</small></td><td class="n">${d}</td>${COLS.map(([s]) => celda(fs.find((f) => f.servicio === s))).join("")}</tr>`;
     }).join("");
     const det = sel.map((f) => {
       const ref = f.n ? f.mediana : f.operando;
@@ -190,8 +199,8 @@
         <div class="srv-acciones">${U.confirmar ? '<span class="srv-confirma">¿Borrar los modelos y la carga base guardados en este navegador? <button class="btn small danger" id="cbLimpiarSi">Sí, borrar</button><button class="btn small" id="cbLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="cbLimpiar">Limpiar datos</button>'}</div>
       </div>
       <div class="srv-filtros"><div class="srv-campo"><label>Área parada si su producción es menor que</label><div class="srv-seg">${[[0.05, "5 % del promedio"], [0.1, "10 % del promedio"]].map(([x, t]) => `<button type="button" data-cbu="${x}" class="${U.umbral === x ? "on" : ""}">${t}</button>`).join("")}</div></div></div>
-      <div class="srv-card"><div class="srv-card-t">Electricidad con el área parada <small class="muted">· mediana de los días parados; elige un área para ver vapor, agua y los días</small></div>
-        <div class="srv-tabla-wrap" style="max-height:none"><table class="srv-tabla"><thead><tr><th>Área</th><th class="n">Días parada</th><th class="n">Carga base</th><th class="n">Rango (p10 – p90)</th><th class="n">Promedio operando</th><th class="n">Base / operando</th></tr></thead><tbody>${resumen}</tbody></table></div>
+      <div class="srv-card"><div class="srv-card-t">Consumo con el área parada <small class="muted">· mediana por día de los días parados; elige un área para ver el detalle, la planta y los días</small></div>
+        <div class="srv-tabla-wrap" style="max-height:none"><table class="srv-tabla"><thead><tr><th>Área</th><th class="n">Días parada</th>${COLS.map(([, t]) => `<th class="n">${t}</th>`).join("")}</tr></thead><tbody>${resumen}</tbody></table></div>
         <p class="muted">Promedio de producción del periodo: envasado ${nf(R.medias.env)} hL/día, cocinados ${nf(R.medias.coc)}, filtrados ${nf(R.medias.fil)}; L5 ${nf(R.medias.L5)}, L7 ${nf(R.medias.L7)}, L8 ${nf(R.medias.L8)}, L9 ${nf(R.medias.L9)}. Un área cuenta como parada el día en que su producción queda por debajo del ${pct(R.umbral)} de ese promedio.</p>
       </div>
       <div class="srv-card"><div class="srv-card-t">${esc(A.nombre)} parada <small class="muted">· ${esc(A.texto)} · ${sel[0] ? sel[0].dias_parada : 0} día(s) en el periodo</small></div>
