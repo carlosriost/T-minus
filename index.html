@@ -67,6 +67,7 @@
           </div>
           <div class="sb-label">Servicios</div>
           <button class="sb-item" data-view="view-servicios"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="sb-txt">Consumos de servicios</span></button>
+          <button class="sb-item" data-view="view-servicios-industriales"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M4 20V10l5 3V10l5 3V6l6 4v10"/><path d="M8 17h1M13 17h1M18 17h1"/></svg></span><span class="sb-txt">Servicios industriales</span></button>
           <button class="sb-item" data-view="view-cip"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 6.3 6 11.3a6 6 0 0 1-12 0c0-5 6-11.3 6-11.3z"/></svg></span><span class="sb-txt">CIP A/B/C</span></button>
           <div class="sb-label">Configuración</div>
           <div class="sb-group" data-group="cfg">
@@ -158,6 +159,7 @@
           <section class="view" id="view-recomendaciones" data-view-el><div id="recomendacionesPanel"></div></section>
           <section class="view" id="view-cip" data-view-el><div id="cipPanel"></div></section>
           <section class="view" id="view-servicios" data-view-el><div id="serviciosPanel"></div></section>
+          <section class="view" id="view-servicios-industriales" data-view-el><div id="industrialesPanel"></div></section>
 
           <section class="view nav-hide" id="viewEmptyState" data-view-el>
             <div class="empty-state">
@@ -521,8 +523,10 @@
     <script src="js/servicios-modelos.js"></script>
     <script src="js/servicios-prediccion.js"></script>
     <script src="js/servicios-elaboracion.js"></script>
+    <script src="js/servicios-industriales.js"></script>
     <script src="js/servicios-graficas.js"></script>
     <script src="js/servicios.js"></script>
+    <script src="js/servicios-industriales-ui.js"></script>
     <script src="js/inicio.js"></script>
     <script src="js/asistente-datos.js"></script>
     <script src="js/asistente.js"></script>
@@ -551,6 +555,7 @@
           "view-recomendaciones",
           "view-cip",
           "view-servicios",
+          "view-servicios-industriales",
           "view-inicio",
         ];
 
@@ -617,6 +622,7 @@
           "view-recomendaciones": { show: ["view-recomendaciones"] },
           "view-cip": { show: ["view-cip"] },
           "view-servicios": { show: ["view-servicios"] },
+          "view-servicios-industriales": { show: ["view-servicios-industriales"] },
           "view-inicio": { show: ["view-inicio"] },
         };
 
