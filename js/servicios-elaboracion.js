@@ -21,7 +21,7 @@
   // a comienzos de marzo de 2026 (la suma de los dos se mantiene).
   const CAMBIO_CYF = "2026-03-08";
   const CAMBIO_COC = "2026-03-09";
-  const CFG = { test: 0.2, tol: 0.03, mad: 3.5, mejora_politica: 0.03, nivel: 0.9, umbral_base: 0.1 };
+  const CFG = { test: 0.2, tol: 0.03, mad: 3.5, mejora_politica: 0.03, nivel: 0.9, umbral_base: 0.05 };
   const ESCALA = 1000;
   const DRIVERS = { coc: ["coc"], fil: ["fil"], env: ["env"], "coc+fil": ["coc", "fil"], "coc+fil+env": ["coc", "fil", "env"] };
   const NOMBRE_DRIVER = { coc: "hL cocinados", fil: "hL filtrados", env: "hL envasados", "coc+fil": "cocinados + filtrados", "coc+fil+env": "cocinados + filtrados + envasados" };
@@ -169,7 +169,7 @@
             if (q < 0.7 || q > 1.3) marca = `el medidor general de elaboración difiere ${D.pctEs(q - 1, 0, true)}`;
           }
         }
-        if (estado === "valido" && nat.some((k) => (r[k] || 0) < CFG.umbral_base * medias[k])) { estado = "carga_base"; motivo = "producción del área < 10 % de la media"; }
+        if (estado === "valido" && nat.some((k) => (r[k] || 0) < CFG.umbral_base * medias[k])) { estado = "carga_base"; motivo = "producción del área < 5 % de la media"; }
         if (estado === "valido" && v === 0) { estado = "excluido"; motivo = "consumo cero con producción"; }
         return { fecha: r.fecha, consumo: v === null || v === undefined ? null : v * fac, coc: r.coc || 0, fil: r.fil || 0, env: r.env || 0, estado, motivo, marca, dudoso: !!marca };
       });
@@ -256,6 +256,13 @@
     return mad > 0 ? r.map((v) => Math.abs(v - md) > CFG.mad * mad) : y.map(() => false);
   }
   function filtrar(rows, cols, pol) {
+    // «reciente»: entrena solo con los últimos 120 días (el proceso cambia con el tiempo).
+    if (pol === "reciente") {
+      if (!rows.length) return rows;
+      const fin = rows.reduce((m, r) => (r.fecha > m ? r.fecha : m), rows[0].fecha);
+      const desde = new Date(Date.parse(fin + "T00:00:00Z") - 120 * 86400000).toISOString().slice(0, 10);
+      return rows.filter((r) => r.fecha > desde);
+    }
     if (pol === "sin_atipicos") { const m = atipicos(XY(rows, cols), rows.map((r) => r.consumo)); return rows.filter((_, i) => !m[i]); }
     if (pol === "sin_marcados") return rows.filter((r) => !r.dudoso);
     return rows;
@@ -312,13 +319,13 @@
     const sel = ok.filter((c) => c.cv_WAPE <= w0 * (1 + CFG.tol)).sort((a, b) => a.complejidad - b.complejidad || a.cv_WAPE - b.cv_WAPE)[0];
     const { cols, fab } = sel;
     const pols = {};
-    for (const pol of ["todos", "sin_atipicos", "sin_marcados"]) {
+    for (const pol of ["todos", "sin_atipicos", "sin_marcados", "reciente"]) {
       if (pol === "sin_marcados" && !ent.some((r) => r.dudoso)) continue;
       const o = oos(ent, cols, fab, pol);
       if (o.length) pols[pol] = met(o.map((r) => r.y), o.map((r) => r.pred)).WAPE;
     }
     let pol = "todos";
-    for (const p of ["sin_atipicos", "sin_marcados"]) if (p in pols && pols[p] <= pols.todos * (1 - CFG.mejora_politica) && pols[p] < (pols[pol] === undefined ? 9 : pols[pol])) pol = p;
+    for (const p of ["sin_atipicos", "sin_marcados", "reciente"]) if (p in pols && pols[p] <= pols.todos * (1 - CFG.mejora_politica) && pols[p] < (pols[pol] === undefined ? 9 : pols[pol])) pol = p;
     const o = oos(ent, cols, fab, pol);
     const entF = filtrar(ent, cols, pol);
     const mEnt = fab().fit(XY(entF, cols), entF.map((r) => r.consumo));
@@ -366,7 +373,7 @@
       const v = xs.filter((r) => r.estado === "valido");
       const spec = { serie: s, area, servicio: serv, variante, unidad, naturales: nat, n_estados: {} };
       xs.forEach((r) => (spec.n_estados[r.estado] = (spec.n_estados[r.estado] || 0) + 1));
-      // Carga base: días con la producción natural del área < 10 % de la media.
+      // Carga base: días con la producción natural del área < 5 % de la media.
       // Se mide contra la producción propia del área (la primera variable
       // natural: cocinados para cocinas, cavas y los totales; filtrados para filtración).
       const b = xs.filter((r) => r.estado !== "excluido" && r.consumo !== null && r[nat[0]] < CFG.umbral_base * medias[nat[0]]).map((r) => r.consumo);

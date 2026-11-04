@@ -361,8 +361,16 @@
     if (!(mad > 0)) return P.map(() => false);
     return r.map((v) => Math.abs(v - md) > umbral * mad);
   }
+  // «reciente»: solo los últimos DIAS_RECIENTES días del conjunto (el proceso cambia con el tiempo).
+  const DIAS_RECIENTES = 120;
   function filtrar(x, pol) {
     if (pol === "todos") return x;
+    if (pol === "reciente") {
+      if (!x.length) return x;
+      const fin = x.reduce((m, r) => (r.fecha > m ? r.fecha : m), x[0].fecha);
+      const desde = new Date(Date.parse(fin + "T00:00:00Z") - DIAS_RECIENTES * 86400000).toISOString().slice(0, 10);
+      return x.filter((r) => r.fecha > desde);
+    }
     if (pol === "sin_marcados") return x.filter((r) => !r.dudoso);
     const m = mascaraAtipicos(x.map((r) => r.produccion_hL), x.map((r) => r.consumo), CFGM.umbral_mad);
     return x.filter((_, i) => !m[i]);
@@ -504,13 +512,13 @@
     const fab = oosFam[elegida].fab;
     // Política de atípicos.
     const pols = {};
-    for (const pol of ["todos", "sin_atipicos", "sin_marcados"]) {
+    for (const pol of ["todos", "sin_atipicos", "sin_marcados", "reciente"]) {
       const o = pol === "todos" ? oosFam[elegida].o : oos(tr, fab, pol);
       pols[pol] = Object.assign({ oos: o }, resumenOos(o));
     }
     let politica = "todos";
     const base = pols.todos.WAPE;
-    for (const pol of ["sin_atipicos", "sin_marcados"]) {
+    for (const pol of ["sin_atipicos", "sin_marcados", "reciente"]) {
       const w = pols[pol].WAPE;
       if (w !== null && w <= base * 0.97 && (politica === "todos" || w < pols[politica].WAPE)) politica = pol;
     }
