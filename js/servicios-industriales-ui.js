@@ -211,15 +211,19 @@
     const pp = prodDias(I);
     let planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan</div><p class="muted">Carga el plan de envasado para proyectar los indicadores del plan. Abajo están los históricos.</p></div>`;
     if (pp) {
-      const env = pp.dias.reduce((a, d) => a + d.prod.env, 0);
+      // Los días parciales (primero y último del plan) se dejan fuera: con medio día de
+      // producción el consumo fijo pesa el doble y el indicador saldría inflado.
+      const completos = pp.dias.filter((d) => !d.parcial);
+      const dd = completos.length ? completos : pp.dias;
+      const env = dd.reduce((a, d) => a + d.prod.env, 0);
       const kpis = IND.map(([b, t, u, c, dec]) => {
         const k = clave(I, b); if (!k) return "";
         const m = I.modelos[k];
-        const est = pp.dias.reduce((a, d) => a + (d.r[k].estimado || 0), 0), lo = pp.dias.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0), hi = pp.dias.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0);
+        const est = dd.reduce((a, d) => a + (d.r[k].estimado || 0), 0), lo = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0), hi = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0);
         const h = hist[k].total;
         return `<div class="srv-kpi" style="--c:${c}"><span>${esc(t)}${etqV(m)}</span><b>${nf(env ? est / env : null, dec)} <small>${u}</small></b><small>margen ${nf(lo / env, dec)} – ${nf(hi / env, dec)} · histórico ${nf(h, dec)} ${u}</small></div>`;
       }).join("");
-      planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${pp.dias.length} días, ${nf(env)} hL envasados</small></div>
+      planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${dd.length} días completos, ${nf(env)} hL envasados${dd.length < pp.dias.length ? " (sin el primer y el último día, que son parciales)" : ""}</small></div>
         <div class="srv-kpis">${kpis}</div>
         ${(() => { const c = pp.dias.reduce((a, d) => a + d.prod.coc, 0) / pp.dias.length; return c < 0.7 * I.medias.coc ? `<div class="srv-aviso info">El plan de cocinas de T-minus cocina ${SrvDatos.numEs(c, 0)} hL/día (en el histórico, ${SrvDatos.numEs(I.medias.coc, 0)}): solo lo que pide envasado, sin reponer inventario. Con menos cocción la planta gasta menos y el indicador por hL envasado sale más bajo que el histórico. Si Cocinas va a cocinar lo habitual, el indicador real quedará más cerca del histórico.</div>` : ""; })()}
         <p class="muted">Consumo total esperado de la planta dividido por los hL envasados del plan. «Térmica comprada» es el indicador oficial de la hoja MAESTRA (gas y GLP comprados, sin biogás). El margen suma los márgenes diarios (es conservador). Si el plan envasa menos que lo habitual, el indicador sube: una parte grande del consumo es fija.</p>
@@ -237,10 +241,10 @@
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Indicador</th><th class="n">Error diario</th><th class="n">Error semanal</th><th>Calidad</th></tr></thead><tbody>${prec}</tbody></table></div>
         <p class="muted">El error del indicador es el mismo del consumo (se divide por los mismos hL). Para planear por semana, mire el error semanal.</p></div>
       <div class="srv-card"><div class="srv-card-t">Histórico mensual <small class="muted">· consumo del mes / hL envasados del mes (días con dato)</small></div>
-        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados</th><th class="n">kWh/hL</th><th class="n">Agua hL/hL</th><th class="n">Agua oficial (G)</th><th class="n">Térmica comprada MJ/hL</th><th class="n">Térmica oficial (V)</th><th class="n">Vapor kg/hL</th></tr></thead><tbody>${meses
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados</th><th class="n">kWh/hL</th><th class="n">Agua hL/hL</th><th class="n">Agua oficial (G)</th><th class="n">Térmica comprada MJ/hL${kT && I.modelos[kT].variante ? ` <small class="muted">(${esc(I.modelos[kT].variante)})</small>` : ""}</th><th class="n">Térmica oficial (V)</th><th class="n">Vapor kg/hL</th></tr></thead><tbody>${meses
           .map((m) => { const o = ofi.get(m) || {}; return `<tr><td>${esc(m)}</td><td class="n">${nf(o.env)}</td><td class="n">${r(kE, m, 2)}</td><td class="n">${r(kA, m, 2)}</td><td class="n">${nf(o.agua_hl_hl, 2)}</td><td class="n">${r(kT, m, 1)}</td><td class="n">${nf(o.termica_mj_hl, 1)}</td><td class="n">${r(kV, m, 1)}</td></tr>`; })
           .join("")}<tr class="srv-total"><td>Periodo</td><td></td><td class="n">${nf(kE && hist[kE].total, 2)}</td><td class="n">${nf(kA && hist[kA].total, 2)}</td><td></td><td class="n">${nf(kT && hist[kT].total, 1)}</td><td></td><td class="n">${nf(kV && hist[kV].total, 1)}</td></tr></tbody></table></div>
-        <p class="muted">«Oficial» = indicadores diarios de la hoja MAESTRA (G y V) ponderados por los hL de cada día. El agua oficial incluye la variación de tanques; la de este módulo no. La térmica comprada no incluye el biogás propio (≈ 1 a 3 MJ/hL según el mes); la térmica total sí. La electricidad oficial del Excel es un acumulado del año (hoja «informe») y no se compara aquí.</p></div>`;
+        <p class="muted">«Oficial» = indicadores diarios de la hoja MAESTRA (G y V) ponderados por los hL de cada día. El agua oficial incluye la variación de tanques (y a veces un ajuste a mano en la columna G); la de este módulo no.${U.variante === "contador" ? " Con «Contador sin ajustes», la térmica comprada quita los ajustes del GLP, así que no tiene por qué coincidir con la oficial." : ""} La térmica comprada no incluye el biogás propio (≈ 1 a 3 MJ/hL según el mes); la térmica total sí. La electricidad oficial del Excel es un acumulado del año (hoja «informe») y no se compara aquí.</p></div>`;
   }
 
   /* ------------------------------------------------------------ calculadora */

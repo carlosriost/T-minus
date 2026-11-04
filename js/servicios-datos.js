@@ -301,8 +301,10 @@
         if (!l9 || l9.consumo === null || !rr) continue;
         const env = aNumero(valor(wb, "Contadores vapor", "AY", rr));
         const otras = ["L5", "L7", "L8"].map((l) => (g[l] ? g[l].consumo : null));
-        if (env === null || otras.some((v) => v === null)) continue;
+        // Sin lectura de envase (0 o vacía), o con las otras líneas por encima del total, no se puede juzgar a la L9.
+        if (!(env > 0) || otras.some((v) => v === null) || l9.fuera_de_periodo || l9.procedencia === "residuo") continue;
         const disponible = env * 1000 - otras.reduce((a, b) => a + b, 0);
+        if (disponible < 0) continue;
         if (l9.consumo > disponible + 0.05 * env * 1000) { l9.balance_imposible = true; balanceL9.push({ fecha, L9: l9.consumo, disponible, envase: env * 1000 }); }
       }
     }

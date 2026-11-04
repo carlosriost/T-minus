@@ -54,6 +54,11 @@
     return Promise.resolve(false);
   }
   const esPersistente = () => persistente;
+  // Solo consulta (no pide): para no mostrar avisos del navegador en cada carga.
+  function revisarPersistencia() {
+    try { if (raiz.navigator && navigator.storage && navigator.storage.persisted) return navigator.storage.persisted().then((v) => (persistente = !!v)).catch(() => false); } catch (_) {}
+    return Promise.resolve(false);
+  }
 
-  raiz.TMAlmacen = { leer, escribir, borrar, pedirPersistencia, esPersistente };
+  raiz.TMAlmacen = { leer, escribir, borrar, pedirPersistencia, revisarPersistencia, esPersistente };
 })(typeof window !== "undefined" ? window : globalThis);

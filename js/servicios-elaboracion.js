@@ -325,6 +325,11 @@
       if (o.length) pols[pol] = met(o.map((r) => r.y), o.map((r) => r.pred)).WAPE;
     }
     let pol = "todos";
+    if ("reciente" in pols) {
+      // La ventana corta puede doblar la curva: se exige el mismo chequeo físico.
+      const rf = filtrar(ent, cols, "reciente");
+      if (rf.length < 15 || !fisico(fab().fit(XY(rf, cols), rf.map((r) => r.consumo)), XY(rf, cols), rf.map((r) => r.consumo))[0]) delete pols.reciente;
+    }
     for (const p of ["sin_atipicos", "sin_marcados", "reciente"]) if (p in pols && pols[p] <= pols.todos * (1 - CFG.mejora_politica) && pols[p] < (pols[pol] === undefined ? 9 : pols[pol])) pol = p;
     const o = oos(ent, cols, fab, pol);
     const entF = filtrar(ent, cols, pol);

@@ -520,6 +520,11 @@
     const base = pols.todos.WAPE;
     for (const pol of ["sin_atipicos", "sin_marcados", "reciente"]) {
       const w = pols[pol].WAPE;
+      if (pol === "reciente") {
+        // La ventana corta puede doblar la curva: se exige el mismo chequeo físico.
+        const rf = filtrar(tr, pol);
+        if (rf.length < 10 || !chequeoFisico(fab().fit(rf.map((r) => r.produccion_hL), rf.map((r) => r.consumo)), rf.map((r) => r.produccion_hL), rf.map((r) => r.consumo))[0]) continue;
+      }
       if (w !== null && w <= base * 0.97 && (politica === "todos" || w < pols[politica].WAPE)) politica = pol;
     }
     res.politica_atipicos = politica;

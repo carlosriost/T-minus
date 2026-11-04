@@ -72,6 +72,8 @@
       return true;
     }).catch((err) => {
       console.error(err);
+      // La copia anterior en IndexedDB ya no vale: se borra para que no vuelva al recargar.
+      TMAlmacen.borrar(CLAVE_IDB).catch(() => {});
       try { localStorage.setItem(LS, JSON.stringify(b)); S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "localStorage" }; return true; }
       catch (_) { S.almacen = { estado: "error" }; S.estado = "No se pudo guardar en este navegador (almacenamiento lleno o bloqueado): el modelo se usa solo en esta sesión."; repintarTodo(); return false; }
     });
@@ -85,10 +87,15 @@
   // Al abrir la página: lee el paquete guardado (o migra el de localStorage).
   if (window.TMAlmacen) {
     TMAlmacen.leer(CLAVE_IDB).then((b) => {
-      if (b && !S.borrado && (!S.B || (b.guardado_en || "") >= (S.B.guardado_en || ""))) { S.B = b; S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "IndexedDB" }; TMAlmacen.pedirPersistencia().then(() => repintarTodo()); }
-      else if (!b) { cargarGuardado(); if (S.B) guardar(); else S.almacen = { estado: "vacio" }; }
+      if (S.borrado) return;
+      cargarGuardado(); // copia de localStorage (versiones anteriores o si IndexedDB falló)
+      const ls = S.B;
+      if (b && (!ls || (b.guardado_en || "") >= (ls.guardado_en || ""))) { S.B = b; S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "IndexedDB" }; }
+      else if (ls) { S.almacen = { estado: "ok", guardado_en: ls.guardado_en, donde: "localStorage" }; guardar(); }
+      else S.almacen = { estado: "vacio" };
+      TMAlmacen.revisarPersistencia().then(() => repintarTodo());
       repintarTodo();
-    }).catch((err) => { console.error(err); S.almacen = { estado: "sin_idb" }; repintarTodo(); });
+    }).catch((err) => { console.error(err); cargarGuardado(); S.almacen = S.B ? { estado: "ok", guardado_en: S.B.guardado_en, donde: "localStorage" } : { estado: "sin_idb" }; repintarTodo(); });
   }
   function leerExcel(file) {
     S.estado = `Leyendo ${file.name}…`;
