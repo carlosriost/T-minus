@@ -73,7 +73,13 @@
                 console.error(err);
                 S.B.elaboracion_error = "No se pudo procesar elaboración: " + err.message;
               }
-              S.estado = `Listo: ${file.name} leído; ${Object.keys(S.B.modelos).length} modelos de envasado${S.B.elaboracion ? ` y ${Object.keys(S.B.elaboracion.modelos).length} de elaboración` : ""} validados en ${nf(S.B.segundos + (S.B.elaboracion ? S.B.elaboracion.segundos : 0), 1)} s.`;
+              try {
+                S.B.industriales = SrvInd.entrenar(wb, { desde: S.B.fuente.primera_fecha, hasta: S.B.fuente.ultima_fecha });
+              } catch (err) {
+                console.error(err);
+                S.B.industriales_error = "No se pudo procesar planta y servicios industriales: " + err.message;
+              }
+              S.estado = `Listo: ${file.name} leído; ${Object.keys(S.B.modelos).length} modelos de envasado${S.B.elaboracion ? `, ${Object.keys(S.B.elaboracion.modelos).length} de elaboración` : ""}${S.B.industriales ? ` y ${Object.keys(S.B.industriales.modelos).length} de planta y servicios industriales` : ""} validados en ${nf(S.B.segundos + (S.B.elaboracion ? S.B.elaboracion.segundos : 0) + (S.B.industriales ? S.B.industriales.segundos : 0), 1)} s.`;
               S.ev.clave = null;
               S.sim.res = null;
               S.planRes = null;
@@ -315,7 +321,9 @@
     }
     return out;
   }
-  function planElaboracion() {
+  // hL cocinados, filtrados y envasados por día del plan (sin modelos):
+  // lo usan elaboración y el módulo de servicios industriales.
+  function prodPlan() {
     const st = typeof STATE !== "undefined" ? STATE : null;
     if (!st || !st.seq || !st.seq.rows) return null;
     const coc = repartirPorDia(st.seq.rows.filter((r) => r.tipo === "cocimiento" && r.start && r.end && r.cocVolumenHL > 0).map((r) => ({ a: r.start.getTime(), z: Math.max(r.end.getTime(), r.start.getTime() + 60000), hl: r.cocVolumenHL })));
@@ -335,10 +343,16 @@
     for (let t = Date.parse(desde + "T00:00:00Z"); t <= Date.parse(hasta + "T00:00:00Z"); t += 86400000) {
       const f = new Date(t).toISOString().slice(0, 10);
       const e = env.get(f) || 0;
-      const prod = { coc: coc.get(f) || 0, env: e, fil: fil ? fil.get(f) || 0 : e };
-      dias.push({ fecha: f, prod, res: SrvElab.predecir(S.B.elaboracion, prod), parcial: f === desde || f === hasta });
+      dias.push({ fecha: f, prod: { coc: coc.get(f) || 0, env: e, fil: fil ? fil.get(f) || 0 : e }, parcial: f === desde || f === hasta });
     }
     return { dias, filFuente };
+  }
+  function planElaboracion() {
+    const pp = prodPlan();
+    if (!pp) return null;
+    const I = S.B.industriales;
+    pp.dias.forEach((d) => { d.res = SrvElab.predecir(S.B.elaboracion, d.prod); if (I) d.ind = SrvInd.predecir(I, d.prod); });
+    return pp;
   }
   function filaArea(r, uni) {
     const q = r.calidad || "";
@@ -346,8 +360,17 @@
     const marcas = (r.carga_base ? ' <span class="srv-chip warn">carga base</span>' : "") + (r.extrapolacion ? ' <span class="srv-chip warn">fuera de rango</span>' : "") + (cl === "bad" ? ' <span class="srv-chip bad" title="' + esc(q) + '">poco confiable</span>' : "");
     return `<tr><td>${esc(r.area)}${marcas}</td><td class="n">${r.estimado === null ? "—" : nf(r.estimado)} <small class="muted">${uni}</small></td><td class="n">${r.intervalo ? `${nf(r.intervalo[0])} – ${nf(r.intervalo[1])}` : "—"}</td></tr>`;
   }
+  // Planta completa (servicios-industriales.js): mismo plan y misma calculadora.
+  const PLANTA = {
+    vapor: { nombre: "Vapor", unidad: "kg", color: "var(--srv-vapor)", grande: [1000, "t", 0] },
+    electricidad: { nombre: "Electricidad", unidad: "kWh", color: "var(--srv-elec)", grande: [1000, "MWh", 1] },
+    agua: { nombre: "Agua", unidad: "hL", color: "var(--srv-agua)", grande: [10, "m³", 0] },
+    "térmica": { nombre: "Térmica", unidad: "MJ", color: "var(--srv-term)", grande: [1000, "GJ", 0] },
+  };
+  const BASE_PLANTA = { vapor: "vapor_planta", electricidad: "elec_planta", agua: "agua_planta", "térmica": "termica_planta" };
+  const clavePlanta = (I, s, v) => (I ? SrvInd.clave(I, BASE_PLANTA[s], v) : null);
   function vElab() {
-    const el = $("#srvCuerpo"), E = S.B.elaboracion;
+    const el = $("#srvCuerpo"), E = S.B.elaboracion, I = S.B.industriales;
     if (!E) {
       el.innerHTML = `<div class="srv-vacio"><h4>Falta procesar elaboración</h4><p>${esc(S.B.elaboracion_error || "Este paquete se creó antes de que existiera el módulo de elaboración.")} Vuelve a cargar el Excel de Indicadores de servicios para calcularlo.</p></div>`;
       return;
@@ -356,6 +379,19 @@
     const vis = seriesVisibles(E, v);
     const P = { coc: ev.coc === "" ? Math.round(E.medias.coc) : Number(ev.coc), fil: ev.fil === "" ? Math.round(E.medias.fil) : Number(ev.fil), env: ev.env === "" ? Math.round(E.medias.env) : Number(ev.env) };
     const res = SrvElab.predecir(E, P);
+    const resI = I ? SrvInd.predecir(I, P) : null;
+    const tablaPlanta = () => {
+      if (!I) return `<div class="srv-res"><div class="srv-res-cab"><h4>Planta completa</h4></div><p class="muted">${esc(S.B.industriales_error || "Vuelve a cargar el Excel de Indicadores de servicios para calcular el consumo de toda la planta.")}</p></div>`;
+      const filas = Object.keys(PLANTA).map((s) => {
+        const k = clavePlanta(I, s, v), r = k && resI[k];
+        if (!r) return "";
+        const ke = TOTAL_ELAB(v)[s], re = ke ? res[ke] : null;
+        const parte = re && re.estimado != null && r.estimado ? pct(re.estimado / r.estimado, 0) : "—";
+        return filaArea(Object.assign({}, r, { area: PLANTA[s].nombre + (I.modelos[k].variante ? ` (${I.modelos[k].variante})` : "") }), PLANTA[s].unidad).replace("</tr>", `<td class="n">${parte}</td></tr>`);
+      }).join("");
+      return `<div class="srv-res" style="--c:var(--srv-term)"><div class="srv-res-cab"><h4>Planta completa</h4></div>
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Servicio</th><th class="n">Estimado</th><th class="n">Margen 90 %</th><th class="n">Elaboración</th></tr></thead><tbody>${filas}</tbody></table></div></div>`;
+    };
     const tabla = (s) => {
       const rows = vis.filter((m) => m.servicio === s).sort((a, b) => AREA_ORDEN.indexOf(a.area) - AREA_ORDEN.indexOf(b.area));
       return `<div class="srv-res" style="--c:${SERV[s].color}"><div class="srv-res-cab"><h4>${SERV[s].nombre}</h4></div>
@@ -366,6 +402,11 @@
     let planHtml = `<div class="srv-card"><div class="srv-card-t">Proyección del plan</div><p class="muted">Carga el plan de envasado (y el producto en proceso) para proyectar elaboración con el plan de cocinas de T-minus.</p></div>`;
     if (plan) {
       const sumar = (s) => plan.dias.reduce((a, d) => a + (d.res[tot[s]].estimado || 0), 0);
+      const sumarP = (s) => { const k = clavePlanta(I, s, v); return k ? plan.dias.reduce((a, d) => a + (d.ind[k].estimado || 0), 0) : null; };
+      const fueraP = I ? plan.dias.filter((d) => Object.keys(PLANTA).some((s) => { const k = clavePlanta(I, s, v); return k && d.ind[k].extrapolacion; })).length : 0;
+      const kpiP = I ? `<div class="srv-card-t" style="margin-top:6px">Planta completa <small class="muted">· elaboración, envasado, servicios y demás áreas</small></div>
+          <div class="srv-kpis">${Object.entries(PLANTA).map(([s, x]) => { const t = sumarP(s), e = TOTAL_ELAB(v)[s] ? sumar(s) : null; const k = clavePlanta(I, s, v); return `<div class="srv-kpi" style="--c:${x.color}"><span>${x.nombre} de la planta${I.modelos[k].variante ? ` (${I.modelos[k].variante})` : ""}</span><b>${nf(t / x.grande[0], x.grande[2])} <small>${x.grande[1]}</small></b><small>${e != null && t ? `elaboración ≈ ${pct(e / t, 0)} · ` : ""}${esc(I.modelos[k].calidad)}</small></div>`; }).join("")}</div>
+          ${fueraP ? `<div class="srv-aviso info">En ${fueraP} de ${plan.dias.length} días la producción del plan queda fuera del rango histórico de la planta (sobre todo por los pocos hL cocinados): esos días el total de planta es una extrapolación de la recta.</div>` : ""}` : `<div class="srv-aviso info">${esc(S.B.industriales_error || "Para ver el consumo de toda la planta, vuelve a cargar el Excel de Indicadores de servicios.")}</div>`;
       planHtml = `
         <div class="srv-card"><div class="srv-card-t">Proyección del plan de T-minus <small class="muted">· ${plan.dias.length} días, del ${esc(plan.dias[0].fecha)} al ${esc(plan.dias[plan.dias.length - 1].fecha)}</small></div>
           <div class="srv-kpis">
@@ -373,18 +414,20 @@
             <div class="srv-kpi" style="--c:var(--srv-elec)"><span>Electricidad de elaboración</span><b>${nf(sumar("electricidad") / 1000, 1)} <small>MWh</small></b><small>cocinas + filtración</small></div>
             <div class="srv-kpi" style="--c:var(--srv-agua)"><span>Agua de elaboración</span><b>${nf(sumar("agua") / 10)} <small>m³</small></b><small>cocinas + cavas + filtración</small></div>
           </div>
+          ${kpiP}
           <div class="srv-aviso info">Los hL cocinados salen del plan de cocinas de T-minus, que solo incluye lo que pide el plan de envasado descontando el inventario (${nf(plan.dias.reduce((a, d) => a + d.prod.coc, 0) / plan.dias.length)} hL/día en promedio, frente a ${nf(E.medias.coc)} hL/día en el histórico). Si Cocinas cocina más para inventario, use la calculadora con sus hL.</div>
           ${plan.filFuente === "envasado" ? '<div class="srv-aviso info">No hay plan de filtración cargado: los hL filtrados se toman iguales a los envasados del día (en el histórico, envasado explica la filtración casi igual de bien).</div>' : ""}
-          <div class="srv-grid3">${P_SERV.map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${SERV[s].nombre} por día <small class="muted">· raya = margen 90 %</small></div><div class="chart" id="srvElabPlan-${s}"></div></div>`).join("")}</div>
-          <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL cocinados</th><th class="n">hL filtrados</th><th class="n">hL envasados</th><th class="n">Vapor (kg)</th><th class="n">Electricidad (kWh)</th><th class="n">Agua (hL)</th><th>Notas</th></tr></thead><tbody>${plan.dias
-            .map((d) => { const n = []; if (d.parcial) n.push("día parcial"); P_SERV.forEach((s) => { const x = d.res[tot[s]]; if (x.carga_base) n.push(`${SERV[s].nombre.toLowerCase()}: carga base`); if (x.extrapolacion) n.push(`${SERV[s].nombre.toLowerCase()}: fuera de rango`); }); return `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.coc)}</td><td class="n">${nf(d.prod.fil)}</td><td class="n">${nf(d.prod.env)}</td><td class="n">${nf(d.res[tot.vapor].estimado)}</td><td class="n">${nf(d.res[tot.electricidad].estimado)}</td><td class="n">${nf(d.res[tot.agua].estimado)}</td><td class="muted">${esc(n.join(" · "))}</td></tr>`; })
+          <div class="srv-grid3">${P_SERV.map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${SERV[s].nombre} por día <small class="muted">· raya = margen 90 %${I ? " de la planta" : ""}</small></div><div class="chart" id="srvElabPlan-${s}"></div>${I ? `<div class="srv-ley"><span><i style="background:${SERV[s].color}"></i>Elaboración</span><span><i style="background:color-mix(in srgb, ${SERV[s].color} 32%, transparent)"></i>Resto de la planta</span></div>` : ""}</div>`).join("")}</div>
+          <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL cocinados</th><th class="n">hL filtrados</th><th class="n">hL envasados</th><th class="n">Vapor (kg)</th><th class="n">Electricidad (kWh)</th><th class="n">Agua (hL)</th>${I ? Object.entries(PLANTA).map(([s, x]) => `<th class="n">Planta ${x.nombre.toLowerCase()} (${x.unidad})</th>`).join("") : ""}<th>Notas</th></tr></thead><tbody>${plan.dias
+            .map((d) => { const n = []; if (d.parcial) n.push("día parcial"); P_SERV.forEach((s) => { const x = d.res[tot[s]]; if (x.carga_base) n.push(`${SERV[s].nombre.toLowerCase()}: carga base`); if (x.extrapolacion) n.push(`${SERV[s].nombre.toLowerCase()}: fuera de rango`); }); return `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.coc)}</td><td class="n">${nf(d.prod.fil)}</td><td class="n">${nf(d.prod.env)}</td><td class="n">${nf(d.res[tot.vapor].estimado)}</td><td class="n">${nf(d.res[tot.electricidad].estimado)}</td><td class="n">${nf(d.res[tot.agua].estimado)}</td>${I ? Object.keys(PLANTA).map((s) => { const k = clavePlanta(I, s, v); const x = k && d.ind[k]; if (x && x.extrapolacion && !n.includes("planta: fuera de rango")) n.push("planta: fuera de rango"); return `<td class="n">${x ? nf(x.estimado) : "—"}</td>`; }).join("") : ""}<td class="muted">${esc(n.join(" · "))}</td></tr>`; })
             .join("")}</tbody></table></div></details>
         </div>`;
     }
     const prec = Object.values(E.modelos).filter((m) => m.test);
+    const precP = I ? Object.keys(PLANTA).flatMap((s) => [SrvInd.clave(I, BASE_PLANTA[s], "oficial"), SrvInd.clave(I, BASE_PLANTA[s], "contador")]).filter((k, i, a) => k && a.indexOf(k) === i).map((k) => I.modelos[k]).filter((m) => m.test) : [];
     el.innerHTML = `
       <div class="srv-filtros">
-        <div class="srv-campo"><label>Vapor</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-ev="${k}" class="${v === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
+        <div class="srv-campo"><label>Vapor y térmica</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-ev="${k}" class="${v === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
         <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([x, t]) => `<button type="button" data-corte="${x}" class="${S.corte === x ? "on" : ""}">${t}</button>`).join("")}</div></div>
       </div>
       ${planHtml}
@@ -396,11 +439,13 @@
           <button class="btn primary" type="submit">Calcular</button>
         </form>
         <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(E.desde)} a ${esc(E.hasta)}. Por debajo del 10 % de la media del área se usa su carga base medida.</p>
-        <div class="srv-elab-res">${P_SERV.map(tabla).join("")}</div>
+        <div class="srv-elab-res">${P_SERV.map(tabla).join("")}</div><div class="srv-elab-planta">${tablaPlanta()}</div>
       </div>
       <div class="srv-card"><div class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${prec[0] ? prec[0].n_test : "—"} días, que no se usaron para elegir</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Área</th><th>Servicio</th><th>Variable que mejor lo explica</th><th>Modelo</th><th class="n">Error diario</th><th class="n">Error semanal</th><th class="n">Cobertura 90 %</th><th>Calidad</th></tr></thead><tbody>${prec
           .map((m) => `<tr><td>${esc(m.area)}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
+          .join("")}${precP
+          .map((m) => `<tr class="srv-total"><td>Planta completa</td><td>${esc(PLANTA[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
           .join("")}</tbody></table></div>
         <p class="muted">Error = WAPE (suma de errores sobre consumo real). Se compararon hL cocinados, filtrados y envasados, solos y combinados, con siete tipos de modelo y validación temporal; queda el más simple dentro del 3 % del mejor. En electricidad casi todo es carga fija: el error es bajo porque el consumo cambia poco.</p>
       </div>
@@ -419,7 +464,10 @@
       const cats = plan.dias.map((d) => d.fecha.slice(8, 10) + "/" + d.fecha.slice(5, 7));
       P_SERV.forEach((s) => {
         const k = tot[s];
-        SrvCharts.apiladas(document.getElementById("srvElabPlan-" + s), { W: 420, H: 230, maxEtiquetas: 6, cats, series: [{ color: SERV[s].color, valores: plan.dias.map((d) => d.res[k].estimado || 0), tips: plan.dias.map((d) => `${d.fecha}: ${nf(d.res[k].estimado)} ${SERV[s].unidad} con ${nf(d.prod.coc)} hL cocinados`) }], rangos: plan.dias.map((d) => d.res[k].intervalo), yLab: `${SERV[s].unidad}/día`, aria: `${SERV[s].nombre} de elaboración por día` });
+        const kp = clavePlanta(I, s, v);
+        const series = [{ color: SERV[s].color, valores: plan.dias.map((d) => d.res[k].estimado || 0), tips: plan.dias.map((d) => `${d.fecha}: ${nf(d.res[k].estimado)} ${SERV[s].unidad} de elaboración con ${nf(d.prod.coc)} hL cocinados`) }];
+        if (kp) series.push({ color: `color-mix(in srgb, ${SERV[s].color} 32%, transparent)`, valores: plan.dias.map((d) => Math.max(0, (d.ind[kp].estimado || 0) - (d.res[k].estimado || 0))), tips: plan.dias.map((d) => `${d.fecha}: planta completa ${nf(d.ind[kp].estimado)} ${SERV[s].unidad} (margen ${d.ind[kp].intervalo ? nf(d.ind[kp].intervalo[0]) + " – " + nf(d.ind[kp].intervalo[1]) : "—"})`) });
+        SrvCharts.apiladas(document.getElementById("srvElabPlan-" + s), { W: 420, H: 230, maxEtiquetas: 6, cats, series, rangos: plan.dias.map((d) => (kp ? d.ind[kp].intervalo : d.res[k].intervalo)), yLab: `${SERV[s].unidad}/día`, aria: `${SERV[s].nombre} de elaboración${kp ? " y del resto de la planta" : ""} por día` });
       });
     }
   }
@@ -658,6 +706,15 @@
         if (pl) { const t = TOTAL_ELAB(S.elab.variante); hojas.push(["Elab_plan", pl.dias.map((d) => ({ dia: d.fecha, hL_cocinados: d.prod.coc, hL_filtrados: d.prod.fil, hL_envasados: d.prod.env, vapor_kg: d.res[t.vapor].estimado, electricidad_kWh: d.res[t.electricidad].estimado, agua_hL: d.res[t.agua].estimado, filtrados_desde: pl.filFuente }))]); }
       } catch (e) { console.error(e); }
     }
+    const I = B.industriales;
+    if (I) {
+      hojas.push(["Ind_modelos", Object.values(I.modelos).map((m) => ({ serie: m.serie, sistema: m.sistema, servicio: m.servicio, variante: m.variante, unidad: m.unidad, descripcion: m.descripcion, variable: m.familia === "media" ? "ninguna" : SrvElab.NOMBRE_DRIVER[m.drivers] || "", modelo: m.modelo || "", formula: m.formula || (m.web && m.web.tipo === "multi" ? `C = ${m.web.b0} + ${m.web.b.join(" , ")} · (${(m.cols || []).join(", ")})` : ""), cv_WAPE: m.cv && m.cv.WAPE, test_WAPE: m.test && m.test.WAPE, test_WAPE_semanal: m.test_semanal && m.test_semanal.WAPE, cobertura_90: m.cobertura, calidad: m.calidad, margen_inf: m.q && m.q[0], margen_sup: m.q && m.q[1], carga_base_dias: m.carga_base.n, carga_base_mediana: m.carga_base.mediana, fijo_operando: m.fijo_operando, promedio_con_produccion: m.media_valida, dias_validos: m.n_estados.valido || 0, dias_excluidos: m.n_estados.excluido || 0 }))]);
+      hojas.push(["Ind_historico", Object.values(I.modelos).flatMap((m) => m.historico.map((h) => ({ serie: m.serie, fecha: h.f, consumo: h.c, estado: h.e, motivo: h.m })))]);
+      try {
+        const pl = prodPlan();
+        if (pl) hojas.push(["Ind_plan", pl.dias.flatMap((d) => { const r = SrvInd.predecir(I, d.prod); return Object.values(r).map((x) => ({ dia: d.fecha, hL_cocinados: d.prod.coc, hL_filtrados: d.prod.fil, hL_envasados: d.prod.env, serie: x.serie, sistema: x.sistema, servicio: x.servicio, variante: x.variante, unidad: x.unidad, estimado: x.estimado, margen_inf: x.intervalo && x.intervalo[0], margen_sup: x.intervalo && x.intervalo[1], carga_base: x.carga_base ? "sí" : "", fuera_de_rango: x.extrapolacion ? "sí" : "", calidad: x.calidad })); })]);
+      } catch (e) { console.error(e); }
+    }
     hojas.forEach(([n, d]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d.length ? d : [{ sin_datos: "" }]), n));
     XLSX.writeFile(wb, `consumos_servicios_${B.version}.xlsx`);
   }
@@ -686,6 +743,11 @@
         const t = TOTAL_ELAB("oficial");
         out.elab = { dias: pl.dias.length };
         for (const k of P_SERV) out.elab[k] = pl.dias.reduce((a, d) => a + (d.res[t[k]].estimado || 0), 0);
+        const I = S.B.industriales;
+        if (I) {
+          out.planta = { dias: pl.dias.length };
+          for (const k of Object.keys(PLANTA)) { const c = clavePlanta(I, k, "oficial"); out.planta[k] = c ? pl.dias.reduce((a, d) => a + (d.ind[c].estimado || 0), 0) : null; }
+        }
       }
     } catch (e) { console.error(e); }
     return out;
@@ -694,4 +756,7 @@
   window.renderServicios = renderServicios;
   window.resumenServicios = resumenServicios;
   window.__srv = S;
+  window.srvCargar = () => { cargarGuardado(); return S.B; };
+  window.srvProdPlan = () => (S.B ? prodPlan() : null);
+  window.srvCorte = (c) => { if (c !== undefined && [0, 6, 22].includes(c)) { S.corte = c; guardarCfg(); } return S.corte; };
 })();
