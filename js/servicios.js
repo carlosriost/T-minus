@@ -42,15 +42,53 @@
   const decE = (s) => (s === "agua" ? 3 : 2);
 
   /* ------------------------------------------------------------ carga */
+  // Los modelos se guardan en el almacén local del navegador (IndexedDB, js/almacen.js):
+  // quedan hasta que se cargue otro Excel o se pulse «Limpiar datos». Las versiones
+  // anteriores usaban localStorage (se migra solo).
+  const CLAVE_IDB = "servicios.paquete";
+  S.almacen = { estado: "cargando", guardado_en: null };
   function cargarGuardado() {
-    if (S.B) return;
+    if (S.B || S.borrado) return;
     try {
       const t = localStorage.getItem(LS);
       if (t) S.B = JSON.parse(t);
     } catch (_) { S.B = null; }
   }
+  function repintarTodo() {
+    [renderServicios, window.renderIndustriales, window.renderCargaBase, window.renderInicio].forEach((f) => { if (typeof f === "function") try { f(); } catch (e) { console.error(e); } });
+  }
   function guardar() {
-    try { localStorage.setItem(LS, JSON.stringify(S.B)); } catch (_) { S.estado = "No se pudo guardar en este navegador (almacenamiento lleno o bloqueado): el modelo se usa solo en esta sesión."; }
+    if (!S.B) return Promise.resolve(false);
+    S.B.guardado_en = S.B.guardado_en || new Date().toISOString();
+    const b = S.B;
+    if (!window.TMAlmacen) {
+      try { localStorage.setItem(LS, JSON.stringify(b)); S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "localStorage" }; return Promise.resolve(true); }
+      catch (_) { S.estado = "No se pudo guardar en este navegador (almacenamiento lleno o bloqueado): el modelo se usa solo en esta sesión."; return Promise.resolve(false); }
+    }
+    return TMAlmacen.escribir(CLAVE_IDB, b).then(() => {
+      try { localStorage.removeItem(LS); } catch (_) {}
+      S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "IndexedDB" };
+      TMAlmacen.pedirPersistencia().then(() => repintarTodo());
+      return true;
+    }).catch((err) => {
+      console.error(err);
+      try { localStorage.setItem(LS, JSON.stringify(b)); S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "localStorage" }; return true; }
+      catch (_) { S.almacen = { estado: "error" }; S.estado = "No se pudo guardar en este navegador (almacenamiento lleno o bloqueado): el modelo se usa solo en esta sesión."; repintarTodo(); return false; }
+    });
+  }
+  function limpiarDatos() {
+    S.B = null; S.borrado = true; S.planRes = null; S.sim.res = null; S.ev.clave = null; S.confirmarLimpiar = false;
+    try { localStorage.removeItem(LS); } catch (_) {}
+    const fin = () => { S.almacen = { estado: "vacio" }; S.estado = "Datos borrados de este navegador. Carga el Excel de Indicadores de servicios cuando necesites una predicción nueva."; repintarTodo(); };
+    if (window.TMAlmacen) TMAlmacen.borrar(CLAVE_IDB).then(fin, fin); else fin();
+  }
+  // Al abrir la página: lee el paquete guardado (o migra el de localStorage).
+  if (window.TMAlmacen) {
+    TMAlmacen.leer(CLAVE_IDB).then((b) => {
+      if (b && !S.borrado && (!S.B || (b.guardado_en || "") >= (S.B.guardado_en || ""))) { S.B = b; S.almacen = { estado: "ok", guardado_en: b.guardado_en, donde: "IndexedDB" }; TMAlmacen.pedirPersistencia().then(() => repintarTodo()); }
+      else if (!b) { cargarGuardado(); if (S.B) guardar(); else S.almacen = { estado: "vacio" }; }
+      repintarTodo();
+    }).catch((err) => { console.error(err); S.almacen = { estado: "sin_idb" }; repintarTodo(); });
   }
   function leerExcel(file) {
     S.estado = `Leyendo ${file.name}…`;
@@ -74,6 +112,10 @@
                 S.B.elaboracion_error = "No se pudo procesar elaboración: " + err.message;
               }
               try {
+                // Producción diaria (cocinados, filtrados, envasados): la usan la carga base y los indicadores por hL.
+                S.B.produccion_diaria = SrvElab.leer(wb, S.B.fuente.primera_fecha, S.B.fuente.ultima_fecha).map((r) => [r.fecha, r.coc || 0, r.fil || 0, r.env || 0]);
+              } catch (err) { console.error(err); }
+              try {
                 S.B.industriales = SrvInd.entrenar(wb, { desde: S.B.fuente.primera_fecha, hasta: S.B.fuente.ultima_fecha });
               } catch (err) {
                 console.error(err);
@@ -83,7 +125,9 @@
               S.ev.clave = null;
               S.sim.res = null;
               S.planRes = null;
-              guardar();
+              S.borrado = false;
+              S.B.guardado_en = new Date().toISOString();
+              guardar().then(() => renderServicios());
             } catch (err) {
               console.error(err);
               S.estado = "Error: " + err.message;
@@ -106,7 +150,9 @@
         const b = JSON.parse(rd.result);
         if (!b || b.formato !== "prediccion-servicios/1") throw new Error("no es un paquete de modelos de servicios");
         S.B = b;
-        guardar();
+        S.borrado = false;
+        S.B.guardado_en = new Date().toISOString();
+        guardar().then(() => renderServicios());
         S.estado = `Paquete ${b.version} cargado (${file.name}).`;
       } catch (err) { S.estado = "No se pudo cargar: " + err.message; }
       renderServicios();
@@ -128,13 +174,14 @@
           <div class="srv-barra">
             <div class="srv-estado">${
               B
-                ? `<span class="srv-chip ok">Modelos de ${esc(B.fuente.archivo || "Excel")}</span><span class="srv-chip">Datos ${esc(B.fuente.primera_fecha)} → ${esc(B.fuente.ultima_fecha)}</span><span class="srv-chip">${hab} de ${Object.keys(B.modelos).length} habilitados</span>`
+                ? `<span class="srv-chip ok">Modelos de ${esc(B.fuente.archivo || "Excel")}</span><span class="srv-chip">Datos ${esc(B.fuente.primera_fecha)} → ${esc(B.fuente.ultima_fecha)}</span><span class="srv-chip">${hab} de ${Object.keys(B.modelos).length} habilitados</span>${chipGuardado()}`
                 : '<span class="srv-chip">Sin modelos todavía</span>'
             }</div>
             <div class="srv-acciones">
               <label class="btn ${B ? "small" : "primary"}" for="srvExcel">${B ? "Actualizar con otro Excel" : "Cargar Indicadores de servicios (.xlsm)"}</label>
               <input type="file" id="srvExcel" accept=".xlsm,.xlsx" hidden />
-              ${B ? '<button class="btn small" id="srvXls">Exportar resultados (Excel)</button><details class="srv-mas"><summary class="btn small">Más</summary><div><button class="btn small" id="srvJson">Exportar paquete de modelos (.json)</button><label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden /></div></details>' : ""}
+              ${B ? '<button class="btn small" id="srvXls">Exportar resultados (Excel)</button><details class="srv-mas"><summary class="btn small">Más</summary><div><button class="btn small" id="srvJson">Exportar paquete de modelos (.json)</button><label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden /></div></details>' : '<label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden />'}
+              ${B ? (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') : ""}
             </div>
           </div>
           ${S.estado ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
@@ -142,7 +189,11 @@
         </div>
       </div>`;
     $("#srvExcel").onchange = (e) => e.target.files[0] && leerExcel(e.target.files[0]);
+    if (!B && $("#srvJsonIn")) $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
     if (B) {
+      if ($("#srvLimpiar")) $("#srvLimpiar").onclick = () => { S.confirmarLimpiar = true; renderServicios(); };
+      if ($("#srvLimpiarNo")) $("#srvLimpiarNo").onclick = () => { S.confirmarLimpiar = false; renderServicios(); };
+      if ($("#srvLimpiarSi")) $("#srvLimpiarSi").onclick = limpiarDatos;
       $("#srvXls").onclick = exportarExcel;
       $("#srvJson").onclick = () => descargar(new Blob([JSON.stringify(S.B)], { type: "application/json" }), `modelo_servicios_${S.B.version}.json`);
       $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
@@ -150,6 +201,15 @@
       ({ plan: vPlan, elaboracion: vElab, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal })[S.vista]();
     }
     SrvCharts.conectarTips(cont);
+  }
+  function chipGuardado() {
+    const a = S.almacen || {};
+    const f = (S.B && S.B.guardado_en) || a.guardado_en;
+    const fecha = f ? new Date(f).toLocaleString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    if (a.estado === "error") return '<span class="srv-chip bad">No quedó guardado: se pierde al cerrar</span>';
+    if (a.estado !== "ok") return "";
+    const per = window.TMAlmacen && TMAlmacen.esPersistente();
+    return `<span class="srv-chip ok" title="Queda en este navegador hasta que cargues otro Excel o pulses «Limpiar datos». ${per ? "El navegador lo marcó como almacenamiento persistente." : "Si limpias los datos de navegación de este sitio, se borra."}">Guardado en este navegador${fecha ? " · " + esc(fecha) : ""}</span>`;
   }
   function vacio() {
     return `<div class="srv-vacio">
@@ -438,18 +498,18 @@
           <div class="srv-campo"><label for="srvEenv">hL envasados</label><input type="number" id="srvEenv" min="0" step="any" value="${esc(P.env)}"></div>
           <button class="btn primary" type="submit">Calcular</button>
         </form>
-        <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(E.desde)} a ${esc(E.hasta)}. Por debajo del 10 % de la media del área se usa su carga base medida.</p>
+        <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(E.desde)} a ${esc(E.hasta)}. Por debajo del 5 % de la media del área se usa su carga base medida.</p>
         <div class="srv-elab-res">${P_SERV.map(tabla).join("")}</div><div class="srv-elab-planta">${tablaPlanta()}</div>
       </div>
       <div class="srv-card"><div class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${prec[0] ? prec[0].n_test : "—"} días, que no se usaron para elegir</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Área</th><th>Servicio</th><th>Variable que mejor lo explica</th><th>Modelo</th><th class="n">Error diario</th><th class="n">Error semanal</th><th class="n">Cobertura 90 %</th><th>Calidad</th></tr></thead><tbody>${prec
-          .map((m) => `<tr><td>${esc(m.area)}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
+          .map((m) => `<tr><td>${esc(m.area)}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}${m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
           .join("")}${precP
-          .map((m) => `<tr class="srv-total"><td>Planta completa</td><td>${esc(PLANTA[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
+          .map((m) => `<tr class="srv-total"><td>Planta completa</td><td>${esc(PLANTA[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}${m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
           .join("")}</tbody></table></div>
         <p class="muted">Error = WAPE (suma de errores sobre consumo real). Se compararon hL cocinados, filtrados y envasados, solos y combinados, con siete tipos de modelo y validación temporal; queda el más simple dentro del 3 % del mejor. En electricidad casi todo es carga fija: el error es bajo porque el consumo cambia poco.</p>
       </div>
-      <div class="srv-card"><div class="srv-card-t">Carga base <small class="muted">· consumo con la producción del área por debajo del 10 % de su media</small></div>
+      <div class="srv-card"><div class="srv-card-t">Carga base <small class="muted">· consumo con la producción del área por debajo del 5 % de su media</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Área</th><th>Servicio</th><th class="n">Días</th><th class="n">Carga base (mediana)</th><th class="n">Rango</th><th class="n">Fijo con el área operando</th><th class="n">Promedio con producción</th><th class="n">Base / promedio</th></tr></thead><tbody>${Object.values(E.modelos)
           .filter((m) => m.carga_base && m.carga_base.n && m.serie !== "vapor_cyf_medido")
           .map((m) => `<tr><td>${esc(m.area)}${m.naturales[0] === "coc" && m.area !== "Cocinas" ? ' <small class="muted">(días sin cocinar)</small>' : ""}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td class="n">${m.carga_base.n}</td><td class="n">${nf(m.carga_base.mediana)} ${m.unidad}</td><td class="n">${nf(m.carga_base.min)} a ${nf(m.carga_base.max)}</td><td class="n">${m.fijo_operando != null && m.area !== "Elaboración" && m.area !== "Cavas" ? nf(m.fijo_operando) + " " + m.unidad : "—"}</td><td class="n">${nf(m.media_valida)} ${m.unidad}</td><td class="n">${m.media_valida ? pct(m.carga_base.mediana / m.media_valida, 0) : "—"}</td></tr>`)
@@ -651,7 +711,7 @@
         <div class="srv-card"><div class="srv-card-t">Errores en el tiempo <small class="muted">· gris validación, color prueba final</small></div><div class="chart" id="srvEE"></div></div>
       </div>
       <details class="srv-card srv-det"><summary class="srv-card-t">Los ${m.candidatos.length} modelos comparados</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th></th><th>Modelo</th><th class="n">Complejidad</th><th class="n">WAPE validación</th><th class="n">MAE</th><th class="n">R²</th><th>Físico</th><th class="n">WAPE prueba</th></tr></thead><tbody>${m.candidatos.slice().sort((a, b) => a.cv_WAPE - b.cv_WAPE).map((c) => `<tr class="${c.seleccionado ? "sel" : ""}"><td>${c.seleccionado ? "✓" : ""}</td><td>${esc(c.modelo)}</td><td class="n">${c.complejidad}</td><td class="n">${pct(c.cv_WAPE)}</td><td class="n">${nf(c.cv_MAE)}</td><td class="n">${nf(c.cv_R2, 2)}</td><td class="${c.fisico_ok ? "ok-t" : "bad-t"}" title="${esc(c.fisico_nota || "")}">${c.fisico_ok ? "OK" : "No"}</td><td class="n">${pct(c.test_WAPE)}</td></tr>`).join("")}</tbody></table></div><p class="muted">Validación temporal (rolling-origin, bloques de 14 días). La prueba final es informativa: no se usó para elegir.</p></details>
-      <details class="srv-card srv-det"><summary class="srv-card-t">Valores atípicos: con y sin</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Entrenamiento</th><th class="n">WAPE</th><th class="n">MAE</th></tr></thead><tbody>${Object.entries(m.comparacion_politicas || {}).map(([p, v]) => `<tr class="${p === m.politica_atipicos ? "sel" : ""}"><td>${{ todos: "Todos los días válidos", sin_atipicos: "Sin atípicos estadísticos", sin_marcados: "Sin valores con ajuste manual" }[p]}</td><td class="n">${pct(v.WAPE)}</td><td class="n">${nf(v.MAE)}</td></tr>`).join("")}</tbody></table></div><p class="muted">Se valida siempre sobre los días sin filtrar; otra política se adopta solo si baja el error al menos 3 %.</p></details>` : ""}`;
+      <details class="srv-card srv-det"><summary class="srv-card-t">Qué días se usan para entrenar</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Entrenamiento</th><th class="n">WAPE</th><th class="n">MAE</th></tr></thead><tbody>${Object.entries(m.comparacion_politicas || {}).map(([p, v]) => `<tr class="${p === m.politica_atipicos ? "sel" : ""}"><td>${{ todos: "Todos los días válidos", sin_atipicos: "Sin atípicos estadísticos", sin_marcados: "Sin valores con ajuste manual", reciente: "Solo los últimos 120 días" }[p]}</td><td class="n">${pct(v.WAPE)}</td><td class="n">${nf(v.MAE)}</td></tr>`).join("")}</tbody></table></div><p class="muted">Se valida siempre sobre los días sin filtrar; otra política se adopta solo si baja el error al menos 3 %.</p></details>` : ""}`;
     $("#srvEC").onchange = (e) => { S.ev.clave = e.target.value; vEval(); SrvCharts.conectarTips(el); };
     if (!m.familia) return;
     const tp = m.test_predicciones || [];
@@ -745,8 +805,10 @@
         for (const k of P_SERV) out.elab[k] = pl.dias.reduce((a, d) => a + (d.res[t[k]].estimado || 0), 0);
         const I = S.B.industriales;
         if (I) {
-          out.planta = { dias: pl.dias.length };
+          out.planta = { dias: pl.dias.length, env: pl.dias.reduce((a, d) => a + d.prod.env, 0) };
           for (const k of Object.keys(PLANTA)) { const c = clavePlanta(I, k, "oficial"); out.planta[k] = c ? pl.dias.reduce((a, d) => a + (d.ind[c].estimado || 0), 0) : null; }
+          const ct = SrvInd.clave(I, "termica_comprada", "oficial");
+          out.planta.termica_comprada = ct ? pl.dias.reduce((a, d) => a + (d.ind[ct].estimado || 0), 0) : null;
         }
       }
     } catch (e) { console.error(e); }
@@ -757,6 +819,7 @@
   window.resumenServicios = resumenServicios;
   window.__srv = S;
   window.srvCargar = () => { cargarGuardado(); return S.B; };
+  window.srvLimpiar = limpiarDatos;
   window.srvProdPlan = () => (S.B ? prodPlan() : null);
   window.srvCorte = (c) => { if (c !== undefined && [0, 6, 22].includes(c)) { S.corte = c; guardarCfg(); } return S.corte; };
 })();
