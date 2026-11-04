@@ -133,7 +133,7 @@
       </div>
       <p class="ini-nota">Envasado, ${p.dias} días del plan${p.sinVapor && p.sinVapor.length ? ` · vapor sin ${esc(p.sinVapor.join(", "))} (sin modelo confiable)` : ""}</p>
       ${r.elab ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.elab.vapor / 1000), "t", "vapor elab.")}${cifra(nf(r.elab.electricidad / 1000), "MWh", "electricidad elab.")}${cifra(nf(r.elab.agua / 10), "m³", "agua elab.")}</div><p class="ini-nota">Elaboración, ${r.elab.dias} días del plan de cocinas</p>` : ""}
-      ${r.planta ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.planta.vapor / 1000), "t", "vapor planta")}${cifra(nf(r.planta.electricidad / 1000), "MWh", "electricidad planta")}${cifra(nf(r.planta.agua / 10), "m³", "agua planta")}</div><p class="ini-nota">Planta completa, mismos días${r.planta["térmica"] != null ? ` · térmica ${nf(r.planta["térmica"] / 1000)} GJ` : ""}</p>` : ""}`);
+      ${r.planta ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.planta.vapor / 1000), "t", "vapor planta")}${cifra(nf(r.planta.electricidad / 1000), "MWh", "electricidad planta")}${cifra(nf(r.planta.agua / 10), "m³", "agua planta")}</div><p class="ini-nota">Planta completa, mismos días${r.planta["térmica"] != null ? ` · térmica ${nf(r.planta["térmica"] / 1000)} GJ` : ""}${r.planta.env > 0 ? ` · ${nf(r.planta.electricidad / r.planta.env, 2)} kWh/hL · ${nf(r.planta.agua / r.planta.env, 2)} hL agua/hL${r.planta.termica_comprada != null ? ` · ${nf(r.planta.termica_comprada / r.planta.env, 1)} MJ/hL térmica comprada` : ""}` : ""}</p>` : ""}`);
   }
 
   function atencion() {

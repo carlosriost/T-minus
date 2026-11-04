@@ -16,13 +16,14 @@
   const pct = (v, d) => (v == null || !isFinite(v) ? "—" : SrvDatos.pctEs(v, d === undefined ? 1 : d));
   const fc = (f) => f.slice(8, 10) + "/" + f.slice(5, 7);
   const U = { vista: "resumen", variante: "oficial", coc: "", fil: "", env: "", hist: "elec_refrigeracion" };
-  const VISTAS = [["resumen", "Resumen"], ["plan", "Proyección del plan"], ["calc", "Calculadora"], ["precision", "Precisión"], ["fijo", "Fijo y carga base"], ["historico", "Histórico"], ["calidad", "Calidad de datos"]];
+  const VISTAS = [["resumen", "Resumen"], ["plan", "Proyección del plan"], ["indicadores", "Indicadores por hL"], ["calc", "Calculadora"], ["precision", "Precisión"], ["fijo", "Fijo y carga base"], ["historico", "Histórico"], ["calidad", "Calidad de datos"]];
   const NOMBRE_MODELO = { media: "Promedio", ratio: "Proporcional", lineal: "Recta", huber: "Recta robusta", segmentada: "Segmentada", polinomica: "Polinómica", spline: "Spline" };
   const SERV = {
     electricidad: { nombre: "Electricidad", u: "kWh", color: "var(--srv-elec)", g: [1000, "MWh", 1] },
     agua: { nombre: "Agua", u: "hL", color: "var(--srv-agua)", g: [10, "m³", 0] },
     vapor: { nombre: "Vapor", u: "kg", color: "var(--srv-vapor)", g: [1000, "t", 0] },
     "térmica": { nombre: "Térmica", u: "MJ", color: "var(--srv-term)", g: [1000, "GJ", 0] },
+    "térmica comprada": { nombre: "Térmica comprada", u: "MJ", color: "var(--srv-term)", g: [1000, "GJ", 0] },
     "agua reciclada": { nombre: "Agua reciclada", u: "hL", color: "var(--srv-agua)", g: [10, "m³", 0] },
     "CO2 recolectado": { nombre: "CO2 recolectado", u: "kg", color: "var(--srv-co2)", g: [1000, "t", 1] },
     "CO2 consumido": { nombre: "CO2 consumido", u: "kg", color: "var(--srv-co2)", g: [1000, "t", 1] },
@@ -34,7 +35,7 @@
     electricidad: [["elec_refrigeracion", "Refrigeración (compresores)", "#5b8fd1", "contador"], ["elec_maquinaria", "Maquinaria auxiliar", "#9aa0a7"], ["elec_aire", "Aire comprimido", "#4aa3a0"], ["elec_co2", "Planta de CO2", "#8a7bc8"], ["elec_calderas", "Calderas", "#d08a4c"], ["elec_sistema_agua", "Sistema de agua", "#7fb3d5"]],
     agua: [["agua_refrigeracion", "Refrigeración", "#5b8fd1"], ["agua_aire", "Aire comprimido", "#4aa3a0"], ["agua_co2", "Planta de CO2", "#8a7bc8"], ["agua_calderas", "Calderas", "#d08a4c"], ["agua_bts", "BTS", "#c9a227"]],
   };
-  const COLUMNAS = ["electricidad", "agua", "vapor", "térmica", "CO2 consumido", "CO2 recolectado", "agua reciclada"];
+  const COLUMNAS = ["electricidad", "agua", "vapor", "térmica", "térmica comprada", "CO2 consumido", "CO2 recolectado", "agua reciclada"];
 
   const bundle = () => (typeof srvCargar === "function" ? srvCargar() : null);
   const clave = (I, base, v) => SrvInd.clave(I, base, v || U.variante);
@@ -76,7 +77,7 @@
     cont.querySelectorAll("[data-icorte]").forEach((b) => (b.onclick = () => { srvCorte(Number(b.dataset.icorte)); renderIndustriales(); }));
     cont.querySelectorAll("[data-ivista]").forEach((b) => (b.onclick = () => { U.vista = b.dataset.ivista; renderIndustriales(); }));
     const el = $("#indCuerpo");
-    try { ({ resumen: vResumen, plan: vPlan, calc: vCalc, precision: vPrecision, fijo: vFijo, historico: vHist, calidad: vCalidad })[U.vista](el, I); }
+    try { ({ resumen: vResumen, plan: vPlan, indicadores: vIndicadores, calc: vCalc, precision: vPrecision, fijo: vFijo, historico: vHist, calidad: vCalidad })[U.vista](el, I); }
     catch (e) { console.error(e); el.innerHTML = `<p class="srv-msg bad">Error al mostrar esta vista: ${esc(e.message)}</p>`; }
     SrvCharts.conectarTips(cont);
   }
@@ -179,6 +180,69 @@
     });
   }
 
+  /* ------------------------------------------------------------ indicadores por hL */
+  // Indicador = consumo de la planta / hL envasados. Para un periodo se suman consumos y hL
+  // (no se promedian los indicadores diarios, que se disparan en días de poco envasado).
+  const IND = [
+    ["elec_planta", "Electricidad", "kWh/hL", "var(--srv-elec)", 2],
+    ["agua_planta", "Agua", "hL/hL", "var(--srv-agua)", 2],
+    ["termica_comprada", "Térmica comprada", "MJ/hL", "var(--srv-term)", 1],
+    ["termica_planta", "Térmica total (con biogás)", "MJ/hL", "var(--srv-term)", 1],
+    ["vapor_planta", "Vapor", "kg/hL", "var(--srv-vapor)", 1],
+  ];
+  function historicoIndicador(I, B, k) {
+    const env = new Map((B.produccion_diaria || []).map((r) => [r[0], r[3]]));
+    const mes = new Map();
+    let C = 0, H = 0;
+    for (const h of I.modelos[k].historico) {
+      const e = env.get(h.f);
+      if (h.c === null || !(e > 0) || (h.e !== "valido" && h.e !== "carga_base")) continue;
+      const m = h.f.slice(0, 7);
+      if (!mes.has(m)) mes.set(m, [0, 0]);
+      mes.get(m)[0] += h.c; mes.get(m)[1] += e; C += h.c; H += e;
+    }
+    return { total: H ? C / H : null, mes };
+  }
+  function vIndicadores(el, I) {
+    const B = bundle();
+    if (!B.produccion_diaria) { el.innerHTML = `<div class="srv-vacio"><h4>Falta recalcular</h4><p>Vuelve a cargar el Excel de Indicadores de servicios una vez para guardar la producción diaria; con eso se calculan los indicadores por hL.</p></div>`; return; }
+    const ks = IND.map(([b]) => clave(I, b)).filter(Boolean);
+    const hist = Object.fromEntries(ks.map((k) => [k, historicoIndicador(I, B, k)]));
+    const pp = prodDias(I);
+    let planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan</div><p class="muted">Carga el plan de envasado para proyectar los indicadores del plan. Abajo están los históricos.</p></div>`;
+    if (pp) {
+      const env = pp.dias.reduce((a, d) => a + d.prod.env, 0);
+      const kpis = IND.map(([b, t, u, c, dec]) => {
+        const k = clave(I, b); if (!k) return "";
+        const m = I.modelos[k];
+        const est = pp.dias.reduce((a, d) => a + (d.r[k].estimado || 0), 0), lo = pp.dias.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0), hi = pp.dias.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0);
+        const h = hist[k].total;
+        return `<div class="srv-kpi" style="--c:${c}"><span>${esc(t)}${etqV(m)}</span><b>${nf(env ? est / env : null, dec)} <small>${u}</small></b><small>margen ${nf(lo / env, dec)} – ${nf(hi / env, dec)} · histórico ${nf(h, dec)} ${u}</small></div>`;
+      }).join("");
+      planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${pp.dias.length} días, ${nf(env)} hL envasados</small></div>
+        <div class="srv-kpis">${kpis}</div>
+        ${(() => { const c = pp.dias.reduce((a, d) => a + d.prod.coc, 0) / pp.dias.length; return c < 0.7 * I.medias.coc ? `<div class="srv-aviso info">El plan de cocinas de T-minus cocina ${SrvDatos.numEs(c, 0)} hL/día (en el histórico, ${SrvDatos.numEs(I.medias.coc, 0)}): solo lo que pide envasado, sin reponer inventario. Con menos cocción la planta gasta menos y el indicador por hL envasado sale más bajo que el histórico. Si Cocinas va a cocinar lo habitual, el indicador real quedará más cerca del histórico.</div>` : ""; })()}
+        <p class="muted">Consumo total esperado de la planta dividido por los hL envasados del plan. «Térmica comprada» es el indicador oficial de la hoja MAESTRA (gas y GLP comprados, sin biogás). El margen suma los márgenes diarios (es conservador). Si el plan envasa menos que lo habitual, el indicador sube: una parte grande del consumo es fija.</p>
+        <details class="srv-det"><summary class="srv-card-t">Día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL envasados</th>${IND.map(([b, t, u]) => (clave(I, b) ? `<th class="n">${esc(t.split(" (")[0])} (${u})</th>` : "")).join("")}<th>Notas</th></tr></thead><tbody>${pp.dias
+          .map((d) => `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.env)}</td>${IND.map(([b, , , , dec]) => { const k = clave(I, b); return k ? `<td class="n">${d.prod.env > 0 ? nf(d.r[k].estimado / d.prod.env, dec) : "—"}</td>` : ""; }).join("")}<td class="muted">${d.parcial ? "día parcial" : d.prod.env < 0.3 * I.medias.env ? "poco envasado: indicador alto" : ""}</td></tr>`)
+          .join("")}</tbody></table></div></details></div>`;
+    }
+    const meses = [...new Set(ks.flatMap((k) => [...hist[k].mes.keys()]))].sort();
+    const ofi = new Map((I.oficiales || []).map((o) => [o.mes, o]));
+    const kE = clave(I, "elec_planta"), kA = clave(I, "agua_planta"), kT = clave(I, "termica_comprada") || clave(I, "termica_planta"), kV = clave(I, "vapor_planta");
+    const r = (k, m, dec) => { const x = k && hist[k].mes.get(m); return x && x[1] ? nf(x[0] / x[1], dec) : "—"; };
+    const prec = IND.map(([b, t, u]) => { const k = clave(I, b); const m = k && I.modelos[k]; return m && m.test ? `<tr><td>${esc(t)}${etqV(m)}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td>${chipQ(m.calidad)}</td></tr>` : ""; }).join("");
+    el.innerHTML = `${planHtml}
+      <div class="srv-card"><div class="srv-card-t">Qué tan certero es el indicador <small class="muted">· días de prueba que el modelo no vio</small></div>
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Indicador</th><th class="n">Error diario</th><th class="n">Error semanal</th><th>Calidad</th></tr></thead><tbody>${prec}</tbody></table></div>
+        <p class="muted">El error del indicador es el mismo del consumo (se divide por los mismos hL). Para planear por semana, mire el error semanal.</p></div>
+      <div class="srv-card"><div class="srv-card-t">Histórico mensual <small class="muted">· consumo del mes / hL envasados del mes (días con dato)</small></div>
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados</th><th class="n">kWh/hL</th><th class="n">Agua hL/hL</th><th class="n">Agua oficial (G)</th><th class="n">Térmica comprada MJ/hL</th><th class="n">Térmica oficial (V)</th><th class="n">Vapor kg/hL</th></tr></thead><tbody>${meses
+          .map((m) => { const o = ofi.get(m) || {}; return `<tr><td>${esc(m)}</td><td class="n">${nf(o.env)}</td><td class="n">${r(kE, m, 2)}</td><td class="n">${r(kA, m, 2)}</td><td class="n">${nf(o.agua_hl_hl, 2)}</td><td class="n">${r(kT, m, 1)}</td><td class="n">${nf(o.termica_mj_hl, 1)}</td><td class="n">${r(kV, m, 1)}</td></tr>`; })
+          .join("")}<tr class="srv-total"><td>Periodo</td><td></td><td class="n">${nf(kE && hist[kE].total, 2)}</td><td class="n">${nf(kA && hist[kA].total, 2)}</td><td></td><td class="n">${nf(kT && hist[kT].total, 1)}</td><td></td><td class="n">${nf(kV && hist[kV].total, 1)}</td></tr></tbody></table></div>
+        <p class="muted">«Oficial» = indicadores diarios de la hoja MAESTRA (G y V) ponderados por los hL de cada día. El agua oficial incluye la variación de tanques; la de este módulo no. La térmica comprada no incluye el biogás propio (≈ 1 a 3 MJ/hL según el mes); la térmica total sí. La electricidad oficial del Excel es un acumulado del año (hoja «informe») y no se compara aquí.</p></div>`;
+  }
+
   /* ------------------------------------------------------------ calculadora */
   function vCalc(el, I) {
     const P = { coc: U.coc === "" ? Math.round(I.medias.coc) : Number(U.coc), fil: U.fil === "" ? Math.round(I.medias.fil) : Number(U.fil), env: U.env === "" ? Math.round(I.medias.env) : Number(U.env) };
@@ -193,7 +257,7 @@
           <div class="srv-campo"><label for="indEnv">hL envasados</label><input type="number" id="indEnv" min="0" step="any" value="${esc(P.env)}"></div>
           <button class="btn primary" type="submit">Calcular</button>
         </form>
-        <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(I.desde)} a ${esc(I.hasta)}. Si envasado y cocción quedan por debajo del 10 % de su media se usa la carga base medida (hay muy pocos días así).</p>
+        <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(I.desde)} a ${esc(I.hasta)}. Si envasado y cocción quedan por debajo del 5 % de su media se usa la carga base medida (hay muy pocos días así).</p>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th class="n">Estimado</th><th class="n">Margen 90 %</th><th>Calidad</th></tr></thead><tbody>${sistemas
           .flatMap((s) => vis.filter((m) => m.sistema === s).map((m) => {
             const x = r[m.serie], sv = SERV[m.servicio];
@@ -212,7 +276,7 @@
     el.innerHTML = `
       <div class="srv-card"><div class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${n0 ? n0.n_test : "—"} días válidos, que no se usaron para elegir el modelo</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th>Variable que mejor lo explica</th><th>Modelo</th><th class="n">Error diario</th><th class="n">Error semanal</th><th class="n">Cobertura 90 %</th><th class="n">Días válidos</th><th>Calidad</th></tr></thead><tbody>${ms
-          .map((m) => `<tr><td>${esc(m.sistema)}</td><td>${esc(SERV[m.servicio].nombre)}${etqV(m)}</td><td>${!m.test ? "—" : m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo || "")}">${m.test ? esc(NOMBRE_MODELO[m.familia] || m.familia) + (m.cols && m.cols.length > 1 ? " múltiple" : "") : "—"}</td><td class="n">${m.test ? pct(m.test.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.test_semanal.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.cobertura, 0) : "—"}</td><td class="n">${m.n_estados.valido || 0}${m.n_estados.excluido ? ` <small class="muted">(${m.n_estados.excluido} excl.)</small>` : ""}</td><td>${chipQ(m.calidad)}</td></tr>`)
+          .map((m) => `<tr><td>${esc(m.sistema)}</td><td>${esc(SERV[m.servicio].nombre)}${etqV(m)}</td><td>${!m.test ? "—" : m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo || "")}">${m.test ? esc(NOMBRE_MODELO[m.familia] || m.familia) + (m.cols && m.cols.length > 1 ? " múltiple" : "") + (m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : "") : "—"}</td><td class="n">${m.test ? pct(m.test.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.test_semanal.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.cobertura, 0) : "—"}</td><td class="n">${m.n_estados.valido || 0}${m.n_estados.excluido ? ` <small class="muted">(${m.n_estados.excluido} excl.)</small>` : ""}</td><td>${chipQ(m.calidad)}</td></tr>`)
           .join("")}</tbody></table></div>
         <p class="muted">Error = WAPE (suma de errores absolutos sobre consumo real) en los días de prueba. Error semanal = lo mismo sumando por semana (lo que importa para planear). Se compararon hL cocinados, filtrados y envasados, solos y combinados, con siete tipos de modelo y validación temporal; queda el más simple dentro del 3 % del mejor. Las cifras coinciden con una réplica independiente en Python.</p>
       </div>`;
@@ -226,7 +290,7 @@
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th class="n">Fijo en marcha</th><th class="n">Promedio con producción</th><th class="n">Fijo / promedio</th><th class="n">Días con planta parada*</th><th class="n">Consumo esos días</th></tr></thead><tbody>${vis
           .map((m) => { const sv = SERV[m.servicio], cte = m.familia === "media", f = cte ? m.media_valida : m.fijo_operando != null ? Math.max(0, m.fijo_operando) : null; return `<tr><td>${esc(m.sistema)}</td><td>${esc(sv.nombre)}${etqV(m)}</td><td class="n">${nf(f)} ${sv.u}</td><td class="n">${nf(m.media_valida)} ${sv.u}</td><td class="n">${cte ? '<small class="muted">todo: no depende del volumen</small>' : f != null ? pct(Math.min(1, f / m.media_valida), 0) : "—"}</td><td class="n">${m.carga_base.n || 0}</td><td class="n">${m.carga_base.n ? nf(m.carga_base.mediana) + " " + sv.u : "—"}</td></tr>`; })
           .join("")}</tbody></table></div>
-        <p class="muted">* Envasado y cocción por debajo del 10 % de su media el mismo día (para CO2 recolectado, solo cocción). La planta casi nunca para del todo (en el histórico solo pasa el 1 de enero, un día parcial), así que la carga base medida es orientativa; el «fijo en marcha» sale de todos los días y es la cifra más útil. Un fijo cercano al 100 % significa que ese consumo no depende del volumen.</p>
+        <p class="muted">* Envasado y cocción por debajo del 5 % de su media el mismo día (para CO2 recolectado, solo cocción). La planta casi nunca para del todo (en el histórico solo pasa el 1 de enero, un día parcial), así que la carga base medida es orientativa; el «fijo en marcha» sale de todos los días y es la cifra más útil. Un fijo cercano al 100 % significa que ese consumo no depende del volumen.</p>
       </div>`;
   }
 
@@ -277,7 +341,7 @@
           <li><b>Otros ajustes a mano detectados:</b> el «ajuste autorizado» de electricidad (ISAGEN) en ${a.ajustes && a.ajustes.elec_planta_oficial ? a.ajustes.elec_planta_oficial.dias : 0} días (la versión contador lo quita); ajustes autorizados de gas natural (esos días se excluyen de la térmica por contador); algunas lecturas «anterior» corregidas a mano y el secador en febrero restando dos días atrás (efecto pequeño, no corregido).</li>
           <li><b>Valores escritos a mano (excluidos):</b> ${Object.entries(a.escritos || {}).map(([k, l]) => `${esc(nombre(k))}: ${l.length} día(s)`).join("; ") || "ninguno"}.</li>
           <li><b>Sin proyección confiable:</b> ${esc(Object.values(m).filter((x) => /no confiable/i.test(x.calidad)).map((x) => nombre(x.serie)).join("; ") || "ninguna")}. BTS tiene muchos días en cero (uso intermitente); agua de calderas tiene días en cero seguidos de días altos (lecturas atrasadas).</li>
-          <li><b>Carga base:</b> la planta casi nunca para (envasado y cocción por debajo del 10 % de su media a la vez solo el 1 de enero), así que se usa el consumo fijo en marcha (corte de la recta) para hablar de base.</li>
+          <li><b>Carga base:</b> la planta casi nunca para (envasado y cocción por debajo del 5 % de su media a la vez solo el 1 de enero), así que se usa el consumo fijo en marcha (corte de la recta) para hablar de base.</li>
         </ul>
       </div>`;
   }

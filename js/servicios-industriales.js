@@ -44,6 +44,7 @@
     agua_planta: ["Planta", "agua", "hL", [[DS, "T", 1]], null, {}, "entrada EEPPMM (contadores de elaboración + envase + perímetros) menos lo que va fuera de planta (DATOS SEMANA)"],
     vapor_planta: ["Planta", "vapor", "kg", [[V, "BG", 1000]], VAPOR_LECT, {}, "vapor consumido por todas las áreas (Gran total de Contadores vapor)"],
     termica_planta: ["Planta", "térmica", "MJ", [[C, "AK", 1], [C, "BL", 1], [C, "AN", -1]], [[C, "AK", 1], [C, "BC", 1, "BI"], [C, "AN", -1]], { excluye_si: [[V, "DV", "ajuste autorizado de gas natural"]] }, "gas natural + biogás + GLP, sin el calor vendido al casino"],
+    termica_comprada: ["Planta", "térmica comprada", "MJ", [[C, "AE", 1], [C, "AG", 1], [C, "BL", 1], [C, "AN", -1]], [[C, "AE", 1], [C, "AG", 1], [C, "BC", 1, "BI"], [C, "AN", -1]], { excluye_si: [[V, "DV", "ajuste autorizado de gas natural"]] }, "gas natural + GLP comprados, sin biogás propio ni el calor vendido al casino (es el indicador oficial «Térmica comprada»)"],
     elec_refrigeracion: ["Refrigeración", "electricidad", "kWh", k(E, ["DV"]), MYCOM, { lect_de_oficial: ["DS", "D", "V"] }, "oficial = compresores Mycom + un % de maquinaria auxiliar que cambia (50–100 %); contador = solo compresores"],
     elec_maquinaria: ["Maquinaria auxiliar", "electricidad", "kWh", k(E, ["DS"]), null, { lect_de: ["D", "V"] }, "subestaciones de maquinaria 440 V y 220 V"],
     elec_aire: ["Aire comprimido", "electricidad", "kWh", k(E, ["DT"]), AIRE, {}, "compresores Ingersoll, Sierra, Elliot y Centac"],
@@ -259,7 +260,7 @@
           if (estado === "valido" && rm.length && !marca) marca = rm.join("; ");
           if (estado === "valido" && tot < 0) { estado = "excluido"; motivo = "valor negativo"; }
           if (estado === "valido" && variante === "oficial" && Math.abs(ajM) > 1e-9 && !marca) marca = `ajuste manual ${D.numEs(ajM, 0, true)} ${uni}`;
-          if (estado === "valido" && nat.every((n) => p[n] < UMBRAL * medias[n])) { estado = "carga_base"; motivo = "producción < 10 % de la media"; }
+          if (estado === "valido" && nat.every((n) => p[n] < UMBRAL * medias[n])) { estado = "carga_base"; motivo = "producción < 5 % de la media"; }
           if (estado === "valido" && tot === 0 && !op.ceros) { estado = "excluido"; motivo = "consumo cero con producción"; }
           return { fecha: d, consumo: tot, ajuste: ajM, coc: p.coc, fil: p.fil, env: p.env, estado, motivo, marca, dudoso: !!marca };
         });
@@ -328,6 +329,26 @@
     };
   }
 
+  /* ------------------------------------------------------------ indicadores oficiales */
+  // Indicadores de planta que publica el Excel (MAESTRA): agua G (hL/hL) y térmica V (MJ/hL),
+  // ponderados por los hL envasados de cada día (B), por mes. Sirven para comprobar que los
+  // totales de planta de este módulo dan el mismo indicador que el Excel.
+  function oficiales(R) {
+    const mes = new Map();
+    for (const d of R.fechas) {
+      const x = (c) => { const v = R.L.cel("MAESTRA", c, d); return v ? v.v : null; };
+      const b = x("B"), g = x("G"), t = x("V");
+      if (!(b > 1)) continue;
+      const k = d.slice(0, 7);
+      if (!mes.has(k)) mes.set(k, { mes: k, env: 0, agua: 0, env_agua: 0, termica: 0, env_term: 0 });
+      const a = mes.get(k);
+      a.env += b;
+      if (g !== null && isFinite(g) && g < 50) { a.agua += g * b; a.env_agua += b; }
+      if (t !== null && isFinite(t) && t < 1000) { a.termica += t * b; a.env_term += b; }
+    }
+    return [...mes.values()].map((a) => ({ mes: a.mes, env: a.env, agua_hl_hl: a.env_agua ? a.agua / a.env_agua : null, termica_mj_hl: a.env_term ? a.termica / a.env_term : null }));
+  }
+
   /* ------------------------------------------------------------ todo */
   function entrenar(wb, periodo, progreso) {
     const t0 = Date.now();
@@ -361,7 +382,7 @@
       modelos[s] = spec;
     });
     if (progreso) progreso(1, "listo");
-    return { formato: "industriales/1", desde: periodo.desde, hasta: periodo.hasta, medias: R.medias, umbral_base: UMBRAL, nivel: MO.CFG.nivel, modelos, auditoria: auditar(R, S), segundos: (Date.now() - t0) / 1000 };
+    return { formato: "industriales/1", desde: periodo.desde, hasta: periodo.hasta, medias: R.medias, umbral_base: UMBRAL, nivel: MO.CFG.nivel, modelos, auditoria: auditar(R, S), oficiales: oficiales(R), segundos: (Date.now() - t0) / 1000 };
   }
 
   /* ------------------------------------------------------------ predicción */
