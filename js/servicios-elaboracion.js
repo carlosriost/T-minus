@@ -429,7 +429,10 @@
     return out;
   }
 
-  const api = { HOJAS_ELAB, SERIES, NOMBRE_DRIVER, CAMBIO_COC, CAMBIO_CYF, leer, series, entrenar, predecir, evaluarWeb };
+  // `motor`: el mismo método de comparación y validación, para reutilizarlo
+  // en otros módulos (servicios-industriales.js) sin duplicarlo.
+  const motor = { CFG, DRIVERS, Multi, XY, evaluarSerie, calidad, mediana, media, cuantil, lunes };
+  const api = { HOJAS_ELAB, SERIES, NOMBRE_DRIVER, CAMBIO_COC, CAMBIO_CYF, leer, series, entrenar, predecir, evaluarWeb, motor };
   if (enNode) module.exports = api;
   else raiz.SrvElab = api;
 })(typeof window !== "undefined" ? window : globalThis);
