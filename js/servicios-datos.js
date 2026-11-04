@@ -288,6 +288,24 @@
       }
       agregar(fecha, ln, "vapor", v, "kg", fuente, f, proc);
     }
+    // Balance del vapor PET (L9): sus contadores no pueden marcar más que el vapor
+    // de envase de calderas menos lo que marcan las otras tres líneas (con 5 % de
+    // tolerancia sobre el total de envase). Si lo superan, la lectura es imposible.
+    const balanceL9 = [];
+    if (wb.Sheets["Contadores vapor"]) {
+      const fcv = mapaFilas(wb, "Contadores vapor", "A", 6, []);
+      const porDia = new Map();
+      for (const x of filas) if (x.servicio === "vapor") { if (!porDia.has(x.fecha)) porDia.set(x.fecha, {}); porDia.get(x.fecha)[x.linea] = x; }
+      for (const [fecha, g] of porDia) {
+        const l9 = g[pet.linea], rr = fcv.get(fecha);
+        if (!l9 || l9.consumo === null || !rr) continue;
+        const env = aNumero(valor(wb, "Contadores vapor", "AY", rr));
+        const otras = ["L5", "L7", "L8"].map((l) => (g[l] ? g[l].consumo : null));
+        if (env === null || otras.some((v) => v === null)) continue;
+        const disponible = env * 1000 - otras.reduce((a, b) => a + b, 0);
+        if (l9.consumo > disponible + 0.05 * env * 1000) { l9.balance_imposible = true; balanceL9.push({ fecha, L9: l9.consumo, disponible, envase: env * 1000 }); }
+      }
+    }
     // Electricidad (contador directo, sin auxiliares) + auxiliares compartidos.
     const E = C.electricidad, A = E.aux;
     const faux = mapaFilas(wb, A.hoja, E.colFecha, E.fila, avisos);
@@ -333,7 +351,7 @@
       if (fecha <= ultima && tot !== null && Math.abs(tot - suma) > 1) difsAgua.push({ fecha, total: tot, suma, diferencia: tot - suma });
     }
     filas.sort((a, b) => (a.servicio < b.servicio ? -1 : a.servicio > b.servicio ? 1 : a.linea < b.linea ? -1 : a.linea > b.linea ? 1 : a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
-    return { filas, primera, ultima, avisos, difsProd, difsElec, petVsMaestra, difsAgua };
+    return { filas, primera, ultima, avisos, difsProd, difsElec, petVsMaestra, difsAgua, balanceL9 };
   }
 
   /* ------------------------------------------------------------ reglas */
@@ -345,6 +363,7 @@
     negativo: "Valor negativo: error de lectura o de ajuste.",
     cero: "Consumo 0 en un día con producción: lectura faltante probable.",
     sin_produccion: "Día sin producción en la línea: no entra al modelo de producción; se usa para describir el consumo base.",
+    balance: "Lectura imposible: el vapor de la L9 supera el vapor de envase de calderas menos lo que marcan las líneas 5, 7 y 8.",
   };
   function aplicarReglas(filas) {
     for (const r of filas) {
@@ -353,6 +372,7 @@
       else if (r.consumo === null || r.consumo === undefined || Number.isNaN(r.consumo)) { e = "excluido"; m = MOTIVOS.sin_dato; }
       else if (r.procedencia === "residuo") { e = "excluido"; m = MOTIVOS.residuo; }
       else if (r.procedencia === "imputado") { e = "excluido"; m = MOTIVOS.imputado; }
+      else if (r.balance_imposible) { e = "excluido"; m = MOTIVOS.balance; }
       else if (r.consumo < 0) { e = "excluido"; m = MOTIVOS.negativo; }
       else if (r.produccion_hL === null || r.produccion_hL === undefined || r.produccion_hL <= 0) { e = "sin_produccion"; m = MOTIVOS.sin_produccion; }
       else if (r.consumo === 0) { e = "excluido"; m = MOTIVOS.cero; }
@@ -402,6 +422,7 @@
       const nd = ds.petVsMaestra.filter((x) => Math.abs(x.diferencia) > 0.5).length;
       add("Vapor PET: MAESTRA (cuando es medición) = túnel + flash", nd ? `${nd} diferencias` : "OK", `${ds.petVsMaestra.length} días comparados.`);
     }
+    if (ds.balanceL9) add("Vapor L9 ≤ vapor de envase − líneas 5, 7 y 8", ds.balanceL9.length ? `${ds.balanceL9.length} días imposibles (excluidos)` : "OK", ds.balanceL9.length ? `Días: ${ds.balanceL9.slice(0, 12).map((x) => x.fecha.slice(8, 10) + "/" + x.fecha.slice(5, 7)).join(", ")}${ds.balanceL9.length > 12 ? "…" : ""}. En esos días los contadores PET marcan más vapor del que queda en el cabezal de envase.` : "Los contadores PET cuadran con el vapor de envase.");
     add("Agua de envase = suma de las 4 líneas", ds.difsAgua.length ? `${ds.difsAgua.length} días no cuadran` : "OK",
       ds.difsAgua.length ? ds.difsAgua.map((r) => `${r.fecha}: ${numEs(r.diferencia, 0, true)} hL`).join("; ") : "Todos los días cuadran.");
     const x = ds.filas.filter((r) => !r.fuera_de_periodo && r.servicio === "electricidad");
