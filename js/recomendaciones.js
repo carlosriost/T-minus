@@ -567,6 +567,7 @@ function renderModulosSeguimiento() {
   if (typeof renderTrazabilidad === "function") seguro(renderTrazabilidad);
   if (typeof renderServicios === "function") seguro(renderServicios);
   if (typeof renderIndustriales === "function") seguro(renderIndustriales);
+  if (typeof renderCargaBase === "function") seguro(renderCargaBase);
   if (typeof renderInicio === "function") seguro(renderInicio);
 }
 // Al abrir una vista del menú se repinta su módulo, para que tome cambios
@@ -587,6 +588,7 @@ function alAbrirVista(view) {
     "view-trazabilidad": typeof renderTrazabilidad === "function" ? renderTrazabilidad : null,
     "view-servicios": typeof renderServicios === "function" ? renderServicios : null,
     "view-servicios-industriales": typeof renderIndustriales === "function" ? renderIndustriales : null,
+    "view-carga-base": typeof renderCargaBase === "function" ? renderCargaBase : null,
     "view-inicio": typeof renderInicio === "function" ? renderInicio : null,
   }[view];
   if (m)

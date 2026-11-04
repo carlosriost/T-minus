@@ -3344,6 +3344,11 @@ body.theme-light { --pc-c1: #4a7fc1; --pc-c2: #d0703f; --pc-c3: #3a9a76; --pc-c4
 .ind-bar { display: inline-block; width: 70px; height: 7px; border-radius: 4px; background: var(--grid); vertical-align: 1px; margin-right: 6px; overflow: hidden; }
 .ind-bar i { display: block; height: 100%; border-radius: 4px; }
 .srv-elab-planta { margin-top: 14px; max-width: 760px; }
+.srv .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.srv-confirma { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; flex-wrap: wrap; }
+.srv-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.srv-link:hover { text-decoration-color: currentColor; }
+.srv-tabla tr.sel td { background: color-mix(in srgb, var(--accent2) 10%, transparent); }
 .srv-kpis.ind-k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 800px) { .srv-kpis.ind-k3 { grid-template-columns: 1fr; } }
 .srv-elab-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
