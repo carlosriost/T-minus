@@ -20,6 +20,7 @@
   const VISTAS = [
     ["plan", "Plan de envasado"],
     ["elaboracion", "Elaboración"],
+    ["industriales", "Servicios industriales"],
     ["simulador", "Simulador"],
     ["planificacion", "Planificación manual"],
     ["historico", "Histórico"],
@@ -46,6 +47,8 @@
   // quedan hasta que se cargue otro Excel o se pulse «Limpiar datos». Las versiones
   // anteriores usaban localStorage (se migra solo).
   const CLAVE_IDB = "servicios.paquete";
+  // Sube cuando cambia cómo se leen o modelan los datos: los paquetes viejos piden recargar el Excel.
+  const MOTOR = 4;
   S.almacen = { estado: "cargando", guardado_en: null };
   function cargarGuardado() {
     if (S.B || S.borrado) return;
@@ -55,7 +58,7 @@
     } catch (_) { S.B = null; }
   }
   function repintarTodo() {
-    [renderServicios, window.renderIndustriales, window.renderCargaBase, window.renderInicio].forEach((f) => { if (typeof f === "function") try { f(); } catch (e) { console.error(e); } });
+    [renderServicios, window.renderCargaBase, window.renderInicio].forEach((f) => { if (typeof f === "function") try { f(); } catch (e) { console.error(e); } });
   }
   function guardar() {
     if (!S.B) return Promise.resolve(false);
@@ -133,6 +136,7 @@
               S.sim.res = null;
               S.planRes = null;
               S.borrado = false;
+              S.B.motor = MOTOR;
               S.B.guardado_en = new Date().toISOString();
               guardar().then(() => renderServicios());
             } catch (err) {
@@ -191,6 +195,7 @@
               ${B ? (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') : ""}
             </div>
           </div>
+          ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (vapor de la línea 9 desde la columna PET, carga base, indicadores por hL). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
           ${S.estado ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
           ${B ? `<nav class="srv-tabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-tab ${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}</nav><div id="srvCuerpo"></div>` : vacio()}
         </div>
@@ -205,7 +210,7 @@
       $("#srvJson").onclick = () => descargar(new Blob([JSON.stringify(S.B)], { type: "application/json" }), `modelo_servicios_${S.B.version}.json`);
       $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
       cont.querySelectorAll("[data-srv-vista]").forEach((b) => (b.onclick = () => { S.vista = b.dataset.srvVista; renderServicios(); }));
-      ({ plan: vPlan, elaboracion: vElab, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal })[S.vista]();
+      ({ plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal })[S.vista]();
     }
     SrvCharts.conectarTips(cont);
   }
@@ -217,6 +222,10 @@
     if (a.estado !== "ok") return "";
     const per = window.TMAlmacen && TMAlmacen.esPersistente();
     return `<span class="srv-chip ok" title="Queda en este navegador hasta que cargues otro Excel o pulses «Limpiar datos». ${per ? "El navegador lo marcó como almacenamiento persistente." : "Si limpias los datos de navegación de este sitio, se borra."}">Guardado en este navegador${fecha ? " · " + esc(fecha) : ""}</span>`;
+  }
+  function vIndustriales() {
+    $("#srvCuerpo").innerHTML = '<div id="srvInd"></div>';
+    if (typeof window.renderIndustriales === "function") window.renderIndustriales();
   }
   function vacio() {
     return `<div class="srv-vacio">
@@ -325,6 +334,7 @@
       lineas.forEach((ln) => P_SERV.forEach((s) => { const x = f.res.lineas[ln].servicios[s]; if (x && x.extrapolacion) extrap++; }));
     });
     const sinVapor = R.filas.length ? R.filas[0].res.totales.vapor.lineas_sin_modelo : [];
+    const respVapor = [...new Set(R.filas.flatMap((f) => f.res.totales.vapor.lineas_respaldo || []))];
     el.innerHTML = `
       <div class="srv-filtros">
         <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([v, t]) => `<button type="button" data-corte="${v}" class="${S.corte === v ? "on" : ""}">${t}</button>`).join("")}</div></div>
@@ -332,7 +342,7 @@
       </div>
       <div class="srv-kpis">
         <div class="srv-kpi"><span>Días del plan</span><b>${R.filas.length}</b><small>${esc(R.filas[0].fecha)} → ${esc(R.filas[R.filas.length - 1].fecha)}</small></div>
-        <div class="srv-kpi" style="--c:var(--srv-vapor)"><span>Vapor</span><b>${nf(tot.vapor / 1000, 0)} <small>t</small></b><small>${vaporIncompleto ? `sin ${esc(sinVapor.join(", "))} (sin modelo confiable)` : "todas las líneas"}</small></div>
+        <div class="srv-kpi" style="--c:var(--srv-vapor)"><span>Vapor</span><b>${nf(tot.vapor / 1000, 0)} <small>t</small></b><small>${vaporIncompleto ? `sin ${esc(sinVapor.join(", "))} (sin modelo confiable)` : respVapor.length ? `todas las líneas · ${esc(respVapor.join(", "))} con estimación de respaldo (baja confianza)` : "todas las líneas"}</small></div>
         <div class="srv-kpi" style="--c:var(--srv-elec)"><span>Electricidad</span><b>${nf(tot.electricidad / 1000, 0)} <small>MWh</small></b><small>con auxiliares compartidos</small></div>
         <div class="srv-kpi" style="--c:var(--srv-agua)"><span>Agua</span><b>${nf(tot.agua / 10, 0)} <small>m³</small></b><small>${nf(tot.agua)} hL</small></div>
       </div>

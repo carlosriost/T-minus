@@ -53,25 +53,22 @@
   const etqV = (m) => (m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : "");
 
   /* ------------------------------------------------------------ render */
+  // Se pinta dentro de «Consumos de servicios» (pestaña «Servicios industriales», contenedor #srvInd).
   function renderIndustriales() {
-    const cont = document.getElementById("industrialesPanel");
+    const cont = document.getElementById("srvInd");
     if (!cont) return;
     const B = bundle(), I = B && B.industriales;
     cont.innerHTML = `
-      <div class="panel srv">
-        <div class="panel-head"><h3>Servicios industriales</h3><span class="sub">Refrigeración, aire comprimido, CO2, calderas, agua, BTS y periféricos: cuánto pesan en la planta y cuánto se espera que consuman</span></div>
-        <div class="panel-body">${
+      <div>${
           !I
-            ? `<div class="srv-vacio"><h4>${B ? "Falta procesar los servicios industriales" : "Sin datos de servicios todavía"}</h4><p>${esc((B && B.industriales_error) || "")} ${B ? "Este paquete se creó antes de que existiera este módulo." : ""} Carga el Excel <b>«Indicadores de servicios»</b> en «Consumos de servicios»: con el mismo archivo se entrenan también estos modelos (en este navegador).</p><button class="btn primary" data-goto-ind="view-servicios">Ir a Consumos de servicios</button></div>`
-            : `<div class="srv-barra"><div class="srv-estado"><span class="srv-chip ok">Modelos de ${esc((B.fuente && B.fuente.archivo) || "Excel")}</span><span class="srv-chip">Datos ${esc(I.desde)} → ${esc(I.hasta)}</span><span class="srv-chip">${Object.values(I.modelos).filter((m) => m.habilitado).length} de ${Object.keys(I.modelos).length} series con modelo confiable</span></div></div>
+            ? `<div class="srv-vacio"><h4>Falta procesar los servicios industriales</h4><p>${esc((B && B.industriales_error) || "Este paquete se creó antes de que existiera este módulo.")} Vuelve a cargar el Excel <b>«Indicadores de servicios»</b> arriba: con el mismo archivo se entrenan también estos modelos (en este navegador).</p></div>`
+            : `<p class="muted" style="margin:0 0 10px">Refrigeración, aire comprimido, CO2, calderas, sistema de agua, BTS y periféricos: cuánto pesan en la planta y cuánto se espera que consuman. ${Object.values(I.modelos).filter((m) => m.habilitado).length} de ${Object.keys(I.modelos).length} series con modelo confiable.</p>
                <div class="srv-filtros">
                  <div class="srv-campo"><label>Versión de los datos</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-iv="${k}" class="${U.variante === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
                  <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([x, t]) => `<button type="button" data-icorte="${x}" class="${srvCorte() === x ? "on" : ""}">${t}</button>`).join("")}</div></div>
                </div>
-               <nav class="srv-tabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-tab ${U.vista === k ? "on" : ""}" data-ivista="${k}">${t}</button>`).join("")}</nav><div id="indCuerpo"></div>`
-        }</div>
-      </div>`;
-    cont.querySelectorAll("[data-goto-ind]").forEach((b) => (b.onclick = () => { const x = document.querySelector(`.sb-item[data-view="${b.dataset.gotoInd}"]`); if (x) x.click(); }));
+               <nav class="srv-subtabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-subtab ${U.vista === k ? "on" : ""}" data-ivista="${k}">${t}</button>`).join("")}</nav><div id="indCuerpo"></div>`
+        }</div>`;
     if (!I) return;
     cont.querySelectorAll("[data-iv]").forEach((b) => (b.onclick = () => { U.variante = b.dataset.iv; renderIndustriales(); }));
     cont.querySelectorAll("[data-icorte]").forEach((b) => (b.onclick = () => { srvCorte(Number(b.dataset.icorte)); renderIndustriales(); }));
