@@ -58,7 +58,23 @@
       if (t) S.B = JSON.parse(t);
     } catch (_) { S.B = null; }
   }
+  // Modelos guardados antes de la estimación de respaldo (o con una copia vieja de la
+  // página): si una línea no tiene modelo validado ni respaldo, se calcula ahora con el
+  // histórico guardado en el mismo paquete. Solo con paquetes que ya leen L9 desde PET
+  // (motor ≥ 4); los anteriores tienen otro dato de L9 y deben recargar el Excel.
+  function completarRespaldos(B) {
+    if (!B || !B.modelos || !B.historico || (B.motor || 0) < 4 || !window.SrvModelos || !SrvModelos.respaldoReciente) return;
+    for (const m of Object.values(B.modelos)) {
+      if (m.habilitado || m.respaldo || m.respaldo_revisado) continue;
+      const x = B.historico.filter((h) => h.l === m.linea && h.s === m.servicio && h.e === "valido" && h.P !== null && h.C !== null)
+        .sort((a, b) => (a.f < b.f ? -1 : 1)).map((h) => ({ fecha: h.f, produccion_hL: h.P, consumo: h.C }));
+      try { m.respaldo = SrvModelos.respaldoReciente(x); } catch (e) { console.error(e); m.respaldo = null; }
+      if (m.respaldo) m.respaldo.al_abrir = true;
+      m.respaldo_revisado = true;
+    }
+  }
   function repintarTodo() {
+    completarRespaldos(S.B);
     [renderServicios, window.renderCargaBase, window.renderInicio].forEach((f) => { if (typeof f === "function") try { f(); } catch (e) { console.error(e); } });
   }
   function guardar() {
@@ -179,6 +195,7 @@
     const cont = document.getElementById("serviciosPanel");
     if (!cont) return;
     cargarGuardado();
+    completarRespaldos(S.B);
     const B = S.B;
     const hab = B ? Object.values(B.modelos).filter((m) => m.habilitado).length : 0;
     cont.innerHTML = `
@@ -373,7 +390,7 @@
       </div>
       <div class="srv-kpis">
         <div class="srv-kpi"><span>Días del plan</span><b>${R.filas.length}</b><small>${esc(R.filas[0].fecha)} → ${esc(R.filas[R.filas.length - 1].fecha)}</small></div>
-        <div class="srv-kpi" style="--c:var(--srv-vapor)"><span>Vapor</span><b>${nf(tot.vapor / 1000, 0)} <small>t</small></b><small>${vaporIncompleto ? `sin ${esc(sinVapor.join(", "))} (sin modelo confiable)` : respVapor.length ? `todas las líneas · ${esc(respVapor.join(", "))} con estimación de respaldo (baja confianza)` : "todas las líneas"}</small></div>
+        <div class="srv-kpi" style="--c:var(--srv-vapor)"><span>Vapor</span><b>${nf(tot.vapor / 1000, 0)} <small>t</small></b><small>${vaporIncompleto ? `sin ${esc(sinVapor.join(", "))} · ${(S.B.motor || 0) < 4 ? "modelos guardados con una versión anterior: vuelve a cargar el Excel" : "sin modelo confiable ni datos recientes suficientes"}` : respVapor.length ? `todas las líneas · ${esc(respVapor.join(", "))} con estimación de respaldo (baja confianza)` : "todas las líneas"}</small></div>
         <div class="srv-kpi" style="--c:var(--srv-elec)"><span>Electricidad</span><b>${nf(tot.electricidad / 1000, 0)} <small>MWh</small></b><small>con auxiliares compartidos</small></div>
         <div class="srv-kpi" style="--c:var(--srv-agua)"><span>Agua</span><b>${nf(tot.agua / 10, 0)} <small>m³</small></b><small>${nf(tot.agua)} hL</small></div>
       </div>

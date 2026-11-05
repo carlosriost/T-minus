@@ -717,7 +717,7 @@
     };
   }
 
-  const api = { CFGM, entrenar, evaluarCombinacion, metricas, cuantil, ajustarHuber, mco, Media, Ratio, Lineal, Huber, Segmentada, Polinomio2, Spline, corteTest, bloques, mannWhitneyP, correlaciones };
+  const api = { CFGM, entrenar, evaluarCombinacion, metricas, cuantil, ajustarHuber, mco, Media, Ratio, Lineal, Huber, Segmentada, Polinomio2, Spline, corteTest, bloques, mannWhitneyP, correlaciones, respaldoReciente };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else raiz.SrvModelos = api;
 })(typeof window !== "undefined" ? window : globalThis);
