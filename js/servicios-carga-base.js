@@ -132,8 +132,90 @@
     return { umbral: u, medias, desde: dias[0], hasta: dias[dias.length - 1], filas };
   }
 
+  /* ------------------------------------------------------------ fórmulas de referencia (kWh por línea) */
+  // Hojas «Electria L5», «Electrica L7/L8/L9»: B = fecha, C = «kWh día», E = «Hl env d».
+  const HOJAS_LINEA = { L5: "Electria L5", L7: "Electrica L7", L8: "Electrica L8", L9: "Electrica L9" };
+  // Fórmulas que usa la planta (y = a·x + b; x = hL envasados del día, y = kWh del día). Se pueden editar en pantalla.
+  const FORMULAS_PLANTA = { L5: [1.117, 1650.7], L7: [1.0614, 1857.4], L8: [1.0102, 3062.3], L9: [0.6198, 8116] };
+  const LS_FORM = "tminus.cargabase.formulas";
+  function formulas() {
+    let g = null;
+    try { g = JSON.parse(localStorage.getItem(LS_FORM) || "null"); } catch (_) {}
+    const out = {};
+    for (const l of Object.keys(FORMULAS_PLANTA)) out[l] = g && Array.isArray(g[l]) && g[l].every((v) => isFinite(v)) ? g[l] : FORMULAS_PLANTA[l].slice();
+    return out;
+  }
+  function guardarFormulas(f) { try { localStorage.setItem(LS_FORM, JSON.stringify(f)); } catch (_) {} }
+  // Suma de números escritos a mano al final de la fórmula (p. ej. «…+1000»).
+  function ajusteFormula(f) {
+    if (typeof f !== "string") return 0;
+    if (raiz.SrvInd && raiz.SrvInd.ajustes) return raiz.SrvInd.ajustes("=" + f);
+    const m = /\)\s*([+-]\s*\d+(?:\.\d+)?)\s*$/.exec(f);
+    return m ? Number(m[1].replace(/\s/g, "")) : 0;
+  }
+  function leerReferencia(wb, desde, hasta) {
+    const D = raiz.SrvDatos, out = {};
+    for (const [l, h] of Object.entries(HOJAS_LINEA)) {
+      const ws = wb.Sheets[h];
+      if (!ws || !ws["!ref"]) continue;
+      const n = Number((/:([A-Z]+)(\d+)$/.exec(ws["!ref"]) || [0, 0, 0])[2]);
+      const filas = [], vistos = new Set();
+      for (let r = 3; r <= n; r++) {
+        const c = ws["B" + r];
+        if (!c || typeof c.v !== "number" || c.v < 40000 || c.v > 60000) continue;
+        const f = D.serialAFecha(c.v);
+        if (!f || f < desde || f > hasta || vistos.has(f)) continue;
+        vistos.add(f);
+        const C = ws["C" + r], E = ws["E" + r];
+        const kwh = C && typeof C.v === "number" ? C.v : null, hl = E && typeof E.v === "number" ? E.v : null;
+        filas.push([f, hl, kwh, C && C.f ? ajusteFormula(C.f) : 0, C && !C.f && C.v !== undefined ? 1 : 0]);
+      }
+      out[l] = filas.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    }
+    return out;
+  }
+  // Compara «kWh día» (C) con la fórmula de referencia evaluada en «Hl env d» (E).
+  function compararReferencia(ref, F, umbral) {
+    const u = umbral || 0.05, res = {};
+    for (const [l, filas] of Object.entries(ref || {})) {
+      const [a, b] = F[l] || [0, 0];
+      const xs = filas.map((r) => r[1] || 0), mx = media(xs) || 0;
+      const dias = filas.filter((r) => r[1] !== null && r[2] !== null).map(([f, x, real, aj, escrito]) => {
+        const calc = a * x + b;
+        return { f, x, real, calc, dif: real - calc, dif_pct: calc ? (real - calc) / calc : null, aj, escrito: !!escrito, parada: x < u * mx };
+      });
+      const op = dias.filter((d) => !d.parada);
+      const sR = op.reduce((s, d) => s + d.real, 0), sC = op.reduce((s, d) => s + d.calc, 0);
+      res[l] = {
+        a, b, media_hl: mx, dias, n: dias.length, n_operando: op.length,
+        real_prom: op.length ? sR / op.length : null, calc_prom: op.length ? sC / op.length : null,
+        sesgo_pct: sC ? (sR - sC) / sC : null,
+        error_abs_pct: sR ? op.reduce((s, d) => s + Math.abs(d.dif), 0) / sR : null,
+        dias_desvio: op.filter((d) => Math.abs(d.dif_pct) > 0.15).length,
+        paradas: dias.filter((d) => d.parada),
+      };
+    }
+    return res;
+  }
+  // Avisos: áreas paradas que igual consumen más de lo normal, y días con mucha diferencia frente a la fórmula.
+  function avisos(B, R, C) {
+    const out = [];
+    for (const f of R ? R.filas : []) {
+      if (!f.n) continue;
+      for (const x of f.detalle) {
+        if (f.n >= 3 && x.c > 1.5 * f.mediana && x.c - f.mediana > 0) out.push({ f: x.f, tipo: "alto_parada", area: f.area_nombre, servicio: f.servicio, unidad: f.unidad, valor: x.c, ref: f.mediana, texto: `${f.area_nombre} parada (${f.condicion}) y ${f.servicio} ${raiz.SrvDatos.numEs(x.c, 0)} ${f.unidad}: ${raiz.SrvDatos.pctEs(x.c / f.mediana - 1, 0, true)} sobre su carga base (${raiz.SrvDatos.numEs(f.mediana, 0)})` });
+      }
+    }
+    for (const [l, r] of Object.entries(C || {})) {
+      for (const d of r.paradas) if (d.real > 0) out.push({ f: d.f, tipo: "parada_con_kwh", area: "Línea " + l.slice(1), servicio: "electricidad", unidad: "kWh", valor: d.real, ref: r.b, texto: `Línea ${l.slice(1)} con ${raiz.SrvDatos.numEs(d.x, 0)} hL envasados y ${raiz.SrvDatos.numEs(d.real, 0)} kWh (la fórmula da ${raiz.SrvDatos.numEs(d.calc, 0)} kWh)` });
+      for (const d of r.dias) if (!d.parada && Math.abs(d.dif_pct) > 0.25) out.push({ f: d.f, tipo: "desvio", area: "Línea " + l.slice(1), servicio: "electricidad", unidad: "kWh", valor: d.real, ref: d.calc, texto: `Línea ${l.slice(1)}: ${raiz.SrvDatos.numEs(d.real, 0)} kWh reales frente a ${raiz.SrvDatos.numEs(d.calc, 0)} de la fórmula (${raiz.SrvDatos.pctEs(d.dif_pct, 0, true)}) con ${raiz.SrvDatos.numEs(d.x, 0)} hL${d.aj ? ` · el Excel suma ${raiz.SrvDatos.numEs(d.aj, 0, true)} kWh a mano` : ""}` });
+    }
+    return out.sort((a, b) => (a.f < b.f ? 1 : a.f > b.f ? -1 : 0));
+  }
+
   /* ------------------------------------------------------------ interfaz */
-  const U = { umbral: 0.05, area: "planta" };
+  const U = { umbral: 0.05, area: "planta", tab: "base", linea: "L5" };
+  const TABS = [["base", "Carga base por área"], ["referencia", "kWh por línea: real vs. fórmula"], ["avisos", "Avisos"]];
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const nf = (v, d) => (v == null || !isFinite(v) ? "—" : raiz.SrvDatos.numEs(v, d || 0));
   const pct = (v, d) => (v == null || !isFinite(v) ? "—" : raiz.SrvDatos.pctEs(v, d === undefined ? 0 : d));
@@ -149,7 +231,10 @@
     let cuerpo;
     if (!B) cuerpo = `<div class="srv-vacio"><h4>Sin datos de servicios todavía</h4><p>Carga el Excel <b>«Indicadores de servicios»</b> en «Consumos de servicios». La carga base se calcula con el mismo archivo y queda guardada en este navegador hasta que cargues otro o pulses «Limpiar datos».</p><button class="btn primary" data-goto-cb="view-servicios">Ir a Consumos de servicios</button></div>`;
     else if (!R) cuerpo = `<div class="srv-vacio"><h4>Falta recalcular</h4><p>Los modelos guardados se crearon antes de este módulo. Vuelve a cargar el Excel de Indicadores de servicios una vez para guardar también la producción diaria.</p><button class="btn primary" data-goto-cb="view-servicios">Ir a Consumos de servicios</button></div>`;
-    else cuerpo = vista(B, R);
+    else {
+      const tabs = `<nav class="srv-tabs" role="tablist">${TABS.map(([k, t]) => `<button role="tab" class="srv-tab ${U.tab === k ? "on" : ""}" data-cbtab="${k}">${t}</button>`).join("")}</nav>`;
+      cuerpo = tabs + (U.tab === "referencia" ? vReferencia(B) : U.tab === "avisos" ? vAvisos(B, R) : vista(B, R));
+    }
     cont.innerHTML = `
       <div class="panel srv">
         <div class="panel-head"><h3>Carga base</h3><span class="sub">Consumo nominal de cada área cuando está parada (producción por debajo del ${pct(U.umbral)} de su promedio)</span></div>
@@ -158,6 +243,23 @@
     cont.querySelectorAll("[data-goto-cb]").forEach((b) => (b.onclick = () => { const x = document.querySelector(`.sb-item[data-view="${b.dataset.gotoCb}"]`); if (x) x.click(); }));
     cont.querySelectorAll("[data-cbu]").forEach((b) => (b.onclick = () => { U.umbral = Number(b.dataset.cbu); renderCargaBase(); }));
     cont.querySelectorAll("[data-cba]").forEach((b) => (b.onclick = () => { U.area = b.dataset.cba; renderCargaBase(); }));
+    cont.querySelectorAll("[data-cbtab]").forEach((b) => (b.onclick = () => { U.tab = b.dataset.cbtab; renderCargaBase(); }));
+    cont.querySelectorAll("[data-cbl]").forEach((b) => (b.onclick = () => { U.linea = b.dataset.cbl; renderCargaBase(); }));
+    const ff = cont.querySelector("#cbForm");
+    if (ff) {
+      ff.onsubmit = (e) => {
+        e.preventDefault();
+        const F = formulas();
+        for (const l of Object.keys(F)) {
+          const a = Number(String(ff.querySelector(`[name=a_${l}]`).value).replace(",", ".")), b = Number(String(ff.querySelector(`[name=b_${l}]`).value).replace(",", "."));
+          if (isFinite(a) && isFinite(b)) F[l] = [a, b];
+        }
+        guardarFormulas(F); renderCargaBase();
+      };
+      const rs = cont.querySelector("#cbFormReset");
+      if (rs) rs.onclick = () => { guardarFormulas(FORMULAS_PLANTA); renderCargaBase(); };
+    }
+    if (B && U.tab === "referencia" && B.referencia_electrica) graficasReferencia(B);
     const lim = cont.querySelector("#cbLimpiar");
     if (lim) lim.onclick = () => { U.confirmar = true; renderCargaBase(); };
     const si = cont.querySelector("#cbLimpiarSi"), no = cont.querySelector("#cbLimpiarNo");
@@ -166,6 +268,60 @@
     if (R && raiz.SrvCharts) raiz.SrvCharts.conectarTips(cont);
   }
 
+  function vReferencia(B) {
+    if (!B.referencia_electrica) return `<div class="srv-vacio"><h4>Falta recalcular</h4><p>Vuelve a cargar el Excel de Indicadores de servicios una vez para guardar las hojas eléctricas de cada línea (columnas C «kWh día» y E «Hl env d»).</p></div>`;
+    const F = formulas(), C = compararReferencia(B.referencia_electrica, F, U.umbral);
+    const lineas = Object.keys(C);
+    if (!lineas.includes(U.linea)) U.linea = lineas[0];
+    const r = C[U.linea];
+    const fx = (l) => `y = ${String(F[l][0]).replace(".", ",")}·x + ${raiz.SrvDatos.numEs(F[l][1], 1)}`;
+    const resumen = lineas.map((l) => { const c = C[l]; return `<tr class="${l === U.linea ? "sel" : ""}"><td><button class="srv-link" data-cbl="${l}">Línea ${l.slice(1)}</button><br><small class="muted">${esc(fx(l))}</small></td><td class="n">${c.n_operando}</td><td class="n">${nf(c.real_prom)} kWh</td><td class="n">${nf(c.calc_prom)} kWh</td><td class="n ${Math.abs(c.sesgo_pct) > 0.05 ? "warn-t" : ""}">${pct(c.sesgo_pct, 1)}</td><td class="n">${pct(c.error_abs_pct, 1)}</td><td class="n">${c.dias_desvio}</td><td class="n">${c.paradas.length}</td></tr>`; }).join("");
+    const top = r.dias.filter((d) => !d.parada).slice().sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif)).slice(0, 15);
+    return `
+      <div class="srv-card"><div class="srv-card-t">kWh reales vs. fórmula de referencia <small class="muted">· x = «Hl env d» (columna E), real = «kWh día» (columna C) de cada hoja eléctrica</small></div>
+        <div class="srv-tabla-wrap" style="max-height:none"><table class="srv-tabla"><thead><tr><th>Línea · fórmula</th><th class="n">Días con producción</th><th class="n">Real promedio</th><th class="n">Fórmula promedio</th><th class="n">Real vs. fórmula</th><th class="n">Desvío diario medio</th><th class="n">Días con desvío > 15 %</th><th class="n">Días parada</th></tr></thead><tbody>${resumen}</tbody></table></div>
+        <p class="muted">«Real vs. fórmula» = (suma real − suma fórmula) / suma fórmula en los días con producción: positivo = se gastó más de lo que dice la fórmula. «Desvío diario medio» = suma de las diferencias absolutas día a día / suma real. Línea parada = menos del ${pct(U.umbral)} de sus hL promedio.</p>
+        <details class="srv-det"><summary class="srv-card-t">Editar las fórmulas</summary>
+          <form id="cbForm" class="srv-form" style="flex-wrap:wrap">${lineas.map((l) => `<div class="srv-campo"><label>L${l.slice(1)}: a (kWh por hL)</label><input name="a_${l}" type="text" value="${esc(String(F[l][0]).replace(".", ","))}" style="width:110px"></div><div class="srv-campo"><label>L${l.slice(1)}: b (kWh fijos)</label><input name="b_${l}" type="text" value="${esc(String(F[l][1]).replace(".", ","))}" style="width:110px"></div>`).join("")}
+            <button class="btn primary" type="submit">Guardar</button><button class="btn" type="button" id="cbFormReset">Volver a las de la planta</button></form>
+          <p class="muted">Se guardan en este navegador. Fórmulas de la planta: L5 y = 1,117x + 1.650,7 · L7 y = 1,0614x + 1.857,4 · L8 y = 1,0102x + 3.062,3 · L9 y = 0,6198x + 8.116.</p></details>
+      </div>
+      <div class="srv-card"><div class="srv-card-t">Línea ${U.linea.slice(1)} día a día <small class="muted">· ${esc(fx(U.linea))}</small></div>
+        <div class="chart" id="cbRefT"></div>
+        <div class="srv-ley"><span><i style="background:var(--srv-elec)"></i>Real («kWh día»)</span><span><i style="background:var(--accent)"></i>Fórmula</span></div>
+        <div class="srv-card-t" style="margin-top:10px">Diferencia diaria (real − fórmula)</div>
+        <div class="chart" id="cbRefD"></div>
+        <div class="srv-ley"><span><i style="background:var(--warn)"></i>por encima de la fórmula</span><span><i style="background:var(--srv-agua)"></i>por debajo</span><span>gris = línea parada</span></div>
+        <div class="srv-grid2">
+          <div><div class="srv-card-t">Mayores diferencias con producción</div><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL</th><th class="n">Real</th><th class="n">Fórmula</th><th class="n">Dif.</th></tr></thead><tbody>${top.map((d) => `<tr><td>${esc(d.f)}${d.aj ? ` <small class="muted" title="El Excel suma ${nf(d.aj)} kWh a mano en la columna C">(${d.aj > 0 ? "+" : ""}${nf(d.aj)} a mano)</small>` : ""}</td><td class="n">${nf(d.x)}</td><td class="n">${nf(d.real)}</td><td class="n">${nf(d.calc)}</td><td class="n">${pct(d.dif_pct, 0)}</td></tr>`).join("")}</tbody></table></div></div>
+          <div><div class="srv-card-t">Días con la línea parada</div>${r.paradas.length ? `<div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL</th><th class="n">kWh reales</th><th class="n">Fórmula</th></tr></thead><tbody>${r.paradas.map((d) => `<tr><td>${esc(d.f)}</td><td class="n">${nf(d.x)}</td><td class="n">${nf(d.real)}</td><td class="n">${nf(d.calc)}</td></tr>`).join("")}</tbody></table></div><p class="muted">Con la línea parada la fórmula da su término fijo (b = ${nf(r.b)} kWh); lo real suele ser mucho menor: ese es el consumo de la línea parada (carga base).</p>` : '<p class="muted">Ningún día parada en el periodo.</p>'}</div>
+        </div>
+        <p class="muted">La columna C de L5, L7 y L8 incluye la parte de auxiliares que el Excel le asigna a la línea los días con producción, y algunos días tiene números sumados a mano (se señalan). La de L9 es la suma de sus contadores.</p>
+      </div>`;
+  }
+  function graficasReferencia(B) {
+    const C = compararReferencia(B.referencia_electrica, formulas(), U.umbral), r = C[U.linea];
+    if (!r || !raiz.SrvCharts) return;
+    const ms = (f) => Date.parse(f + "T00:00:00Z");
+    const elT = document.getElementById("cbRefT"), elD = document.getElementById("cbRefD");
+    if (elT) raiz.SrvCharts.lineas(elT, { W: 900, H: 260, yLab: "kWh/día", aria: "kWh reales y de la fórmula por día", series: [
+      { color: "var(--srv-elec)", puntos: r.dias.map((d) => ({ x: ms(d.f), y: d.real })) },
+      { color: "var(--accent)", guiones: true, puntos: r.dias.map((d) => ({ x: ms(d.f), y: d.calc })) },
+      { tipo: "puntos", color: "var(--srv-elec)", r: 2.2, puntos: r.dias.map((d) => ({ x: ms(d.f), y: d.real, tip: `${d.f}: real ${nf(d.real)} kWh · fórmula ${nf(d.calc)} kWh · ${nf(d.x)} hL` })) },
+    ] });
+    if (elD) raiz.SrvCharts.lineas(elD, { W: 900, H: 200, yLab: "kWh", cero: true, yMin: Math.min(0, ...r.dias.map((d) => d.dif)), aria: "Diferencia real menos fórmula por día", series: [
+      { tipo: "puntos", r: 2.8, puntos: r.dias.map((d) => ({ x: ms(d.f), y: d.dif, color: d.parada ? "var(--muted)" : d.dif > 0 ? "var(--warn)" : "var(--srv-agua)", tip: `${d.f}: ${d.dif > 0 ? "+" : ""}${nf(d.dif)} kWh (${pct(d.dif_pct, 0)})${d.parada ? " · línea parada" : ""}` })) },
+    ] });
+  }
+  function vAvisos(B, R) {
+    const C = B.referencia_electrica ? compararReferencia(B.referencia_electrica, formulas(), U.umbral) : null;
+    const L = avisos(B, R, C);
+    const grupos = [["parada_con_kwh", "Líneas paradas (o casi) que consumieron electricidad"], ["alto_parada", "Áreas paradas que consumieron más de lo normal"], ["desvio", "Días con más de 25 % de diferencia frente a la fórmula"]];
+    return `<p class="muted">Avisos calculados con los datos guardados. «Parada» = producción por debajo del ${pct(U.umbral)} de su promedio. «Más de lo normal» = más de 1,5 veces la carga base del área (con al menos 3 días parada para tener referencia).</p>` + grupos.map(([t, titulo]) => {
+      const x = L.filter((a) => a.tipo === t);
+      return `<details class="srv-card srv-det" ${x.length && t !== "desvio" ? "open" : ""}><summary class="srv-card-t">${esc(titulo)} <small class="muted">· ${x.length}</small></summary>${x.length ? `<div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th>Aviso</th></tr></thead><tbody>${x.map((a) => `<tr><td>${esc(a.f)}</td><td>${esc(a.texto)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">Ninguno.</p>'}</details>`;
+    }).join("");
+  }
   function vista(B, R) {
     const areas = AREAS.filter((A) => R.filas.some((f) => f.area === A.id));
     const sel = R.filas.filter((f) => f.area === U.area);
@@ -212,7 +368,7 @@
       <p class="muted">Se usan los valores depurados de «Consumos de servicios» y «Servicios industriales» (sin lecturas excluidas por error). Electricidad de las líneas: contador de cada línea, sin los auxiliares compartidos. Envasado completo: las cuatro líneas más auxiliares, solo los días con todas las lecturas.</p>`;
   }
 
-  const api = { AREAS, SERIES, calcular };
+  const api = { AREAS, SERIES, calcular, leerReferencia, compararReferencia, avisos, FORMULAS_PLANTA, ajusteFormula };
   if (enNode) module.exports = api;
   else { raiz.SrvBase = api; raiz.renderCargaBase = renderCargaBase; }
 })(typeof window !== "undefined" ? window : globalThis);
