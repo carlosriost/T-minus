@@ -15,7 +15,19 @@
   const nf = (v, d) => (v == null || !isFinite(v) ? "—" : SrvDatos.numEs(v, d || 0));
   const pct = (v, d) => (v == null || !isFinite(v) ? "—" : SrvDatos.pctEs(v, d === undefined ? 1 : d));
   const fc = (f) => f.slice(8, 10) + "/" + f.slice(5, 7);
-  const U = { vista: "resumen", variante: "oficial", coc: "", fil: "", env: "", hist: "elec_refrigeracion" };
+  const U = { vista: "resumen", variante: "oficial", coc: "", fil: "", env: "", hist: "elec_refrigeracion", prec: "elec_planta" };
+  const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const etqMes = (m, todos) => MES[Number(m.slice(5, 7)) - 1] + (new Set(todos.map((q) => q.slice(0, 4))).size > 1 ? " " + m.slice(2, 4) : "");
+  // Promedio diario por mes de una serie (solo días válidos o de carga base).
+  function mensual(m) {
+    const out = new Map();
+    for (const h of m.historico) {
+      if (h.c === null || (h.e !== "valido" && h.e !== "carga_base")) continue;
+      const k = h.f.slice(0, 7), x = out.get(k) || [0, 0];
+      x[0] += h.c; x[1]++; out.set(k, x);
+    }
+    return out;
+  }
   const VISTAS = [["resumen", "Resumen"], ["plan", "Proyección del plan"], ["indicadores", "Indicadores por hL"], ["calc", "Calculadora"], ["precision", "Precisión"], ["fijo", "Fijo y carga base"], ["historico", "Histórico"], ["calidad", "Calidad de datos"]];
   const NOMBRE_MODELO = { media: "Promedio", ratio: "Proporcional", lineal: "Recta", huber: "Recta robusta", segmentada: "Segmentada", polinomica: "Polinómica", spline: "Spline" };
   const SERV = {
@@ -115,7 +127,20 @@
         ${grupo(["CO2 consumido", "CO2 recolectado", "agua reciclada"], "Planta de CO2 y agua reciclada", "")}
         <p class="muted">«Se puede proyectar» = qué tan bien se puede proyectar ese consumo con los hL cocinados, filtrados y envasados (prueba con los últimos días, que el modelo no vio). «Sin relación con el volumen» = el consumo es casi fijo: se proyecta con su promedio. Pasa el cursor por el nombre del sistema para ver qué contadores incluye.</p>
       </div>
+      <div class="srv-card"><div class="srv-card-t">Servicios por sistema, mes a mes <small class="muted">· promedio diario de los días con dato de cada sistema</small></div>
+        <div class="srv-grid2">${["electricidad", "agua"].map((sv) => `<div><div class="srv-card-t" style="margin-top:6px">${SERV[sv].nombre} <small class="muted">· ${SERV[sv].g[1]}/día</small></div><div class="chart" id="indMes-${sv}"></div><div class="srv-ley">${PILA[sv].map(([b, t, c, v]) => (clave(I, b, v) ? `<span><i style="background:${c}"></i>${esc(t)}</span>` : "")).join("")}</div></div>`).join("")}</div>
+        <p class="muted">En electricidad, refrigeración va por contador (solo compresores) para no contar dos veces la parte de maquinaria auxiliar. El agua de calderas y BTS tiene días en cero y días altos (lecturas atrasadas o uso intermitente): mírela por mes, no por día.</p>
+      </div>
       <div class="srv-card"><div class="srv-card-t">Lo principal</div><ul class="srv-chequeos">${hallazgos(I).map((h) => `<li>${h}</li>`).join("")}</ul></div>`;
+    ["electricidad", "agua"].forEach((sv) => {
+      const capas = PILA[sv].map(([b, t, c, v]) => [clave(I, b, v), t, c]).filter((x) => x[0]).map(([k, t, c]) => [mensual(I.modelos[k]), t, c]);
+      const meses = [...new Set(capas.flatMap(([mm]) => [...mm.keys()]))].sort();
+      const g = SERV[sv].g;
+      SrvCharts.apiladas(document.getElementById("indMes-" + sv), {
+        W: 620, H: 250, maxEtiquetas: 12, cats: meses.map((m) => etqMes(m, meses)), yLab: `${g[1]}/día`, aria: `${SERV[sv].nombre} de servicios por mes y sistema`,
+        series: capas.map(([mm, t, c]) => ({ color: c, valores: meses.map((m) => { const x = mm.get(m); return x ? x[0] / x[1] / g[0] : 0; }), tips: meses.map((m) => { const x = mm.get(m); return `${etqMes(m, meses)} · ${t}: ${x ? nf(x[0] / x[1] / g[0], g[2] + 1) + " " + g[1] + "/día (" + x[1] + " días)" : "sin dato"}`; }) })),
+      });
+    });
   }
   function hallazgos(I) {
     const m = I.modelos, a = I.auditoria, out = [];
@@ -235,7 +260,17 @@
     const kE = clave(I, "elec_planta"), kA = clave(I, "agua_planta"), kT = clave(I, "termica_comprada") || clave(I, "termica_planta"), kV = clave(I, "vapor_planta");
     const r = (k, m, dec) => { const x = k && hist[k].mes.get(m); return x && x[1] ? nf(x[0] / x[1], dec) : "—"; };
     const prec = IND.map(([b, t, u]) => { const k = clave(I, b); const m = k && I.modelos[k]; return m && m.test ? `<tr><td>${esc(t)}${etqV(m)}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td>${chipQ(m.calidad)}</td></tr>` : ""; }).join("");
+    const planInd = {};
+    if (pp) {
+      const dd = pp.dias.filter((d) => !d.parcial).length ? pp.dias.filter((d) => !d.parcial) : pp.dias;
+      const env = dd.reduce((a, d) => a + d.prod.env, 0);
+      IND.forEach(([b]) => { const k = clave(I, b); if (k && env) planInd[k] = dd.reduce((a, d) => a + (d.r[k].estimado || 0), 0) / env; });
+    }
+    const grafInd = IND.map(([b, t, u, c, dec]) => { const k = clave(I, b); return k ? `<div><div class="srv-card-t" style="margin-top:6px">${esc(t)} <small class="muted">· ${u}</small></div><div class="chart" id="indG-${b}"></div></div>` : ""; }).join("");
     el.innerHTML = `${planHtml}
+      <div class="srv-card"><div class="srv-card-t">Indicadores mes a mes <small class="muted">· consumo del mes / hL envasados del mes${pp ? "; la última barra es el plan" : ""}</small></div>
+        <div class="srv-grid3">${grafInd}</div>
+        <p class="muted">La raya en la barra del plan es su margen 90 % (suma de márgenes diarios, conservador).</p></div>
       <div class="srv-card"><div class="srv-card-t">Qué tan certero es el indicador <small class="muted">· días de prueba que el modelo no vio</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Indicador</th><th class="n">Error diario</th><th class="n">Error semanal</th><th>Calidad</th></tr></thead><tbody>${prec}</tbody></table></div>
         <p class="muted">El error del indicador es el mismo del consumo (se divide por los mismos hL). Para planear por semana, mire el error semanal.</p></div>
@@ -244,6 +279,19 @@
           .map((m) => { const o = ofi.get(m) || {}; return `<tr><td>${esc(m)}</td><td class="n">${nf(o.env)}</td><td class="n">${r(kE, m, 2)}</td><td class="n">${r(kA, m, 2)}</td><td class="n">${nf(o.agua_hl_hl, 2)}</td><td class="n">${r(kT, m, 1)}</td><td class="n">${nf(o.termica_mj_hl, 1)}</td><td class="n">${r(kV, m, 1)}</td></tr>`; })
           .join("")}<tr class="srv-total"><td>Periodo</td><td></td><td class="n">${nf(kE && hist[kE].total, 2)}</td><td class="n">${nf(kA && hist[kA].total, 2)}</td><td></td><td class="n">${nf(kT && hist[kT].total, 1)}</td><td></td><td class="n">${nf(kV && hist[kV].total, 1)}</td></tr></tbody></table></div>
         <p class="muted">«Oficial» = indicadores diarios de la hoja MAESTRA (G y V) ponderados por los hL de cada día. El agua oficial incluye la variación de tanques (y a veces un ajuste a mano en la columna G); la de este módulo no.${U.variante === "contador" ? " Con «Contador sin ajustes», la térmica comprada quita los ajustes del GLP, así que no tiene por qué coincidir con la oficial." : ""} La térmica comprada no incluye el biogás propio (≈ 1 a 3 MJ/hL según el mes); la térmica total sí. La electricidad oficial del Excel es un acumulado del año (hoja «informe») y no se compara aquí.</p></div>`;
+    IND.forEach(([b, t, u, c, dec]) => {
+      const k = clave(I, b); if (!k) return;
+      const vals = meses.filter((m) => hist[k].mes.get(m) && hist[k].mes.get(m)[1]).map((m) => { const x = hist[k].mes.get(m); return { m, v: x[0] / x[1] }; });
+      const barras = vals.map((x) => ({ v: x.v, color: c, tip: `${etqMes(x.m, meses)}: ${nf(x.v, dec)} ${u} (${nf(hist[k].mes.get(x.m)[1])} hL envasados)` }));
+      const cats = vals.map((x) => etqMes(x.m, meses));
+      if (planInd[k] != null) {
+        const dd = pp.dias.filter((d) => !d.parcial).length ? pp.dias.filter((d) => !d.parcial) : pp.dias, env = dd.reduce((a, d) => a + d.prod.env, 0);
+        const lo = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0) / env, hi = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0) / env;
+        barras.push({ v: planInd[k], lo, hi, color: `color-mix(in srgb, ${c} 45%, transparent)`, tip: `Plan: ${nf(planInd[k], dec)} ${u} (margen ${nf(lo, dec)} – ${nf(hi, dec)})` });
+        cats.push("plan");
+      }
+      SrvCharts.barras(document.getElementById("indG-" + b), { W: 420, H: 220, cats, valores: barras, yLab: u, aria: `${t} por mes` });
+    });
   }
 
   /* ------------------------------------------------------------ calculadora */
@@ -276,25 +324,60 @@
   function vPrecision(el, I) {
     const ms = Object.values(I.modelos).sort((a, b) => SrvInd.SISTEMAS.indexOf(a.sistema) - SrvInd.SISTEMAS.indexOf(b.sistema) || COLUMNAS.indexOf(a.servicio) - COLUMNAS.indexOf(b.servicio));
     const n0 = ms.find((m) => m.n_test);
+    const conPred = seriesVis(I).filter((m) => m.pred_test && m.pred_test.length);
+    if (!conPred.some((m) => baseDe(m.serie) === U.prec) && conPred.length) U.prec = baseDe(conPred[0].serie);
+    const mp = conPred.length ? I.modelos[clave(I, U.prec)] : null;
     el.innerHTML = `
+      ${mp ? `<div class="srv-card"><div class="srv-card-t">Real frente a proyectado en la prueba final <small class="muted">· días que el modelo no vio</small></div>
+        <div class="srv-filtros"><div class="srv-campo"><label for="indPs">Serie</label><select id="indPs">${conPred.map((x) => `<option value="${esc(baseDe(x.serie))}" ${baseDe(x.serie) === U.prec ? "selected" : ""}>${esc(x.sistema)} · ${esc(SERV[x.servicio].nombre)}${x.variante ? " (" + esc(x.variante) + ")" : ""}</option>`).join("")}</select></div></div>
+        <div class="chart" id="indPrec"></div>
+        <div class="srv-ley"><span><i style="background:${SERV[mp.servicio].color}"></i>real</span><span><i style="background:var(--ink)"></i>proyectado (línea punteada)</span></div>
+        <p class="muted">${esc(mp.sistema)} · ${esc(SERV[mp.servicio].nombre)}: error diario ${pct(mp.test.WAPE)}, semanal ${pct(mp.test_semanal.WAPE)}, ${mp.pred_test.length} días desde ${esc(mp.pred_test[0].fecha)}. ${esc(mp.calidad)}.</p></div>` : ""}
       <div class="srv-card"><div class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${n0 ? n0.n_test : "—"} días válidos, que no se usaron para elegir el modelo</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th>Variable que mejor lo explica</th><th>Modelo</th><th class="n">Error diario</th><th class="n">Error semanal</th><th class="n">Cobertura 90 %</th><th class="n">Días válidos</th><th>Calidad</th></tr></thead><tbody>${ms
           .map((m) => `<tr><td>${esc(m.sistema)}</td><td>${esc(SERV[m.servicio].nombre)}${etqV(m)}</td><td>${!m.test ? "—" : m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo || "")}">${m.test ? esc(NOMBRE_MODELO[m.familia] || m.familia) + (m.cols && m.cols.length > 1 ? " múltiple" : "") + (m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : "") : "—"}</td><td class="n">${m.test ? pct(m.test.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.test_semanal.WAPE) : "—"}</td><td class="n">${m.test ? pct(m.cobertura, 0) : "—"}</td><td class="n">${m.n_estados.valido || 0}${m.n_estados.excluido ? ` <small class="muted">(${m.n_estados.excluido} excl.)</small>` : ""}</td><td>${chipQ(m.calidad)}</td></tr>`)
           .join("")}</tbody></table></div>
         <p class="muted">Error = WAPE (suma de errores absolutos sobre consumo real) en los días de prueba. Error semanal = lo mismo sumando por semana (lo que importa para planear). Se compararon hL cocinados, filtrados y envasados, solos y combinados, con siete tipos de modelo y validación temporal; queda el más simple dentro del 3 % del mejor. Las cifras coinciden con una réplica independiente en Python.</p>
       </div>`;
+      if (mp) {
+      const sv = SERV[mp.servicio], q = sv.g;
+      SrvCharts.lineas($("#indPrec"), {
+        W: 900, H: 250, yLab: `${q[1]}/día`, aria: `Real frente a proyectado de ${mp.sistema}`,
+        series: [
+          { color: sv.color, ancho: 1.6, puntos: mp.pred_test.map((p) => ({ x: Date.parse(p.fecha + "T00:00:00Z"), y: p.y / q[0] })) },
+          { tipo: "puntos", color: sv.color, puntos: mp.pred_test.map((p) => ({ x: Date.parse(p.fecha + "T00:00:00Z"), y: p.y / q[0], tip: `${p.fecha}: real ${nf(p.y / q[0], q[2] + 1)} · proyectado ${nf(p.pred / q[0], q[2] + 1)} ${q[1]} (${pct(p.pred / p.y - 1, 0)})` })) },
+          { color: "var(--ink)", ancho: 1.6, guiones: true, puntos: mp.pred_test.map((p) => ({ x: Date.parse(p.fecha + "T00:00:00Z"), y: p.pred / q[0] })) },
+        ],
+      });
+      $("#indPs").onchange = (e) => { U.prec = e.target.value; renderIndustriales(); };
+    }
   }
 
   /* ------------------------------------------------------------ fijo y carga base */
   function vFijo(el, I) {
     const vis = seriesVis(I).filter((m) => m.media_valida);
     el.innerHTML = `
+      <div class="srv-card"><div class="srv-card-t">Fijo y variable por sistema <small class="muted">· promedio diario: parte fija (en marcha sin producción) y parte que depende del volumen</small></div>
+        <div class="srv-grid2">${["electricidad", "agua"].map((sv) => `<div><div class="srv-card-t" style="margin-top:6px">${SERV[sv].nombre} <small class="muted">· ${SERV[sv].g[1]}/día</small></div><div class="chart" id="indFijo-${sv}"></div></div>`).join("")}</div>
+        <div class="srv-ley"><span><i style="background:var(--muted)"></i>fijo</span><span><i style="background:color-mix(in srgb, var(--muted) 35%, transparent)"></i>depende del volumen</span></div>
+      </div>
       <div class="srv-card"><div class="srv-card-t">Cuánto es fijo <small class="muted">· consumo con la planta en marcha y producción cero (corte de la recta) frente al promedio</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th class="n">Fijo en marcha</th><th class="n">Promedio con producción</th><th class="n">Fijo / promedio</th><th class="n">Días con planta parada*</th><th class="n">Consumo esos días</th></tr></thead><tbody>${vis
           .map((m) => { const sv = SERV[m.servicio], cte = m.familia === "media", f = cte ? m.media_valida : m.fijo_operando != null ? Math.max(0, m.fijo_operando) : null; return `<tr><td>${esc(m.sistema)}</td><td>${esc(sv.nombre)}${etqV(m)}</td><td class="n">${nf(f)} ${sv.u}</td><td class="n">${nf(m.media_valida)} ${sv.u}</td><td class="n">${cte ? '<small class="muted">todo: no depende del volumen</small>' : f != null ? pct(Math.min(1, f / m.media_valida), 0) : "—"}</td><td class="n">${m.carga_base.n || 0}</td><td class="n">${m.carga_base.n ? nf(m.carga_base.mediana) + " " + sv.u : "—"}</td></tr>`; })
           .join("")}</tbody></table></div>
         <p class="muted">* Envasado y cocción por debajo del 5 % de su media el mismo día (para CO2 recolectado, solo cocción). La planta casi nunca para del todo (en el histórico solo pasa el 1 de enero, un día parcial), así que la carga base medida es orientativa; el «fijo en marcha» sale de todos los días y es la cifra más útil. Un fijo cercano al 100 % significa que ese consumo no depende del volumen.</p>
       </div>`;
+      ["electricidad", "agua"].forEach((sv) => {
+      const ms = PILA[sv].map(([b, t, c, v]) => [I.modelos[clave(I, b, v)], t]).filter(([m]) => m && m.media_valida);
+      const g = SERV[sv].g, fijo = (m) => (m.familia === "media" ? m.media_valida : m.fijo_operando != null ? Math.min(m.media_valida, Math.max(0, m.fijo_operando)) : null);
+      SrvCharts.apiladas(document.getElementById("indFijo-" + sv), {
+        W: 620, H: 250, maxEtiquetas: 10, cats: ms.map(([, t]) => t.replace("Refrigeración (compresores)", "Refrig. (compresores)").replace("Maquinaria auxiliar", "Maquinaria").replace("Aire comprimido", "Aire").replace("Sistema de agua", "Sist. agua").replace("Planta de CO2", "CO2")), yLab: `${g[1]}/día`, aria: `Parte fija y variable de ${SERV[sv].nombre.toLowerCase()} por sistema`,
+        series: [
+          { color: SERV[sv].color, valores: ms.map(([m]) => (fijo(m) || 0) / g[0]), tips: ms.map(([m, t]) => `${t}: fijo ${nf((fijo(m) || 0) / g[0], g[2] + 1)} ${g[1]}/día (${pct((fijo(m) || 0) / m.media_valida, 0)} del promedio)`) },
+          { color: `color-mix(in srgb, ${SERV[sv].color} 35%, transparent)`, valores: ms.map(([m]) => (m.media_valida - (fijo(m) || 0)) / g[0]), tips: ms.map(([m, t]) => `${t}: depende del volumen ${nf((m.media_valida - (fijo(m) || 0)) / g[0], g[2] + 1)} ${g[1]}/día · promedio ${nf(m.media_valida / g[0], g[2] + 1)}`) },
+        ],
+      });
+    });
   }
 
   /* ------------------------------------------------------------ histórico */
