@@ -353,13 +353,40 @@
     const out = [...dias.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([f, d]) => ({ fecha: f, base: d.base, hl: d.hl, parcial: d.base < ini - 60000 || d.base + Dd > fin + 60000 }));
     return { dias: out, ini, fin };
   }
+  function prorratearRespaldos(res, frac) {
+    for (const s of P_SERV) {
+      const T = res.totales[s];
+      for (const ln of Object.keys(res.lineas)) {
+        const x = res.lineas[ln].servicios[s], m = S.B.modelos[s + "|" + ln];
+        if (!x || !x.respaldo || !m || !m.respaldo || m.respaldo.tipo !== "media" || x.estimado == null) continue;
+        const quita = x.estimado * (1 - frac);
+        x.estimado -= quita; x.prorrateo = frac;
+        if (x.intervalo) {
+          const [a, b] = x.intervalo;
+          x.intervalo = [a * frac, b * frac];
+          const menos = (I) => (I ? [I[0] - a * (1 - frac), I[1] - b * (1 - frac)] : I);
+          T.intervalo_conservador = menos(T.intervalo_conservador);
+          if (T.intervalo_conservador_con_auxiliares) T.intervalo_conservador_con_auxiliares = menos(T.intervalo_conservador_con_auxiliares);
+        }
+        T.estimado -= quita;
+        if (T.estimado_con_auxiliares != null) T.estimado_con_auxiliares -= quita;
+        if (T.estimado_m3 != null) T.estimado_m3 = T.estimado * 0.1;
+        (T.lineas_prorrateadas = T.lineas_prorrateadas || []).push(ln);
+      }
+    }
+  }
   function calcularPlanEnvasado() {
     const h = hlPorDia();
     if (!h) return null;
     const filas = h.dias.map((d) => {
       const plan = {};
       S.B && Object.keys(S.B.lineas).forEach((ln) => (plan[ln] = [d.hl[ln] || 0, "hL"]));
-      return { ...d, res: SrvPred.planificar(S.B, plan) };
+      const res = SrvPred.planificar(S.B, plan);
+      // Día de borde: el plan cubre solo parte del día. Una estimación de respaldo
+      // «promedio por día» (no depende del volumen) se cuenta solo por las horas cubiertas.
+      const Dd = 86400000, frac = d.parcial ? Math.max(0, Math.min(d.base + Dd, h.fin) - Math.max(d.base, h.ini)) / Dd : 1;
+      if (frac < 1) prorratearRespaldos(res, frac);
+      return { ...d, frac, res };
     });
     return { filas, ini: h.ini, fin: h.fin };
   }
@@ -403,7 +430,7 @@
             const T = f.res.totales;
             const hl = lineas.reduce((a, l) => a + (f.hl[l] || 0), 0);
             const notas = [];
-            if (f.parcial) notas.push("día parcial (borde del plan)");
+            if (f.parcial) notas.push(`día parcial: el plan cubre ${nf(f.frac * 24)} h de 24` + (T.vapor.lineas_prorrateadas ? ` (vapor ${T.vapor.lineas_prorrateadas.join(", ")} contado solo por esas horas)` : ""));
             if (!T.vapor.completo) notas.push("vapor sin " + T.vapor.lineas_sin_modelo.join(", "));
             const ex = lineas.filter((l) => P_SERV.some((s) => (f.res.lineas[l].servicios[s] || {}).extrapolacion));
             if (ex.length) notas.push("extrapola en " + ex.join(", "));
