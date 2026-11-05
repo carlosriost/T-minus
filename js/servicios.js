@@ -18,6 +18,7 @@
   const COLOR_LINEA = { L5: "var(--srv-l5)", L7: "var(--srv-l7)", L8: "var(--srv-l8)", L9: "var(--srv-l9)", AUX: "var(--srv-aux)" };
   const ESC_N = { baja: "Baja", media: "Media", alta: "Alta" };
   const VISTAS = [
+    ["general", "General (planta)"],
     ["plan", "Plan de envasado"],
     ["elaboracion", "Elaboración"],
     ["industriales", "Servicios industriales"],
@@ -28,7 +29,7 @@
     ["calidad", "Calidad de datos"],
     ["formulas", "Fórmulas"],
   ];
-  const S = { B: null, vista: "plan", sim: { linea: "L5", cantidad: "", unidad: "hL", res: null }, hist: { linea: "L5", servicio: "vapor" }, ev: { clave: null }, cal: { servicio: "", linea: "", decision: "" }, plan: {}, planRes: null, corte: 22, estado: "", elab: { coc: "", fil: "", env: "", variante: "oficial" }, coccion: "auto" };
+  const S = { B: null, vista: "general", sim: { linea: "L5", cantidad: "", unidad: "hL", res: null }, hist: { linea: "L5", servicio: "vapor" }, ev: { clave: null }, cal: { servicio: "", linea: "", decision: "" }, plan: {}, planRes: null, corte: 22, estado: "", elab: { coc: "", fil: "", env: "", variante: "oficial" }, coccion: "auto" };
 
   try { const c = JSON.parse(localStorage.getItem(LS_CFG) || "{}"); if ([0, 6, 22].includes(c.corte)) S.corte = c.corte; if (["auto", "plan", "habitual"].includes(c.coccion)) S.coccion = c.coccion; } catch (_) {}
   function guardarCfg() { try { localStorage.setItem(LS_CFG, JSON.stringify({ corte: S.corte, coccion: S.coccion })); } catch (_) {} }
@@ -230,7 +231,7 @@
       $("#srvJson").onclick = () => descargar(new Blob([JSON.stringify(S.B)], { type: "application/json" }), `modelo_servicios_${S.B.version}.json`);
       $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
       cont.querySelectorAll("[data-srv-vista]").forEach((b) => (b.onclick = () => { S.vista = b.dataset.srvVista; renderServicios(); }));
-      ({ plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal, formulas: vFormulas })[S.vista]();
+      ({ general: vGeneral, plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal, formulas: vFormulas })[S.vista]();
     }
     SrvCharts.conectarTips(cont);
   }
@@ -270,6 +271,176 @@
         <p class="muted">* Respaldo: error medido en las últimas 3 semanas. Electricidad de cada línea: contador de la línea sin los auxiliares compartidos (los auxiliares tienen su propia fórmula). Días sin producción: se usa el consumo base medido, no la fórmula.</p></div>
       ${tabla(E, "Elaboración (cocinas, cavas y filtración)", "Por debajo del 5 % del promedio de producción del área se usa la carga base medida en vez de la fórmula.")}
       ${tabla(I, "Planta completa y servicios industriales", "La versión «contador» quita los números sumados a mano en el Excel; «oficial» es la cifra del Excel.")}`;
+  }
+
+  /* ------------------------------------------------------------ GENERAL (PLANTA) */
+  // Vapor, agua y electricidad de toda la planta: histórico real, reparto entre
+  // envasado, elaboración y el resto (servicios industriales y demás) y proyección del plan.
+  // Todo sale de las mismas series que usan los otros módulos (mismas reglas de datos).
+  const G_SERV = ["vapor", "agua", "electricidad"];
+  const G_ENV_LINEAS = { vapor: ["L5", "L7", "L8", "L9"], agua: ["L5", "L7", "L8", "L9"], electricidad: ["L5", "L7", "L8", "L9", "AUX"] };
+  const G_COL = {
+    env: (s) => `color-mix(in srgb, ${PLANTA[s].color} 100%, transparent)`,
+    elab: (s) => `color-mix(in srgb, ${PLANTA[s].color} 55%, var(--panel))`,
+    resto: (s) => `color-mix(in srgb, ${PLANTA[s].color} 24%, transparent)`,
+  };
+  const gLeyenda = (s) => `<div class="srv-ley"><span><i style="background:${G_COL.env(s)}"></i>Envasado${s === "electricidad" ? " (con auxiliares)" : ""}</span><span><i style="background:${G_COL.elab(s)}"></i>Elaboración</span><span><i style="background:${G_COL.resto(s)}"></i>Resto (servicios industriales y demás)</span></div>`;
+  const usable = (e) => e === "valido" || e === "carga_base";
+  // Serie diaria real de la planta: solo días válidos o de carga base (los excluidos tienen un motivo).
+  function gPlanta(I, s, v) {
+    const k = clavePlanta(I, s, v);
+    if (!k) return null;
+    const h = I.modelos[k].historico.filter((x) => x.c !== null && usable(x.e));
+    return { k, m: I.modelos[k], h, excluidos: I.modelos[k].historico.filter((x) => x.e === "excluido").length };
+  }
+  // Reparto diario real: planta, envasado (suma de líneas) y elaboración en los días con los tres datos.
+  function gReparto(I, E, s, v) {
+    const P = gPlanta(I, s, v);
+    if (!P || !E) return null;
+    const ke = TOTAL_ELAB(v)[s];
+    const el = new Map(E.modelos[ke].historico.filter((x) => x.c !== null && x.e !== "excluido").map((x) => [x.f, x.c]));
+    const env = new Map();
+    for (const h of S.B.historico) {
+      if (h.s !== s || h.C === null || h.e === "excluido" || !G_ENV_LINEAS[s].includes(h.l)) continue;
+      const x = env.get(h.f) || { n: 0, c: 0 };
+      x.n++; x.c += h.C; env.set(h.f, x);
+    }
+    const n = G_ENV_LINEAS[s].length;
+    return P.h.filter((x) => el.has(x.f) && env.has(x.f) && env.get(x.f).n === n).map((x) => ({ f: x.f, planta: x.c, env: env.get(x.f).c, elab: el.get(x.f) }));
+  }
+  function vGeneral() {
+    const el = $("#srvCuerpo"), I = S.B.industriales, E = S.B.elaboracion, v = S.elab.variante;
+    if (!I) { el.innerHTML = `<div class="srv-vacio"><h4>Falta procesar la planta</h4><p>${esc(S.B.industriales_error || "Vuelve a cargar el Excel de Indicadores de servicios para calcular el consumo de toda la planta.")}</p></div>`; return; }
+    const envDia = new Map((S.B.produccion_diaria || []).map((r) => [r[0], r[3]]));
+    const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+    const etqMes = (m) => MES[Number(m.slice(5, 7)) - 1] + " " + m.slice(2, 4);
+    const G = {};
+    for (const s of G_SERV) {
+      const P = gPlanta(I, s, v);
+      if (!P || !P.h.length) continue;
+      const h = P.h, fin = msF(h[h.length - 1].f);
+      const ult = h.filter((x) => fin - msF(x.f) < 30 * 86400000), prev = h.filter((x) => fin - msF(x.f) >= 30 * 86400000 && fin - msF(x.f) < 60 * 86400000);
+      const prom = (a) => (a.length ? a.reduce((t, x) => t + x.c, 0) / a.length : null);
+      const porHl = (a) => { let c = 0, e = 0; a.forEach((x) => { const q = envDia.get(x.f); if (q > 0) { c += x.c; e += q; } }); return e ? c / e : null; };
+      const R = gReparto(I, E, s, v) || [];
+      const meses = new Map();
+      R.forEach((r) => { const m = r.f.slice(0, 7); const x = meses.get(m) || { n: 0, planta: 0, env: 0, elab: 0 }; x.n++; x.planta += r.planta; x.env += r.env; x.elab += r.elab; meses.set(m, x); });
+      const tot = R.reduce((a, r) => ({ planta: a.planta + r.planta, env: a.env + r.env, elab: a.elab + r.elab }), { planta: 0, env: 0, elab: 0 });
+      G[s] = { P, ult, prev, m30: prom(ult), m30p: prom(prev), anio: prom(h), hl30: porHl(ult), hlAnio: porHl(h), R, meses, tot, negativos: R.filter((r) => r.env + r.elab > r.planta).length };
+    }
+    const g = (s, x) => (x == null ? null : x / PLANTA[s].grande[0]);
+    const uG = (s) => PLANTA[s].grande[1];
+    const dG = (s) => PLANTA[s].grande[2];
+    const espU = { vapor: "kg/hL", agua: "hL/hL", electricidad: "kWh/hL" };
+    const kpis = G_SERV.filter((s) => G[s]).map((s) => {
+      const x = G[s], ch = x.m30p ? x.m30 / x.m30p - 1 : null;
+      return `<div class="srv-kpi" style="--c:${PLANTA[s].color}"><span>${PLANTA[s].nombre} de la planta${x.P.m.variante ? ` (${esc(x.P.m.variante)})` : ""}</span><b>${nf(g(s, x.m30), dG(s))} <small>${uG(s)}/día</small></b><small>últimos 30 días con dato (hasta ${esc(x.ult[x.ult.length - 1].f)}) · ${nf(x.hl30, 2)} ${espU[s]} envasado${ch != null ? ` · ${ch >= 0 ? "+" : ""}${pct(ch, 1)} vs. los 30 anteriores` : ""} · año ${nf(g(s, x.anio), dG(s))} ${uG(s)}/día</small></div>`;
+    }).join("");
+    // Proyección del plan
+    const pp = prodPlan(), PE = calcularPlanEnvasado();
+    let planHtml = `<div class="srv-card"><div class="srv-card-t">Proyección del plan</div><p class="muted">Carga el plan de envasado en <b>Datos de entrada</b> para proyectar el vapor, el agua y la electricidad de toda la planta.</p></div>`;
+    let dias = null;
+    if (pp && E) {
+      const envF = new Map(((PE && PE.filas) || []).map((f) => [f.fecha, f]));
+      dias = pp.dias.map((d) => {
+        const re = SrvElab.predecir(E, d.prod), ri = SrvInd.predecir(I, d.prod), fe = envF.get(d.fecha);
+        const o = { fecha: d.fecha, parcial: d.parcial, prod: d.prod, s: {} };
+        for (const s of G_SERV) {
+          const kp = clavePlanta(I, s, v), xp = kp && ri[kp];
+          const xe = re[TOTAL_ELAB(v)[s]];
+          const T = fe ? fe.res.totales[s] : null;
+          const env = T ? (s === "electricidad" && T.estimado_con_auxiliares != null ? T.estimado_con_auxiliares : T.estimado) : 0;
+          const planta = xp && xp.estimado != null ? xp.estimado : null;
+          const elab = xe && xe.estimado != null ? xe.estimado : 0;
+          o.s[s] = { planta, intervalo: xp && xp.intervalo, env, elab, resto: planta == null ? null : planta - env - elab, env_incompleto: T ? !T.completo : false, extrapola: !!(xp && xp.extrapolacion) };
+        }
+        return o;
+      });
+      const completos = dias.filter((d) => !d.parcial), base = completos.length ? completos : dias;
+      const envTot = base.reduce((a, d) => a + d.prod.env, 0);
+      const kp = G_SERV.map((s) => {
+        const t = dias.reduce((a, d) => a + (d.s[s].planta || 0), 0), tb = base.reduce((a, d) => a + (d.s[s].planta || 0), 0);
+        const lo = dias.reduce((a, d) => a + (d.s[s].intervalo ? d.s[s].intervalo[0] : 0), 0), hi = dias.reduce((a, d) => a + (d.s[s].intervalo ? d.s[s].intervalo[1] : 0), 0);
+        const x = G[s];
+        return `<div class="srv-kpi" style="--c:${PLANTA[s].color}"><span>${PLANTA[s].nombre} de la planta · plan</span><b>${nf(g(s, t), dG(s))} <small>${uG(s)}</small></b><small>${nf(g(s, t / dias.length), dG(s))} ${uG(s)}/día · margen ${nf(g(s, lo), dG(s))} – ${nf(g(s, hi), dG(s))} · ${nf(envTot ? tb / envTot : null, 2)} ${espU[s]}${x && x.hl30 != null ? ` (últimos 30 días: ${nf(x.hl30, 2)})` : ""}</small></div>`;
+      }).join("");
+      const neg = G_SERV.map((s) => [s, dias.filter((d) => d.s[s].resto != null && d.s[s].resto < 0).length]).filter((x) => x[1]);
+      const sinEnv = dias.filter((d) => !envF.has(d.fecha)).length;
+      const extrap = dias.filter((d) => G_SERV.some((s) => d.s[s].extrapola)).length;
+      planHtml = `<div class="srv-card"><div class="srv-card-t">Proyección del plan <small class="muted">· ${dias.length} días, del ${esc(dias[0].fecha)} al ${esc(dias[dias.length - 1].fecha)}</small></div>
+        ${avisoCoccion(pp)}
+        <div class="srv-kpis">${kp}</div>
+        ${extrap ? `<div class="srv-aviso info">En ${extrap} de ${dias.length} días la producción del plan queda fuera del rango histórico de la planta: esos días el total es una extrapolación.</div>` : ""}
+        ${sinEnv ? `<div class="srv-aviso info">${sinEnv} día(s) tienen cocción pero no envasado en el plan: ahí envasado cuenta 0.</div>` : ""}
+        ${neg.length ? `<div class="srv-aviso info">Envasado + elaboración superan el total de la planta en ${neg.map(([s, n]) => `${n} día(s) de ${PLANTA[s].nombre.toLowerCase()}`).join(", ")}: son modelos distintos (por línea, por área y de planta) y no cuadran exacto día a día. Esos días el «resto» se muestra en cero.</div>` : ""}
+        <div class="srv-grid3">${G_SERV.map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${PLANTA[s].nombre} por día <small class="muted">· ${uG(s)}/día · raya = margen 90 % de la planta</small></div><div class="chart" id="gPlan-${s}"></div>${gLeyenda(s)}</div>`).join("")}</div>
+        <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL cocinados</th><th class="n">hL envasados</th>${G_SERV.map((s) => `<th class="n">${PLANTA[s].nombre} planta (${uG(s)})</th><th class="n">envasado</th><th class="n">elaboración</th>`).join("")}<th>Notas</th></tr></thead><tbody>${dias
+          .map((d) => { const n = []; if (d.parcial) n.push("día parcial"); if (G_SERV.some((s) => d.s[s].extrapola)) n.push("fuera de rango"); if (d.s.vapor.env_incompleto) n.push("vapor de envasado incompleto"); return `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.coc)}</td><td class="n">${nf(d.prod.env)}</td>${G_SERV.map((s) => `<td class="n">${nf(g(s, d.s[s].planta), dG(s))}</td><td class="n">${nf(g(s, d.s[s].env), dG(s))}</td><td class="n">${nf(g(s, d.s[s].elab), dG(s))}</td>`).join("")}<td class="muted">${esc(n.join(" · "))}</td></tr>`; })
+          .join("")}</tbody></table></div></details>
+      </div>`;
+    } else if (pp && !E) planHtml = `<div class="srv-card"><div class="srv-card-t">Proyección del plan</div><p class="muted">Vuelve a cargar el Excel de Indicadores de servicios para calcular elaboración.</p></div>`;
+    // Reparto histórico
+    const repTabla = G_SERV.filter((s) => G[s] && G[s].R.length).map((s) => {
+      const x = G[s], t = x.tot, resto = t.planta - t.env - t.elab;
+      return `<tr><td>${PLANTA[s].nombre}${x.P.m.variante ? ` <small class="muted">(${esc(x.P.m.variante)})</small>` : ""}</td><td class="n">${x.R.length}</td><td class="n">${nf(g(s, t.planta / x.R.length), dG(s))} ${uG(s)}</td><td class="n">${pct(t.env / t.planta, 0)}</td><td class="n">${pct(t.elab / t.planta, 0)}</td><td class="n">${pct(resto / t.planta, 0)}</td><td class="n">${x.negativos}</td></tr>`;
+    }).join("");
+    const meses = [...new Set(G_SERV.flatMap((s) => (G[s] ? [...G[s].P.h.map((x) => x.f.slice(0, 7))] : [])))].sort();
+    const mesTabla = meses.map((m) => {
+      const cel = G_SERV.map((s) => { if (!G[s]) return "<td></td><td></td>"; const a = G[s].P.h.filter((x) => x.f.startsWith(m)); let c = 0, e = 0; a.forEach((x) => { const q = envDia.get(x.f); if (q > 0) { c += x.c; e += q; } }); return `<td class="n">${a.length ? nf(g(s, a.reduce((t, x) => t + x.c, 0) / a.length), dG(s)) : "—"}</td><td class="n">${e ? nf(c / e, 2) : "—"}</td>`; }).join("");
+      const ed = [...envDia].filter(([f]) => f.startsWith(m));
+      return `<tr><td>${esc(etqMes(m))}</td><td class="n">${ed.length ? nf(ed.reduce((a, [, q]) => a + q, 0) / ed.length) : "—"}</td>${cel}</tr>`;
+    }).join("");
+    el.innerHTML = `
+      <div class="srv-filtros">
+        <div class="srv-campo"><label>Vapor y electricidad</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-gv="${k}" class="${v === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
+        <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([x, t]) => `<button type="button" data-corte="${x}" class="${S.corte === x ? "on" : ""}">${t}</button>`).join("")}</div></div>
+      </div>
+      <div class="srv-card"><div class="srv-card-t">Consumo de la planta <small class="muted">· datos reales del Excel, ${esc(I.desde)} a ${esc(I.hasta)}</small></div>
+        <div class="srv-kpis">${kpis}</div>
+        <div class="srv-grid3">${G_SERV.filter((s) => G[s]).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} diario <small class="muted">· ${uG(s)}/día · línea = promedio de 7 días</small></div><div class="chart" id="gHist-${s}"></div><p class="muted" style="margin:2px 0 0">Gráfica: últimos ${Math.min(180, G[s].P.h.length)} días. ${G[s].P.h.length} días con dato en total${G[s].P.excluidos ? `, ${G[s].P.excluidos} excluidos por calidad (ver «Servicios industriales → Histórico»)` : ""}.</p></div>`).join("")}</div>
+        <p class="muted">Agua de la planta = entrada EEPPMM menos lo que va fuera de planta (columna T de DATOS SEMANA). Vapor = gran total de «Contadores vapor». Electricidad = ISAGEN 44 kV menos perímetros. ${v === "contador" ? "Versión contador: sin los números sumados a mano en las fórmulas." : "Versión oficial: la celda del Excel tal cual (con sus ajustes a mano)."}</p>
+      </div>
+      ${planHtml}
+      <div class="srv-card"><div class="srv-card-t">Cómo se reparte <small class="muted">· días con dato de planta, envasado y elaboración a la vez</small></div>
+        <div class="srv-grid3">${G_SERV.filter((s) => G[s] && G[s].meses.size).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} por mes <small class="muted">· promedio diario, ${uG(s)}/día</small></div><div class="chart" id="gRep-${s}"></div>${gLeyenda(s)}</div>`).join("")}</div>
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Servicio</th><th class="n">Días</th><th class="n">Planta (promedio)</th><th class="n">Envasado</th><th class="n">Elaboración</th><th class="n">Resto</th><th class="n">Días con envasado + elaboración &gt; planta</th></tr></thead><tbody>${repTabla}</tbody></table></div>
+        <p class="muted">Envasado = suma de las líneas (vapor: columnas de MAESTRA; electricidad: medidores de línea más auxiliares; agua: DATOS SEMANA). Elaboración = cocinas + cavas + filtración (vapor y agua) o cocinas + filtración (electricidad). El resto incluye refrigeración, aire comprimido, CO2, calderas, periféricos y lo que no tiene medidor propio. Cada parte viene de contadores distintos, así que algunos días no cuadran con el total; en el mes se compensan.</p>
+      </div>
+      <div class="srv-card"><div class="srv-card-t">Histórico mensual <small class="muted">· promedio diario de los días con dato y consumo por hL envasado</small></div>
+        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados/día</th>${G_SERV.map((s) => (G[s] ? `<th class="n">${PLANTA[s].nombre} (${uG(s)}/día)</th><th class="n">${espU[s]}</th>` : "")).join("")}</tr></thead><tbody>${mesTabla}</tbody></table></div>
+      </div>`;
+    el.querySelectorAll("[data-gv]").forEach((b) => (b.onclick = () => { S.elab.variante = b.dataset.gv; vGeneral(); SrvCharts.conectarTips(el); }));
+    el.querySelectorAll("[data-corte]").forEach((b) => (b.onclick = () => { S.corte = Number(b.dataset.corte); guardarCfg(); vGeneral(); SrvCharts.conectarTips(el); }));
+    conectarCoccion(el, () => { vGeneral(); SrvCharts.conectarTips(el); });
+    // Gráficas
+    for (const s of G_SERV) {
+      const x = G[s];
+      if (!x) continue;
+      const h = x.P.h.slice(-180), f0 = h.length ? msF(h[0].f) : 0;
+      const media7 = h.map((p) => { const t = msF(p.f); const w = x.P.h.filter((q) => msF(q.f) <= t && t - msF(q.f) < 7 * 86400000); return { x: t, y: g(s, w.reduce((a, q) => a + q.c, 0) / w.length) }; });
+      SrvCharts.lineas(document.getElementById("gHist-" + s), {
+        W: 420, H: 230, yLab: `${uG(s)}/día`, aria: `${PLANTA[s].nombre} diario de la planta`,
+        series: [
+          { tipo: "puntos", color: `color-mix(in srgb, ${PLANTA[s].color} 60%, transparent)`, r: 2.2, puntos: h.map((p) => ({ x: msF(p.f), y: g(s, p.c), tip: `${p.f}: ${nf(g(s, p.c), dG(s) + 1)} ${uG(s)}${p.e === "carga_base" ? " · carga base" : ""}${p.m ? " · " + p.m : ""}` })) },
+          { color: PLANTA[s].color, ancho: 2.2, puntos: media7.filter((p) => p.x >= f0) },
+        ],
+      });
+      if (x.meses.size) {
+        const ms = [...x.meses.keys()].sort();
+        const val = (k) => ms.map((m) => { const q = x.meses.get(m); return g(s, Math.max(0, k === "resto" ? q.planta - q.env - q.elab : q[k]) / q.n); });
+        SrvCharts.apiladas(document.getElementById("gRep-" + s), {
+          W: 420, H: 230, maxEtiquetas: 12, cats: ms.map((m) => (new Set(ms.map((q) => q.slice(0, 4))).size > 1 ? etqMes(m) : MES[Number(m.slice(5, 7)) - 1])), yLab: `${uG(s)}/día`, aria: `Reparto mensual del ${PLANTA[s].nombre.toLowerCase()}`,
+          series: [["env", "envasado"], ["elab", "elaboración"], ["resto", "resto"]].map(([k, t]) => ({ color: G_COL[k](s), valores: val(k), tips: ms.map((m) => { const q = x.meses.get(m), vv = k === "resto" ? q.planta - q.env - q.elab : q[k]; return `${etqMes(m)} · ${t}: ${nf(g(s, vv / q.n), dG(s))} ${uG(s)}/día (${pct(vv / q.planta, 0)} de la planta, ${q.n} días)`; }) })),
+        });
+      }
+      if (dias) {
+        SrvCharts.apiladas(document.getElementById("gPlan-" + s), {
+          W: 420, H: 230, maxEtiquetas: 7, cats: dias.map((d) => d.fecha.slice(8, 10) + "/" + d.fecha.slice(5, 7)), yLab: `${uG(s)}/día`, aria: `${PLANTA[s].nombre} de la planta por día del plan`,
+          rangos: dias.map((d) => (d.s[s].intervalo ? d.s[s].intervalo.map((q) => g(s, q)) : null)), marcas: dias.map((d) => (d.parcial ? "parcial" : "")),
+          series: [["env", "envasado"], ["elab", "elaboración"], ["resto", "resto"]].map(([k, t]) => ({ color: G_COL[k](s), valores: dias.map((d) => g(s, Math.max(0, d.s[s][k] || 0))), tips: dias.map((d) => `${d.fecha} · ${t}: ${nf(g(s, d.s[s][k]), dG(s) + 1)} ${uG(s)} · planta ${nf(g(s, d.s[s].planta), dG(s) + 1)} ${uG(s)}${d.s[s].intervalo ? ` (margen ${nf(g(s, d.s[s].intervalo[0]), dG(s))} – ${nf(g(s, d.s[s].intervalo[1]), dG(s))})` : ""}`) })),
+        });
+      }
+    }
   }
   function vIndustriales() {
     $("#srvCuerpo").innerHTML = '<div id="srvInd"></div>';
