@@ -3279,6 +3279,9 @@ body.theme-light .srv { --srv-vapor: #b9702f; --srv-elec: #3f74ba; --srv-agua: #
 .srv-aviso { margin: 8px 0; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
 .srv-aviso.bad { background: color-mix(in srgb, var(--danger) 8%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .srv-aviso.info { background: color-mix(in srgb, var(--accent2) 8%, transparent); border-color: color-mix(in srgb, var(--accent2) 28%, transparent); }
+.srv-coccion { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; justify-content: space-between; }
+.srv-coccion > div:first-child { flex: 1 1 380px; }
+.srv-coccion .srv-campo { margin: 0; }
 .srv-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; }
 .srv-card-t { font-size: 13.5px; font-weight: 650; margin: 0 0 10px; }
 .srv-card-t small { font-weight: 400; }

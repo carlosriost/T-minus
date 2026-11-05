@@ -76,6 +76,7 @@
     const el = $("#indCuerpo");
     try { ({ resumen: vResumen, plan: vPlan, indicadores: vIndicadores, calc: vCalc, precision: vPrecision, fijo: vFijo, historico: vHist, calidad: vCalidad })[U.vista](el, I); }
     catch (e) { console.error(e); el.innerHTML = `<p class="srv-msg bad">Error al mostrar esta vista: ${esc(e.message)}</p>`; }
+    if (typeof srvConectarCoccion === "function") srvConectarCoccion(el, renderIndustriales);
     SrvCharts.conectarTips(cont);
   }
 
@@ -160,7 +161,8 @@
           ${kpi("elec_planta", "Electricidad de la planta", "referencia")}
           ${kpi("agua_planta", "Agua de la planta", "referencia")}
         </div>
-        ${fuera ? `<div class="srv-aviso info">En ${fuera} de ${pp.dias.length} días la producción del plan queda fuera del rango histórico (el plan de cocinas de T-minus cocina solo lo que pide envasado: ${nf(pp.dias.reduce((a, d) => a + d.prod.coc, 0) / pp.dias.length)} hL/día frente a ${nf(I.medias.coc)} en el histórico). Esos días la cifra es una extrapolación.</div>` : ""}
+        ${srvAvisoCoccion(pp)}
+        ${fuera ? `<div class="srv-aviso info">En ${fuera} de ${pp.dias.length} días la producción del plan queda fuera del rango histórico de la planta: esos días la cifra es una extrapolación.</div>` : ""}
         ${pp.filFuente === "envasado" ? '<div class="srv-aviso info">No hay plan de filtración cargado: los hL filtrados se toman iguales a los envasados del día.</div>' : ""}
         <div class="srv-grid2">${["electricidad", "agua"].map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${SERV[s].nombre} de servicios por día</div><div class="chart" id="indPila-${s}"></div><div class="srv-ley">${pilaK(s).map(([, t, c]) => `<span><i style="background:${c}"></i>${esc(t)}</span>`).join("")}</div>${s === "agua" ? '<p class="muted">Suma de sistemas medidos; incluye BTS, que el «total de servicios» del Excel no cuenta.</p>' : ""}</div>`).join("")}</div>
         <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL coc.</th><th class="n">hL fil.</th><th class="n">hL env.</th>${pilaK("electricidad").map(([, t]) => `<th class="n">${esc(t)} (kWh)</th>`).join("")}${pilaK("agua").map(([, t]) => `<th class="n">${esc(t)} (hL)</th>`).join("")}<th>Notas</th></tr></thead><tbody>${pp.dias
@@ -222,7 +224,7 @@
       }).join("");
       planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${dd.length} días completos, ${nf(env)} hL envasados${dd.length < pp.dias.length ? " (sin el primer y el último día, que son parciales)" : ""}</small></div>
         <div class="srv-kpis">${kpis}</div>
-        ${(() => { const c = pp.dias.reduce((a, d) => a + d.prod.coc, 0) / pp.dias.length; return c < 0.7 * I.medias.coc ? `<div class="srv-aviso info">El plan de cocinas de T-minus cocina ${SrvDatos.numEs(c, 0)} hL/día (en el histórico, ${SrvDatos.numEs(I.medias.coc, 0)}): solo lo que pide envasado, sin reponer inventario. Con menos cocción la planta gasta menos y el indicador por hL envasado sale más bajo que el histórico. Si Cocinas va a cocinar lo habitual, el indicador real quedará más cerca del histórico.</div>` : ""; })()}
+        ${srvAvisoCoccion(pp)}
         <p class="muted">Consumo total esperado de la planta dividido por los hL envasados del plan. «Térmica comprada» es el indicador oficial de la hoja MAESTRA (gas y GLP comprados, sin biogás). El margen suma los márgenes diarios (es conservador). Si el plan envasa menos que lo habitual, el indicador sube: una parte grande del consumo es fija.</p>
         <details class="srv-det"><summary class="srv-card-t">Día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL envasados</th>${IND.map(([b, t, u]) => (clave(I, b) ? `<th class="n">${esc(t.split(" (")[0])} (${u})</th>` : "")).join("")}<th>Notas</th></tr></thead><tbody>${pp.dias
           .map((d) => `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.env)}</td>${IND.map(([b, , , , dec]) => { const k = clave(I, b); return k ? `<td class="n">${d.prod.env > 0 ? nf(d.r[k].estimado / d.prod.env, dec) : "—"}</td>` : ""; }).join("")}<td class="muted">${d.parcial ? "día parcial" : d.prod.env < 0.3 * I.medias.env ? "poco envasado: indicador alto" : ""}</td></tr>`)
