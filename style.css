@@ -3353,6 +3353,7 @@ body.theme-light { --pc-c1: #4a7fc1; --pc-c2: #d0703f; --pc-c3: #3a9a76; --pc-c4
 .srv-subtab { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
 .srv-subtab:hover { color: var(--text); }
 .srv-subtab.on { background: color-mix(in srgb, var(--accent2) 14%, transparent); border-color: color-mix(in srgb, var(--accent2) 45%, var(--line)); color: var(--text); font-weight: 600; }
+.srv-tabla td.srv-formula { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: normal; }
 .srv-kpis.ind-k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 800px) { .srv-kpis.ind-k3 { grid-template-columns: 1fr; } }
 .srv-elab-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }

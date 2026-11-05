@@ -26,6 +26,7 @@
     ["historico", "Histórico"],
     ["evaluacion", "Evaluación de modelos"],
     ["calidad", "Calidad de datos"],
+    ["formulas", "Fórmulas"],
   ];
   const S = { B: null, vista: "plan", sim: { linea: "L5", cantidad: "", unidad: "hL", res: null }, hist: { linea: "L5", servicio: "vapor" }, ev: { clave: null }, cal: { servicio: "", linea: "", decision: "" }, plan: {}, planRes: null, corte: 22, estado: "", elab: { coc: "", fil: "", env: "", variante: "oficial" } };
 
@@ -48,7 +49,7 @@
   // anteriores usaban localStorage (se migra solo).
   const CLAVE_IDB = "servicios.paquete";
   // Sube cuando cambia cómo se leen o modelan los datos: los paquetes viejos piden recargar el Excel.
-  const MOTOR = 4;
+  const MOTOR = 5;
   S.almacen = { estado: "cargando", guardado_en: null };
   function cargarGuardado() {
     if (S.B || S.borrado) return;
@@ -124,6 +125,8 @@
               try {
                 // Producción diaria (cocinados, filtrados, envasados): la usan la carga base y los indicadores por hL.
                 S.B.produccion_diaria = SrvElab.leer(wb, S.B.fuente.primera_fecha, S.B.fuente.ultima_fecha).map((r) => [r.fecha, r.coc || 0, r.fil || 0, r.env || 0]);
+                // Hojas eléctricas por línea (C «kWh día», E «Hl env d») para comparar con las fórmulas de la planta.
+                if (window.SrvBase) S.B.referencia_electrica = SrvBase.leerReferencia(wb, S.B.fuente.primera_fecha, S.B.fuente.ultima_fecha);
               } catch (err) { console.error(err); }
               try {
                 S.B.industriales = SrvInd.entrenar(wb, { desde: S.B.fuente.primera_fecha, hasta: S.B.fuente.ultima_fecha });
@@ -195,7 +198,7 @@
               ${B ? (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') : ""}
             </div>
           </div>
-          ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (vapor de la línea 9 desde la columna PET, carga base, indicadores por hL). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
+          ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (vapor de la línea 9 desde la columna PET, carga base, kWh por línea frente a las fórmulas, indicadores por hL). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
           ${S.estado ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
           ${B ? `<nav class="srv-tabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-tab ${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}</nav><div id="srvCuerpo"></div>` : vacio()}
         </div>
@@ -210,7 +213,7 @@
       $("#srvJson").onclick = () => descargar(new Blob([JSON.stringify(S.B)], { type: "application/json" }), `modelo_servicios_${S.B.version}.json`);
       $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
       cont.querySelectorAll("[data-srv-vista]").forEach((b) => (b.onclick = () => { S.vista = b.dataset.srvVista; renderServicios(); }));
-      ({ plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal })[S.vista]();
+      ({ plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal, formulas: vFormulas })[S.vista]();
     }
     SrvCharts.conectarTips(cont);
   }
@@ -222,6 +225,34 @@
     if (a.estado !== "ok") return "";
     const per = window.TMAlmacen && TMAlmacen.esPersistente();
     return `<span class="srv-chip ok" title="Queda en este navegador hasta que cargues otro Excel o pulses «Limpiar datos». ${per ? "El navegador lo marcó como almacenamiento persistente." : "Si limpias los datos de navegación de este sitio, se borra."}">Guardado en este navegador${fecha ? " · " + esc(fecha) : ""}</span>`;
+  }
+  // Todas las fórmulas con las que T-minus calcula (las del último Excel cargado).
+  const VAR = { coc: "COC", fil: "FIL", env: "ENV" };
+  function formulaDe(m, varUna) {
+    if (!m) return "—";
+    if (m.web && m.web.tipo === "multi") {
+      const t = m.web.b.map((b, j) => `${b < 0 ? "−" : "+"} ${SrvDatos.numEs(Math.abs(b), Math.abs(b) < 0.01 ? 5 : 4)}·${VAR[m.cols[j]] || m.cols[j]}`).join(" ");
+      return `C = ${SrvDatos.numEs(m.web.b0, 1)} ${t}`;
+    }
+    if (m.formula) return m.formula.replace(/\bP\b/g, varUna || (m.cols && m.cols.length === 1 ? VAR[m.cols[0]] : "P")).replace(/\+\s*-\s*/g, "− ");
+    return m.nombre_modelo || m.modelo || "—";
+  }
+  function vFormulas() {
+    const el = $("#srvCuerpo"), B = S.B, E = B.elaboracion, I = B.industriales;
+    const fila = (cols) => `<tr>${cols.map((c, i) => `<td${i === 2 ? ' class="srv-formula"' : ""}>${c}</td>`).join("")}</tr>`;
+    const env = Object.values(B.modelos).map((m) => {
+      const R = m.respaldo;
+      const f = m.habilitado ? formulaDe(m, "P") : R ? (R.tipo === "media" ? `C = ${SrvDatos.numEs(R.media, 0)} (respaldo: promedio últimos 60 días)` : `C = ${SrvDatos.numEs(R.k, 3)}·P (respaldo: últimos 60 días)`) : "sin modelo";
+      return fila([esc(m.servicio), esc(m.linea === "AUX" ? "Auxiliares (P = hL de L5+L7+L8)" : nomL(m.linea)), esc(f), esc(m.unidad), !m.habilitado && R ? pct(R.wape_validacion) + " *" : m.test && m.test.WAPE != null ? pct(m.test.WAPE) : "—", esc(m.habilitado ? m.calidad : R ? "Respaldo (baja confianza)" : "—")]);
+    }).join("");
+    const tabla = (M, titulo, nota) => !M ? "" : `<div class="srv-card"><div class="srv-card-t">${titulo}</div><div class="srv-tabla-wrap" style="max-height:none"><table class="srv-tabla"><thead><tr><th>Área / sistema</th><th>Servicio</th><th>Fórmula</th><th>Unidad</th><th class="n">Error prueba</th><th>Calidad</th></tr></thead><tbody>${Object.values(M.modelos).filter((m) => m.test || m.web).map((m) => fila([esc(m.area || m.sistema), esc(m.servicio + (m.variante ? " (" + m.variante + ")" : "")), esc(formulaDe(m)), esc(m.unidad), m.test ? pct(m.test.WAPE) : "—", esc(m.calidad)])).join("")}</tbody></table></div><p class="muted">${nota}</p></div>`;
+    el.innerHTML = `
+      <div class="srv-card"><div class="srv-card-t">Cómo leer las fórmulas</div>
+        <p>C = consumo del día (en la unidad de la tabla). P = hL envasados de la línea ese día. COC, FIL y ENV = hL cocinados, filtrados y envasados de la planta ese día. max(0, P − k) = solo la parte de P que pasa de k. Las fórmulas se recalculan cada vez que se carga un Excel nuevo; estas salen de ${esc(B.fuente.archivo || "el último Excel")} (${esc(B.fuente.primera_fecha)} a ${esc(B.fuente.ultima_fecha)}). «Error prueba» = error en los últimos días, que el modelo no vio al ajustarse.</p></div>
+      <div class="srv-card"><div class="srv-card-t">Envasado, por línea</div><div class="srv-tabla-wrap" style="max-height:none"><table class="srv-tabla"><thead><tr><th>Servicio</th><th>Línea</th><th>Fórmula</th><th>Unidad</th><th class="n">Error prueba</th><th>Calidad</th></tr></thead><tbody>${env}</tbody></table></div>
+        <p class="muted">* Respaldo: error medido en las últimas 3 semanas. Electricidad de cada línea: contador de la línea sin los auxiliares compartidos (los auxiliares tienen su propia fórmula). Días sin producción: se usa el consumo base medido, no la fórmula.</p></div>
+      ${tabla(E, "Elaboración (cocinas, cavas y filtración)", "Por debajo del 5 % del promedio de producción del área se usa la carga base medida en vez de la fórmula.")}
+      ${tabla(I, "Planta completa y servicios industriales", "La versión «contador» quita los números sumados a mano en el Excel; «oficial» es la cifra del Excel.")}`;
   }
   function vIndustriales() {
     $("#srvCuerpo").innerHTML = '<div id="srvInd"></div>';
