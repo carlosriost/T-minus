@@ -343,7 +343,7 @@
     if (pp && E) {
       const envF = new Map(((PE && PE.filas) || []).map((f) => [f.fecha, f]));
       dias = pp.dias.map((d) => {
-        const re = SrvElab.predecir(E, d.prod), ri = SrvInd.predecir(I, d.prod), fe = envF.get(d.fecha);
+        const re = predElab(E, d), ri = predInd(I, d), fe = envF.get(d.fecha);
         const o = { fecha: d.fecha, parcial: d.parcial, prod: d.prod, s: {} };
         for (const s of G_SERV) {
           const kp = clavePlanta(I, s, v), xp = kp && ri[kp];
@@ -356,7 +356,7 @@
         }
         return o;
       });
-      const completos = dias.filter((d) => !d.parcial), base = completos.length ? completos : dias;
+      const base = dias; // en los días de borde el fijo ya va prorrateado
       const envTot = base.reduce((a, d) => a + d.prod.env, 0);
       const kp = G_SERV.map((s) => {
         const t = dias.reduce((a, d) => a + (d.s[s].planta || 0), 0), tb = base.reduce((a, d) => a + (d.s[s].planta || 0), 0);
@@ -499,6 +499,7 @@
     const trenALinea = { 5: "L5", 7: "L7", 8: "L8", 9: "L9" };
     const dias = new Map();
     let ini = Infinity, fin = -Infinity;
+    const etq = (base) => new Date(base + (S.corte > 12 ? Dd : 0)).toISOString().slice(0, 10);
     Object.entries(st.mergedByTrain).forEach(([t, bloques]) => {
       const ln = trenALinea[t];
       if (!ln) return;
@@ -513,7 +514,7 @@
           const base = Math.floor((x - c) / Dd) * Dd + c;
           const hasta = Math.min(z, base + Dd);
           // El día lleva la fecha en que termina (corte 22 h → día siguiente).
-          const etiqueta = new Date(base + (S.corte > 12 ? Dd : 0)).toISOString().slice(0, 10);
+          const etiqueta = etq(base);
           if (!dias.has(etiqueta)) dias.set(etiqueta, { base, hl: {} });
           const d = dias.get(etiqueta);
           d.hl[ln] = (d.hl[ln] || 0) + (Number(b.hectolitros) * (hasta - x)) / (z - a);
@@ -521,43 +522,48 @@
         }
       });
     });
-    const out = [...dias.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([f, d]) => ({ fecha: f, base: d.base, hl: d.hl, parcial: d.base < ini - 60000 || d.base + Dd > fin + 60000 }));
+    if (!isFinite(ini)) return { dias: [], ini, fin };
+    // Todos los días que toca el plan, también los que no tienen producción (líneas paradas:
+    // cuentan su carga base). frac = parte del día que cubre el plan (días de borde < 1).
+    const out = [];
+    for (let base = Math.floor((ini - c) / Dd) * Dd + c; base < fin; base += Dd) {
+      const f = etq(base), d = dias.get(f) || { base, hl: {} };
+      const frac = Math.max(0, Math.min(base + Dd, fin) - Math.max(base, ini)) / Dd;
+      if (frac < 1 / 96 && !Object.keys(d.hl).length) continue; // menos de 15 min y sin producción
+      out.push({ fecha: f, base, hl: d.hl, frac: frac > 0.999 ? 1 : frac, parcial: frac <= 0.999 });
+    }
     return { dias: out, ini, fin };
   }
-  function prorratearRespaldos(res, frac) {
-    for (const s of P_SERV) {
-      const T = res.totales[s];
-      for (const ln of Object.keys(res.lineas)) {
-        const x = res.lineas[ln].servicios[s], m = S.B.modelos[s + "|" + ln];
-        if (!x || !x.respaldo || !m || !m.respaldo || m.respaldo.tipo !== "media" || x.estimado == null) continue;
-        const quita = x.estimado * (1 - frac);
-        x.estimado -= quita; x.prorrateo = frac;
-        if (x.intervalo) {
-          const [a, b] = x.intervalo;
-          x.intervalo = [a * frac, b * frac];
-          const menos = (I) => (I ? [I[0] - a * (1 - frac), I[1] - b * (1 - frac)] : I);
-          T.intervalo_conservador = menos(T.intervalo_conservador);
-          if (T.intervalo_conservador_con_auxiliares) T.intervalo_conservador_con_auxiliares = menos(T.intervalo_conservador_con_auxiliares);
-        }
-        T.estimado -= quita;
-        if (T.estimado_con_auxiliares != null) T.estimado_con_auxiliares -= quita;
-        if (T.estimado_m3 != null) T.estimado_m3 = T.estimado * 0.1;
-        (T.lineas_prorrateadas = T.lineas_prorrateadas || []).push(ln);
-      }
-    }
+  // Día de borde (el plan cubre solo una parte del día): el consumo fijo del día también
+  // es solo esa parte. Se proyecta con la producción llevada a ritmo de día completo
+  // (P / frac) y el resultado se multiplica por frac: C = frac · f(P / frac).
+  // En una recta a + b·P eso da frac·a + b·P (fijo proporcional a las horas, variable a lo producido).
+  function escalarObj(x, frac) {
+    if (!x || typeof x !== "object") return;
+    for (const k of ["estimado", "estimado_con_auxiliares", "estimado_m3"]) if (typeof x[k] === "number") x[k] *= frac;
+    for (const k of ["intervalo", "intervalo_conservador", "intervalo_conservador_con_auxiliares"]) if (Array.isArray(x[k])) x[k] = x[k].map((v) => (typeof v === "number" ? v * frac : v));
   }
+  function escalarRes(res, frac) {
+    if (frac >= 1 || !res) return res;
+    if (res.lineas) {
+      for (const ln of Object.keys(res.lineas)) { const L = res.lineas[ln]; for (const s of Object.keys(L.servicios || {})) escalarObj(L.servicios[s], frac); }
+      for (const k of Object.keys(res.totales || {})) escalarObj(res.totales[k], frac);
+    } else for (const k of Object.keys(res)) escalarObj(res[k], frac);
+    res.frac = frac;
+    return res;
+  }
+  const aRitmo = (prod, frac) => (frac < 1 && frac > 0 ? { coc: prod.coc / frac, fil: prod.fil / frac, env: prod.env / frac } : prod);
+  const predElab = (E, d) => escalarRes(SrvElab.predecir(E, aRitmo(d.prod, d.frac || 1)), d.frac || 1);
+  const predInd = (I, d) => escalarRes(SrvInd.predecir(I, aRitmo(d.prod, d.frac || 1)), d.frac || 1);
   function calcularPlanEnvasado() {
     const h = hlPorDia();
-    if (!h) return null;
+    if (!h || !h.dias.length) return null;
     const filas = h.dias.map((d) => {
       const plan = {};
-      S.B && Object.keys(S.B.lineas).forEach((ln) => (plan[ln] = [d.hl[ln] || 0, "hL"]));
-      const res = SrvPred.planificar(S.B, plan);
-      // Día de borde: el plan cubre solo parte del día. Una estimación de respaldo
-      // «promedio por día» (no depende del volumen) se cuenta solo por las horas cubiertas.
-      const Dd = 86400000, frac = d.parcial ? Math.max(0, Math.min(d.base + Dd, h.fin) - Math.max(d.base, h.ini)) / Dd : 1;
-      if (frac < 1) prorratearRespaldos(res, frac);
-      return { ...d, frac, res };
+      S.B && Object.keys(S.B.lineas).forEach((ln) => (plan[ln] = [(d.hl[ln] || 0) / (d.frac < 1 && d.frac > 0 ? d.frac : 1), "hL"]));
+      const res = escalarRes(SrvPred.planificar(S.B, plan), d.frac);
+      if (d.frac < 1) Object.keys(res.lineas).forEach((ln) => (res.lineas[ln].P_hL = d.hl[ln] || 0));
+      return { ...d, res };
     });
     return { filas, ini: h.ini, fin: h.fin };
   }
@@ -584,7 +590,7 @@
     el.innerHTML = `
       <div class="srv-filtros">
         <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([v, t]) => `<button type="button" data-corte="${v}" class="${S.corte === v ? "on" : ""}">${t}</button>`).join("")}</div></div>
-        <p class="muted srv-nota-corte">El de 22:00 es el que mejor cuadra la producción del plan con la del Excel de indicadores (y es el día de planeación de T-minus).</p>
+        <p class="muted srv-nota-corte">El de 22:00 coincide con los días del instructivo de envasado (el día «martes 20» empieza el lunes a las 22:00) y es el día de planeación de T-minus. Los cocimientos se cuentan en el día calendario en que terminan, como en el Excel.</p>
       </div>
       <div class="srv-kpis">
         <div class="srv-kpi"><span>Días del plan</span><b>${R.filas.length}</b><small>${esc(R.filas[0].fecha)} → ${esc(R.filas[R.filas.length - 1].fecha)}</small></div>
@@ -601,7 +607,7 @@
             const T = f.res.totales;
             const hl = lineas.reduce((a, l) => a + (f.hl[l] || 0), 0);
             const notas = [];
-            if (f.parcial) notas.push(`día parcial: el plan cubre ${nf(f.frac * 24)} h de 24` + (T.vapor.lineas_prorrateadas ? ` (vapor ${T.vapor.lineas_prorrateadas.join(", ")} contado solo por esas horas)` : ""));
+            if (f.parcial) notas.push(`día parcial: el plan cubre ${nf(f.frac * 24, 1)} h de 24 (el consumo fijo se cuenta solo por esas horas)`);
             if (!T.vapor.completo) notas.push("vapor sin " + T.vapor.lineas_sin_modelo.join(", "));
             const ex = lineas.filter((l) => P_SERV.some((s) => (f.res.lineas[l].servicios[s] || {}).extrapolacion));
             if (ex.length) notas.push("extrapola en " + ex.join(", "));
@@ -644,59 +650,81 @@
     }
     return out;
   }
-  // hL cocinados, filtrados y envasados por día del plan (sin modelos):
-  // lo usan elaboración y el módulo de servicios industriales.
-  // Relación histórica cocinado / envasado (últimos 120 días con producción).
+  // Relaciones históricas cocinado / envasado y filtrado / envasado (últimos 120 días con
+  // envasado). Cocinado = MAESTRA EB + ED, en hL de cerveza (como cuenta el Excel).
   function relacionCocEnv() {
     const pd = (S.B && S.B.produccion_diaria) || [];
     if (!pd.length) return null;
     const fin = Date.parse(pd[pd.length - 1][0] + "T00:00:00Z");
     const rec = pd.filter((r) => fin - Date.parse(r[0] + "T00:00:00Z") < 120 * 86400000 && r[3] > 0);
-    const c = rec.reduce((a, r) => a + (r[1] || 0), 0), e = rec.reduce((a, r) => a + r[3], 0);
-    return e > 0 && rec.length >= 30 ? { r: c / e, n: rec.length, desde: rec[0][0], hasta: rec[rec.length - 1][0], coc_dia: c / rec.length } : null;
+    const c = rec.reduce((a, r) => a + (r[1] || 0), 0), fl = rec.reduce((a, r) => a + (r[2] || 0), 0), e = rec.reduce((a, r) => a + r[3], 0);
+    return e > 0 && rec.length >= 30 ? { r: c / e, rFil: fl > 0 ? fl / e : 1, n: rec.length, desde: rec[0][0], hasta: rec[rec.length - 1][0], coc_dia: c / rec.length } : null;
   }
-  // hL cocinados, filtrados y envasados por día del plan (sin modelos):
-  // lo usan elaboración, la vista general y el módulo de servicios industriales.
-  // Cocción: el plan de cocinas de T-minus programa solo lo que pide el plan de envasado
-  // (no repone inventario ni cocina para las semanas siguientes). Si su relación
-  // cocinado/envasado queda lejos de la histórica, la cocción «habitual» (envasado del
-  // día × relación histórica) representa mejor lo que la planta va a cocinar.
+  // Factor mosto → cerveza de un cocimiento. El plan de cocinas da hL de MOSTO concentrado
+  // (600 por cocimiento, 560 la Light); el Excel cuenta los hL cocinados como cerveza:
+  // cerveza = mosto × factor de dilución del catálogo (≈ 1.145 hL por cocimiento de 600 a 1,91,
+  // como se ve en MAESTRA EB). La Pony el Excel la cuenta a 2.050 hL por cocimiento
+  // (columna ED, siempre múltiplos de 2.050), es decir × 3,42 sobre 600 hL de mosto.
+  const PONY_EXCEL_HL = 2050;
+  function factorCerveza(mostoId, volumen) {
+    const cat = typeof MOSTO_CATALOG !== "undefined" ? MOSTO_CATALOG.find((m) => m.id === mostoId) : null;
+    if (mostoId === "pony") return PONY_EXCEL_HL / ((cat && cat.volumenPorCocimiento) || 600);
+    return cat && cat.factorDilucion > 0 ? cat.factorDilucion : null;
+  }
+  // hL cocinados, filtrados y envasados por día del plan (sin modelos): lo usan
+  // elaboración, la vista general, Inicio y el módulo de servicios industriales.
+  // Los días son los del plan de envasado (con su corte y sus días de borde).
+  // Cocción:
+  //  · «plan de cocinas»: los cocimientos de T-minus en hL de cerveza, cada uno en el día
+  //    calendario en que termina (así los cuenta el Excel). Solo existen los cocimientos que
+  //    pide el plan de envasado cargado: hacia el final del plan faltan los de las semanas siguientes.
+  //  · «habitual»: lo envasado en todo el plan × relación histórica cocinado/envasado,
+  //    repartido parejo por día (en el histórico la cocción de un día no sigue al envasado del mismo día).
   function prodPlan() {
     const st = typeof STATE !== "undefined" ? STATE : null;
     const hd = hlPorDia();
-    const env = new Map((hd || { dias: [] }).dias.map((d) => [d.fecha, Object.values(d.hl).reduce((a, b) => a + b, 0)]));
-    const parcialEnv = new Map((hd || { dias: [] }).dias.map((d) => [d.fecha, d.parcial]));
-    const rows = st && st.seq && st.seq.rows ? st.seq.rows : [];
-    const coc = repartirPorDia(rows.filter((r) => r.tipo === "cocimiento" && r.start && r.end && r.cocVolumenHL > 0).map((r) => ({ a: r.start.getTime(), z: Math.max(r.end.getTime(), r.start.getTime() + 60000), hl: r.cocVolumenHL })));
-    if (!coc.size && !env.size) return null;
-    let fil = null, filFuente = "envasado";
+    if (!hd || !hd.dias.length) return null;
+    const env = new Map(hd.dias.map((d) => [d.fecha, Object.values(d.hl).reduce((a, b) => a + b, 0)]));
+    const rows = st && st.seq && st.seq.rows ? st.seq.rows.filter((r) => r.tipo === "cocimiento" && r.end && r.cocVolumenHL > 0) : [];
+    const coc = new Map();
+    let sinFactor = 0, mostoTot = 0, cervezaTot = 0;
+    for (const r of rows) {
+      const k = factorCerveza(r.mostoId, r.cocVolumenHL);
+      if (!k) { sinFactor++; continue; }
+      const f = r.end.toISOString().slice(0, 10);
+      coc.set(f, (coc.get(f) || 0) + r.cocVolumenHL * k);
+      mostoTot += r.cocVolumenHL; cervezaTot += r.cocVolumenHL * k;
+    }
+    const rel = relacionCocEnv();
+    let fil = null, filFuente = rel ? "envasado × relación histórica" : "envasado", filRango = null;
     try {
       if (typeof buildFiltracionPlanes === "function") {
         const p = buildFiltracionPlanes();
         const seg = p && p.ok ? (p.segments || []).filter((s) => s.tipo === "fil" && s.hl > 0) : [];
-        if (seg.length) { fil = repartirPorDia(seg.map((s) => ({ a: s.start.getTime(), z: s.start.getTime() + Math.max(1, s.durH * 3600000), hl: s.hl }))); filFuente = "plan de filtración"; }
+        if (seg.length) {
+          fil = repartirPorDia(seg.map((s) => ({ a: s.start.getTime(), z: s.start.getTime() + Math.max(1, s.durH * 3600000), hl: s.hl })));
+          const fs = [...fil.keys()].sort(); filRango = [fs[0], fs[fs.length - 1]]; filFuente = "plan de filtración";
+        }
       }
     } catch (e) { console.error(e); }
-    const rel = relacionCocEnv();
-    // Chequeo del plan de cocinas en los días que tienen envasado y cocción planeados a la vez.
-    const fechasEnv = [...env.keys()].sort(), fechasCoc = [...coc.keys()].sort();
-    const comunes = fechasEnv.filter((f) => f >= (fechasCoc[0] || "9") && f <= (fechasCoc[fechasCoc.length - 1] || ""));
-    const sc = comunes.reduce((a, f) => a + (coc.get(f) || 0), 0), se = comunes.reduce((a, f) => a + env.get(f), 0);
-    const rPlan = se > 0 ? sc / se : null;
+    // Chequeo del plan de cocinas: por semana del plan, cocción planeada / envasado.
+    const semanas = [];
+    hd.dias.forEach((d, i) => { const w = Math.floor(i / 7); semanas[w] = semanas[w] || { desde: d.fecha, hasta: d.fecha, coc: 0, env: 0 }; semanas[w].hasta = d.fecha; semanas[w].coc += coc.get(d.fecha) || 0; semanas[w].env += env.get(d.fecha) || 0; });
+    const envTot = [...env.values()].reduce((a, b) => a + b, 0), cocTot = hd.dias.reduce((a, d) => a + (coc.get(d.fecha) || 0), 0);
+    const rPlan = envTot > 0 ? cocTot / envTot : null;
     const lejos = !coc.size || (rel && rPlan != null && (rPlan < 0.7 * rel.r || rPlan > 1.3 * rel.r));
-    let modo = S.coccion === "auto" ? (lejos && rel && env.size ? "habitual" : "plan") : S.coccion;
-    if (modo === "habitual" && (!rel || !env.size)) modo = "plan";
-    if (modo === "plan" && !coc.size) return null;
-    const fechas = modo === "habitual" ? fechasEnv : fechasCoc;
-    const desde = fechas[0], hasta = fechas[fechas.length - 1];
-    const dias = [];
-    for (let t = Date.parse(desde + "T00:00:00Z"); t <= Date.parse(hasta + "T00:00:00Z"); t += 86400000) {
-      const f = new Date(t).toISOString().slice(0, 10);
-      const e = env.get(f) || 0, cp = coc.get(f) || 0;
-      const c = modo === "habitual" ? e * rel.r : cp;
-      dias.push({ fecha: f, prod: { coc: c, env: e, fil: fil ? fil.get(f) || 0 : e }, coc_plan: cp, parcial: modo === "habitual" ? !!parcialEnv.get(f) : f === desde || f === hasta });
-    }
-    return { dias, filFuente, coccion: { modo, elegido: S.coccion, lejos: !!lejos, r_plan: rPlan, rel, coc_plan_dia: comunes.length ? sc / comunes.length : 0, env_dia: comunes.length ? se / comunes.length : 0, hay_plan_cocinas: coc.size > 0 } };
+    let modo = S.coccion === "auto" ? (lejos && rel ? "habitual" : "plan") : S.coccion;
+    if (modo === "habitual" && !rel) modo = "plan";
+    const sumFrac = hd.dias.reduce((a, d) => a + d.frac, 0);
+    const cocRitmo = rel && sumFrac > 0 ? (envTot * rel.r) / sumFrac : 0; // hL cocinados por día completo
+    const dias = hd.dias.map((d) => {
+      const e = env.get(d.fecha) || 0, cp = coc.get(d.fecha) || 0;
+      const c = modo === "habitual" ? cocRitmo * d.frac : cp;
+      const enFil = fil && d.fecha >= filRango[0] && d.fecha <= filRango[1];
+      const fl = enFil ? fil.get(d.fecha) || 0 : e * (rel ? rel.rFil : 1);
+      return { fecha: d.fecha, frac: d.frac, parcial: d.parcial, prod: { coc: c, env: e, fil: fl }, coc_plan: cp, fil_de_plan: !!enFil };
+    });
+    return { dias, filFuente, filRango, coccion: { modo, elegido: S.coccion, lejos: !!lejos, r_plan: rPlan, rel, coc_plan_dia: cocTot / Math.max(1, sumFrac), env_dia: envTot / Math.max(1, sumFrac), semanas, hay_plan_cocinas: rows.length > 0, n_cocimientos: rows.length, mosto_hl: mostoTot, cerveza_hl: cervezaTot, sin_factor: sinFactor, coc_ritmo: cocRitmo } };
   }
   function conectarCoccion(el, repintar) {
     el.querySelectorAll("[data-coccion]").forEach((b) => (b.onclick = () => { S.coccion = b.dataset.coccion; guardarCfg(); repintar(); }));
@@ -706,18 +734,25 @@
     const c = pp && pp.coccion;
     if (!c) return "";
     const pctR = (x) => (x == null ? "—" : SrvDatos.pctEs(x, 0));
+    const n0 = (x) => SrvDatos.numEs(x, 0);
+    const sem = (c.semanas || []).map((w, i) => `semana ${i + 1}: ${pctR(w.env ? w.coc / w.env : null)}`).join(" · ");
     const txt = !c.hay_plan_cocinas
-      ? "No hay plan de cocinas cargado: se usa la cocción habitual."
-      : `El plan de cocinas de T-minus cocina ${SrvDatos.numEs(c.coc_plan_dia, 0)} hL/día para ${SrvDatos.numEs(c.env_dia, 0)} hL envasados/día (${pctR(c.r_plan)} de lo envasado).` + (c.rel ? ` En el histórico la planta cocinó ${pctR(c.rel.r)} de lo que envasó (${SrvDatos.numEs(c.rel.coc_dia, 0)} hL/día, ${esc(c.rel.desde)} a ${esc(c.rel.hasta)}).` : "") + (c.lejos ? " El plan de cocinas programa solo lo que pide el plan de envasado (sin reponer inventario ni cocinar para las semanas siguientes), así que con él la elaboración y la planta salen más bajas de lo que van a ser." : "");
-    const usada = c.modo === "habitual" ? `Se usa la <b>cocción habitual</b>: hL envasados del día × ${c.rel ? SrvDatos.numEs(c.rel.r, 2) : "—"}.` : "Se usa el <b>plan de cocinas</b> tal cual.";
+      ? "No hay plan de cocinas: se usa la cocción habitual."
+      : `El plan de cocinas de T-minus tiene ${n0(c.n_cocimientos)} cocimientos: ${n0(c.mosto_hl)} hL de mosto, que son ${n0(c.cerveza_hl)} hL de cerveza con el factor de dilución de cada mosto (así cuenta el Excel los hL cocinados). Eso es ${pctR(c.r_plan)} de lo que envasa el plan (${sem}).` + (c.rel ? ` En el histórico la planta cocinó ${pctR(c.rel.r)} de lo que envasó (${n0(c.rel.coc_dia)} hL/día, ${esc(c.rel.desde)} a ${esc(c.rel.hasta)}).` : "") + (c.lejos ? " El plan de cocinas solo trae los cocimientos que necesita el plan de envasado cargado: los de las semanas siguientes todavía no están, por eso la cocción planeada cae hacia el final y la elaboración saldría baja." : "") + (c.sin_factor ? ` ${c.sin_factor} cocimiento(s) sin mosto reconocido no se cuentan.` : "");
+    const usada = c.modo === "habitual" ? `Se usa la <b>cocción habitual</b>: lo envasado en el plan × ${c.rel ? SrvDatos.numEs(c.rel.r, 2) : "—"}, parejo por día (${n0(c.coc_ritmo)} hL/día).` : "Se usa el <b>plan de cocinas</b> (en hL de cerveza).";
     return `<div class="srv-aviso ${c.lejos && c.modo === "plan" ? "warn" : "info"} srv-coccion"><div>${txt} ${usada}</div>
       <div class="srv-campo"><label>Cocción para proyectar</label><div class="srv-seg">${[["auto", "Automática"], ["plan", "Plan de cocinas"], ["habitual", "Habitual (según envasado)"]].map(([k, t]) => `<button type="button" data-coccion="${k}" class="${S.coccion === k ? "on" : ""}">${t}</button>`).join("")}</div></div></div>`;
+  }
+  function avisoFiltracion(pp) {
+    if (!pp) return "";
+    if (pp.filFuente === "plan de filtración") return `<div class="srv-aviso info">hL filtrados del plan de filtración del ${esc(pp.filRango[0])} al ${esc(pp.filRango[1])}; los demás días, envasado × ${pp.coccion.rel ? SrvDatos.numEs(pp.coccion.rel.rFil, 2) : "1"} (relación histórica).</div>`;
+    return `<div class="srv-aviso info">No hay plan de filtración cargado: los hL filtrados se toman como lo envasado del día × ${pp.coccion.rel ? SrvDatos.numEs(pp.coccion.rel.rFil, 2) : "1"} (relación histórica filtrado/envasado).</div>`;
   }
   function planElaboracion() {
     const pp = prodPlan();
     if (!pp) return null;
     const I = S.B.industriales;
-    pp.dias.forEach((d) => { d.res = SrvElab.predecir(S.B.elaboracion, d.prod); if (I) d.ind = SrvInd.predecir(I, d.prod); });
+    pp.dias.forEach((d) => { d.res = predElab(S.B.elaboracion, d); if (I) d.ind = predInd(I, d); });
     return pp;
   }
   function filaArea(r, uni) {
@@ -782,9 +817,9 @@
           </div>
           ${kpiP}
           ${avisoCoccion(plan)}
-          ${plan.filFuente === "envasado" ? '<div class="srv-aviso info">No hay plan de filtración cargado: los hL filtrados se toman iguales a los envasados del día (en el histórico, envasado explica la filtración casi igual de bien).</div>' : ""}
+          ${avisoFiltracion(plan)}
           <div class="srv-grid3">${P_SERV.map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${SERV[s].nombre} por día <small class="muted">· raya = margen 90 %${I ? " de la planta" : ""}</small></div><div class="chart" id="srvElabPlan-${s}"></div>${I ? `<div class="srv-ley"><span><i style="background:${SERV[s].color}"></i>Elaboración</span><span><i style="background:color-mix(in srgb, ${SERV[s].color} 32%, transparent)"></i>Resto de la planta</span></div>` : ""}</div>`).join("")}</div>
-          <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL cocinados${plan.coccion.modo === "habitual" ? " (habitual)" : ""}</th>${plan.coccion.modo === "habitual" && plan.coccion.hay_plan_cocinas ? '<th class="n">Plan de cocinas (hL)</th>' : ""}<th class="n">hL filtrados</th><th class="n">hL envasados</th><th class="n">Vapor (kg)</th><th class="n">Electricidad (kWh)</th><th class="n">Agua (hL)</th>${I ? Object.entries(PLANTA).map(([s, x]) => `<th class="n">Planta ${x.nombre.toLowerCase()} (${x.unidad})</th>`).join("") : ""}<th>Notas</th></tr></thead><tbody>${plan.dias
+          <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL cocinados${plan.coccion.modo === "habitual" ? " (habitual)" : ""}</th>${plan.coccion.modo === "habitual" && plan.coccion.hay_plan_cocinas ? '<th class="n">Plan de cocinas (hL de cerveza)</th>' : ""}<th class="n">hL filtrados</th><th class="n">hL envasados</th><th class="n">Vapor (kg)</th><th class="n">Electricidad (kWh)</th><th class="n">Agua (hL)</th>${I ? Object.entries(PLANTA).map(([s, x]) => `<th class="n">Planta ${x.nombre.toLowerCase()} (${x.unidad})</th>`).join("") : ""}<th>Notas</th></tr></thead><tbody>${plan.dias
             .map((d) => { const n = []; if (d.parcial) n.push("día parcial"); P_SERV.forEach((s) => { const x = d.res[tot[s]]; if (x.carga_base) n.push(`${SERV[s].nombre.toLowerCase()}: carga base`); if (x.extrapolacion) n.push(`${SERV[s].nombre.toLowerCase()}: fuera de rango`); }); return `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.coc)}</td>${plan.coccion.modo === "habitual" && plan.coccion.hay_plan_cocinas ? `<td class="n">${nf(d.coc_plan)}</td>` : ""}<td class="n">${nf(d.prod.fil)}</td><td class="n">${nf(d.prod.env)}</td><td class="n">${nf(d.res[tot.vapor].estimado)}</td><td class="n">${nf(d.res[tot.electricidad].estimado)}</td><td class="n">${nf(d.res[tot.agua].estimado)}</td>${I ? Object.keys(PLANTA).map((s) => { const k = clavePlanta(I, s, v); const x = k && d.ind[k]; if (x && x.extrapolacion && !n.includes("planta: fuera de rango")) n.push("planta: fuera de rango"); return `<td class="n">${x ? nf(x.estimado) : "—"}</td>`; }).join("") : ""}<td class="muted">${esc(n.join(" · "))}</td></tr>`; })
             .join("")}</tbody></table></div></details>
         </div>`;
@@ -1079,7 +1114,7 @@
       hojas.push(["Ind_historico", Object.values(I.modelos).flatMap((m) => m.historico.map((h) => ({ serie: m.serie, fecha: h.f, consumo: h.c, estado: h.e, motivo: h.m })))]);
       try {
         const pl = prodPlan();
-        if (pl) hojas.push(["Ind_plan", pl.dias.flatMap((d) => { const r = SrvInd.predecir(I, d.prod); return Object.values(r).map((x) => ({ dia: d.fecha, hL_cocinados: d.prod.coc, hL_filtrados: d.prod.fil, hL_envasados: d.prod.env, serie: x.serie, sistema: x.sistema, servicio: x.servicio, variante: x.variante, unidad: x.unidad, estimado: x.estimado, margen_inf: x.intervalo && x.intervalo[0], margen_sup: x.intervalo && x.intervalo[1], carga_base: x.carga_base ? "sí" : "", fuera_de_rango: x.extrapolacion ? "sí" : "", calidad: x.calidad })); })]);
+        if (pl) hojas.push(["Ind_plan", pl.dias.flatMap((d) => { const r = predInd(I, d); return Object.values(r).map((x) => ({ dia: d.fecha, hL_cocinados: d.prod.coc, hL_filtrados: d.prod.fil, hL_envasados: d.prod.env, serie: x.serie, sistema: x.sistema, servicio: x.servicio, variante: x.variante, unidad: x.unidad, estimado: x.estimado, margen_inf: x.intervalo && x.intervalo[0], margen_sup: x.intervalo && x.intervalo[1], carga_base: x.carga_base ? "sí" : "", fuera_de_rango: x.extrapolacion ? "sí" : "", calidad: x.calidad })); })]);
       } catch (e) { console.error(e); }
     }
     hojas.forEach(([n, d]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d.length ? d : [{ sin_datos: "" }]), n));
@@ -1108,7 +1143,7 @@
       const pl = S.B.elaboracion ? planElaboracion() : null;
       if (pl) {
         const t = TOTAL_ELAB("oficial");
-        out.elab = { dias: pl.dias.length };
+        out.elab = { dias: pl.dias.length, coccion: pl.coccion.modo };
         for (const k of P_SERV) out.elab[k] = pl.dias.reduce((a, d) => a + (d.res[t[k]].estimado || 0), 0);
         const I = S.B.industriales;
         if (I) {
@@ -1129,6 +1164,8 @@
   window.srvLimpiar = limpiarDatos;
   window.srvProdPlan = () => (S.B ? prodPlan() : null);
   window.srvAvisoCoccion = avisoCoccion;
+  window.srvAvisoFiltracion = avisoFiltracion;
+  window.srvPredInd = predInd;
   window.srvConectarCoccion = conectarCoccion;
   window.srvCorte = (c) => { if (c !== undefined && [0, 6, 22].includes(c)) { S.corte = c; guardarCfg(); } return S.corte; };
 })();

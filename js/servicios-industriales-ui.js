@@ -162,7 +162,7 @@
   function prodDias(I) {
     const pp = typeof srvProdPlan === "function" ? srvProdPlan() : null;
     if (!pp) return null;
-    pp.dias.forEach((d) => (d.r = SrvInd.predecir(I, d.prod)));
+    pp.dias.forEach((d) => (d.r = typeof srvPredInd === "function" ? srvPredInd(I, d) : SrvInd.predecir(I, d.prod)));
     return pp;
   }
   function vPlan(el, I) {
@@ -188,7 +188,7 @@
         </div>
         ${srvAvisoCoccion(pp)}
         ${fuera ? `<div class="srv-aviso info">En ${fuera} de ${pp.dias.length} días la producción del plan queda fuera del rango histórico de la planta: esos días la cifra es una extrapolación.</div>` : ""}
-        ${pp.filFuente === "envasado" ? '<div class="srv-aviso info">No hay plan de filtración cargado: los hL filtrados se toman iguales a los envasados del día.</div>' : ""}
+        ${typeof srvAvisoFiltracion === "function" ? srvAvisoFiltracion(pp) : ""}
         <div class="srv-grid2">${["electricidad", "agua"].map((s) => `<div><div class="srv-card-t" style="margin-top:10px">${SERV[s].nombre} de servicios por día</div><div class="chart" id="indPila-${s}"></div><div class="srv-ley">${pilaK(s).map(([, t, c]) => `<span><i style="background:${c}"></i>${esc(t)}</span>`).join("")}</div>${s === "agua" ? '<p class="muted">Suma de sistemas medidos; incluye BTS, que el «total de servicios» del Excel no cuenta.</p>' : ""}</div>`).join("")}</div>
         <details class="srv-det"><summary class="srv-card-t">Tabla día por día</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL coc.</th><th class="n">hL fil.</th><th class="n">hL env.</th>${pilaK("electricidad").map(([, t]) => `<th class="n">${esc(t)} (kWh)</th>`).join("")}${pilaK("agua").map(([, t]) => `<th class="n">${esc(t)} (hL)</th>`).join("")}<th>Notas</th></tr></thead><tbody>${pp.dias
           .map((d) => { const n = []; if (d.parcial) n.push("día parcial"); if (Object.values(d.r).some((x) => x.extrapolacion)) n.push("fuera de rango"); if (Object.values(d.r).some((x) => x.carga_base)) n.push("carga base"); return `<tr class="${d.parcial ? "muted" : ""}"><td>${esc(d.fecha)}</td><td class="n">${nf(d.prod.coc)}</td><td class="n">${nf(d.prod.fil)}</td><td class="n">${nf(d.prod.env)}</td>${pilaK("electricidad").concat(pilaK("agua")).map(([k]) => `<td class="n">${nf(d.r[k].estimado)}</td>`).join("")}<td class="muted">${esc(n.join(" · "))}</td></tr>`; })
@@ -235,10 +235,9 @@
     const pp = prodDias(I);
     let planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan</div><p class="muted">Carga el plan de envasado para proyectar los indicadores del plan. Abajo están los históricos.</p></div>`;
     if (pp) {
-      // Los días parciales (primero y último del plan) se dejan fuera: con medio día de
-      // producción el consumo fijo pesa el doble y el indicador saldría inflado.
-      const completos = pp.dias.filter((d) => !d.parcial);
-      const dd = completos.length ? completos : pp.dias;
+      // Todos los días del plan: en los días de borde el consumo fijo ya se cuenta solo por
+      // las horas que cubre el plan, así que no inflan el indicador.
+      const dd = pp.dias;
       const env = dd.reduce((a, d) => a + d.prod.env, 0);
       const kpis = IND.map(([b, t, u, c, dec]) => {
         const k = clave(I, b); if (!k) return "";
@@ -247,7 +246,7 @@
         const h = hist[k].total;
         return `<div class="srv-kpi" style="--c:${c}"><span>${esc(t)}${etqV(m)}</span><b>${nf(env ? est / env : null, dec)} <small>${u}</small></b><small>margen ${nf(lo / env, dec)} – ${nf(hi / env, dec)} · histórico ${nf(h, dec)} ${u}</small></div>`;
       }).join("");
-      planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${dd.length} días completos, ${nf(env)} hL envasados${dd.length < pp.dias.length ? " (sin el primer y el último día, que son parciales)" : ""}</small></div>
+      planHtml = `<div class="srv-card"><div class="srv-card-t">Indicadores esperados con el plan <small class="muted">· ${dd.length} días, ${nf(env)} hL envasados</small></div>
         <div class="srv-kpis">${kpis}</div>
         ${srvAvisoCoccion(pp)}
         <p class="muted">Consumo total esperado de la planta dividido por los hL envasados del plan. «Térmica comprada» es el indicador oficial de la hoja MAESTRA (gas y GLP comprados, sin biogás). El margen suma los márgenes diarios (es conservador). Si el plan envasa menos que lo habitual, el indicador sube: una parte grande del consumo es fija.</p>
@@ -262,7 +261,7 @@
     const prec = IND.map(([b, t, u]) => { const k = clave(I, b); const m = k && I.modelos[k]; return m && m.test ? `<tr><td>${esc(t)}${etqV(m)}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td>${chipQ(m.calidad)}</td></tr>` : ""; }).join("");
     const planInd = {};
     if (pp) {
-      const dd = pp.dias.filter((d) => !d.parcial).length ? pp.dias.filter((d) => !d.parcial) : pp.dias;
+      const dd = pp.dias;
       const env = dd.reduce((a, d) => a + d.prod.env, 0);
       IND.forEach(([b]) => { const k = clave(I, b); if (k && env) planInd[k] = dd.reduce((a, d) => a + (d.r[k].estimado || 0), 0) / env; });
     }
@@ -285,7 +284,7 @@
       const barras = vals.map((x) => ({ v: x.v, color: c, tip: `${etqMes(x.m, meses)}: ${nf(x.v, dec)} ${u} (${nf(hist[k].mes.get(x.m)[1])} hL envasados)` }));
       const cats = vals.map((x) => etqMes(x.m, meses));
       if (planInd[k] != null) {
-        const dd = pp.dias.filter((d) => !d.parcial).length ? pp.dias.filter((d) => !d.parcial) : pp.dias, env = dd.reduce((a, d) => a + d.prod.env, 0);
+        const dd = pp.dias, env = dd.reduce((a, d) => a + d.prod.env, 0);
         const lo = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0) / env, hi = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0) / env;
         barras.push({ v: planInd[k], lo, hi, color: `color-mix(in srgb, ${c} 45%, transparent)`, tip: `Plan: ${nf(planInd[k], dec)} ${u} (margen ${nf(lo, dec)} – ${nf(hi, dec)})` });
         cats.push("plan");
