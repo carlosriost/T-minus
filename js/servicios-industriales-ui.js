@@ -286,7 +286,7 @@
       if (planInd[k] != null) {
         const dd = pp.dias, env = dd.reduce((a, d) => a + d.prod.env, 0);
         const lo = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[0] : 0), 0) / env, hi = dd.reduce((a, d) => a + (d.r[k].intervalo ? d.r[k].intervalo[1] : 0), 0) / env;
-        barras.push({ v: planInd[k], lo, hi, color: `color-mix(in srgb, ${c} 45%, transparent)`, tip: `Plan: ${nf(planInd[k], dec)} ${u} (margen ${nf(lo, dec)} – ${nf(hi, dec)})` });
+        barras.push({ v: planInd[k], lo, hi, color: `color-mix(in srgb, ${c} 45%, var(--srv-mezcla))`, tip: `Plan: ${nf(planInd[k], dec)} ${u} (margen ${nf(lo, dec)} – ${nf(hi, dec)})` });
         cats.push("plan");
       }
       SrvCharts.barras(document.getElementById("indG-" + b), { W: 420, H: 220, cats, valores: barras, yLab: u, aria: `${t} por mes` });
@@ -358,7 +358,7 @@
     el.innerHTML = `
       <div class="srv-card"><div class="srv-card-t">Fijo y variable por sistema <small class="muted">· promedio diario: parte fija (en marcha sin producción) y parte que depende del volumen</small></div>
         <div class="srv-grid2">${["electricidad", "agua"].map((sv) => `<div><div class="srv-card-t" style="margin-top:6px">${SERV[sv].nombre} <small class="muted">· ${SERV[sv].g[1]}/día</small></div><div class="chart" id="indFijo-${sv}"></div></div>`).join("")}</div>
-        <div class="srv-ley"><span><i style="background:var(--muted)"></i>fijo</span><span><i style="background:color-mix(in srgb, var(--muted) 35%, transparent)"></i>depende del volumen</span></div>
+        <div class="srv-ley"><span><i style="background:var(--muted)"></i>fijo</span><span><i style="background:color-mix(in srgb, var(--muted) 35%, var(--srv-mezcla))"></i>depende del volumen</span></div>
       </div>
       <div class="srv-card"><div class="srv-card-t">Cuánto es fijo <small class="muted">· consumo con la planta en marcha y producción cero (corte de la recta) frente al promedio</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Sistema</th><th>Servicio</th><th class="n">Fijo en marcha</th><th class="n">Promedio con producción</th><th class="n">Fijo / promedio</th><th class="n">Días con planta parada*</th><th class="n">Consumo esos días</th></tr></thead><tbody>${vis
@@ -373,7 +373,7 @@
         W: 620, H: 250, maxEtiquetas: 10, cats: ms.map(([, t]) => t.replace("Refrigeración (compresores)", "Refrig. (compresores)").replace("Maquinaria auxiliar", "Maquinaria").replace("Aire comprimido", "Aire").replace("Sistema de agua", "Sist. agua").replace("Planta de CO2", "CO2")), yLab: `${g[1]}/día`, aria: `Parte fija y variable de ${SERV[sv].nombre.toLowerCase()} por sistema`,
         series: [
           { color: SERV[sv].color, valores: ms.map(([m]) => (fijo(m) || 0) / g[0]), tips: ms.map(([m, t]) => `${t}: fijo ${nf((fijo(m) || 0) / g[0], g[2] + 1)} ${g[1]}/día (${pct((fijo(m) || 0) / m.media_valida, 0)} del promedio)`) },
-          { color: `color-mix(in srgb, ${SERV[sv].color} 35%, transparent)`, valores: ms.map(([m]) => (m.media_valida - (fijo(m) || 0)) / g[0]), tips: ms.map(([m, t]) => `${t}: depende del volumen ${nf((m.media_valida - (fijo(m) || 0)) / g[0], g[2] + 1)} ${g[1]}/día · promedio ${nf(m.media_valida / g[0], g[2] + 1)}`) },
+          { color: `color-mix(in srgb, ${SERV[sv].color} 35%, var(--srv-mezcla))`, valores: ms.map(([m]) => (m.media_valida - (fijo(m) || 0)) / g[0]), tips: ms.map(([m, t]) => `${t}: depende del volumen ${nf((m.media_valida - (fijo(m) || 0)) / g[0], g[2] + 1)} ${g[1]}/día · promedio ${nf(m.media_valida / g[0], g[2] + 1)}`) },
         ],
       });
     });
@@ -392,7 +392,7 @@
         <div class="srv-filtros"><div class="srv-campo"><label for="indHs">Serie</label><select id="indHs">${vis.map((x) => `<option value="${esc(baseDe(x.serie))}" ${baseDe(x.serie) === U.hist ? "selected" : ""}>${esc(x.sistema)} · ${esc(SERV[x.servicio].nombre)}</option>`).join("")}</select></div></div>
         <p class="muted">${esc(m.descripcion)}${m.variante ? ` · versión ${esc(m.variante)}` : ""}. ${m.n_estados.valido || 0} días válidos, ${m.n_estados.excluido || 0} excluidos${m.n_estados.carga_base ? `, ${m.n_estados.carga_base} de carga base` : ""}.</p>
         <div class="chart" id="indHist"></div>
-        <div class="srv-ley"><span><i style="background:${sv.color}"></i>válido</span><span><i style="background:color-mix(in srgb, ${sv.color} 35%, transparent)"></i>excluido o carga base (pasa el cursor para ver el motivo)</span></div>
+        <div class="srv-ley"><span><i style="background:${sv.color}"></i>válido</span><span><i style="background:color-mix(in srgb, ${sv.color} 35%, var(--srv-mezcla))"></i>excluido o carga base (pasa el cursor para ver el motivo)</span></div>
         ${h.some((x) => x.e === "excluido") ? `<details class="srv-det"><summary class="srv-card-t">Días excluidos y motivo</summary><div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">Valor</th><th>Motivo</th></tr></thead><tbody>${h.filter((x) => x.e === "excluido").map((x) => `<tr><td>${esc(x.f)}</td><td class="n">${nf(x.c)}</td><td>${esc(x.m)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
       </div>`;
     $("#indHs").onchange = (e) => { U.hist = e.target.value; renderIndustriales(); };
@@ -400,7 +400,7 @@
       W: 900, H: 260, maxEtiquetas: 12, cats,
       series: [
         { color: sv.color, valores: h.map((x) => (x.e === "valido" ? x.c || 0 : 0)), tips: h.map((x) => `${x.f}: ${nf(x.c)} ${sv.u}${x.m ? " · " + x.m : ""}`) },
-        { color: `color-mix(in srgb, ${sv.color} 35%, transparent)`, valores: h.map((x) => (x.e !== "valido" ? Math.max(0, x.c || 0) : 0)), tips: h.map((x) => `${x.f}: ${nf(x.c)} ${sv.u} · ${EST[x.e] || x.e}${x.m ? " · " + x.m : ""}`) },
+        { color: `color-mix(in srgb, ${sv.color} 35%, var(--srv-mezcla))`, valores: h.map((x) => (x.e !== "valido" ? Math.max(0, x.c || 0) : 0)), tips: h.map((x) => `${x.f}: ${nf(x.c)} ${sv.u} · ${EST[x.e] || x.e}${x.m ? " · " + x.m : ""}`) },
       ],
       yLab: `${sv.u}/día`, aria: `Histórico diario de ${m.sistema}, ${sv.nombre}`,
     });
