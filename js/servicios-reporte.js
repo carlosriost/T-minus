@@ -35,11 +35,11 @@
     if (!desde || !hasta) return out;
     const t0 = dia(desde), t1 = dia(hasta);
     let lunes = t0 + ((8 - new Date(t0).getUTCDay()) % 7) * 86400000; // primer lunes ≥ desde
-    for (; lunes + 6 * 86400000 <= t1; lunes += 7 * 86400000) out.semanas.push({ tipo: "semana", desde: fecha(lunes), hasta: fecha(lunes + 6 * 86400000), etq: "Semana " + semanaIso(lunes) + " · " + fecha(lunes).slice(5).split("-").reverse().join("/") + " al " + fecha(lunes + 6 * 86400000).slice(5).split("-").reverse().join("/") });
+    for (; lunes + 6 * 86400000 <= t1; lunes += 7 * 86400000) out.semanas.push({ tipo: "semana", desde: fecha(lunes), hasta: fecha(lunes + 6 * 86400000), etq: "Semana " + semanaIso(lunes) + " de " + new Date(lunes + 3 * 86400000).getUTCFullYear() + " · " + fecha(lunes).slice(5).split("-").reverse().join("/") + " al " + fecha(lunes + 6 * 86400000).slice(5).split("-").reverse().join("/") });
     for (let a = new Date(t0), m = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1); m <= t1; ) {
       const d = new Date(m), sig = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
       const ini = Math.max(m, t0), fin = Math.min(sig - 86400000, t1);
-      out.meses.push({ tipo: "mes", desde: fecha(ini), hasta: fecha(fin), completo: fin === sig - 86400000 && ini === m, etq: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][d.getUTCMonth()] + " " + d.getUTCFullYear() + (fin === sig - 86400000 ? "" : " (hasta el " + fecha(fin).slice(8) + ")") });
+      out.meses.push({ tipo: "mes", desde: fecha(ini), hasta: fecha(fin), completo: fin === sig - 86400000 && ini === m, etq: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][d.getUTCMonth()] + " " + d.getUTCFullYear() + (ini !== m && fin !== sig - 86400000 ? " (del " + fecha(ini).slice(8) + " al " + fecha(fin).slice(8) + ")" : ini !== m ? " (desde el " + fecha(ini).slice(8) + ")" : fin !== sig - 86400000 ? " (hasta el " + fecha(fin).slice(8) + ")" : "") });
       m = sig;
     }
     out.semanas.reverse(); out.meses.reverse();
@@ -52,8 +52,11 @@
   function anterior(P) {
     const n = Math.round((dia(P.hasta) - dia(P.desde)) / 86400000) + 1;
     if (P.tipo === "semana") return { tipo: "semana", desde: fecha(dia(P.desde) - 7 * 86400000), hasta: fecha(dia(P.desde) - 86400000) };
-    const d = new Date(dia(P.desde)), ini = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1);
-    return { tipo: "mes", desde: fecha(ini), hasta: fecha(Math.min(dia(P.desde) - 86400000, ini + (n - 1) * 86400000)) };
+    // Mes completo: el mes anterior entero. Mes a medias (el último de los datos): los mismos días del mes anterior.
+    const d = new Date(dia(P.desde)), ini = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1), finAnt = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - 86400000;
+    if (P.completo) return { tipo: "mes", desde: fecha(ini), hasta: fecha(finAnt) };
+    const diaFin = new Date(dia(P.hasta)).getUTCDate(), diaIni = new Date(dia(P.desde)).getUTCDate();
+    return { tipo: "mes", desde: fecha(Math.min(finAnt, ini + (diaIni - 1) * 86400000)), hasta: fecha(Math.min(finAnt, ini + (diaFin - 1) * 86400000)) };
   }
 
   // Lo esperado para una línea, servicio y día: con 0 hL el consumo base (mediana y P90 de los
@@ -66,7 +69,8 @@
       if (!(b && b.n >= MIN_BASE)) return null;
       return { esp: b.mediana, lim: exigente && p75 != null ? p75 : b.p90 };
     }
-    const r = PR.predecirCombinacion(m, P);
+    let r = null;
+    try { r = PR.predecirCombinacion(m, P); } catch (e) { return null; }
     if (!(r && r.habilitado && r.estimado != null && r.intervalo)) return null;
     return { esp: r.estimado, lim: exigente ? r.estimado + (r.intervalo[1] - r.estimado) / 2 : r.intervalo[1] };
   }
@@ -102,7 +106,8 @@
       if (!h || h.C == null || h.e === "excluido") return null;
       const x = esperadoLinea(PR, B.modelos[sv + "|" + ln], d.P || 0, exigente, p75[sv + "|" + ln]);
       if (!x) return null;
-      return { f: d.f, real: h.C, esp: x.esp, lim: x.lim, ok: h.C <= x.lim, exceso: Math.max(0, h.C - x.esp) };
+      const xn = (exigente ? esperadoLinea(PR, B.modelos[sv + "|" + ln], d.P || 0, false, null) : x) || x;
+      return { f: d.f, real: h.C, esp: x.esp, lim: x.lim, ok: h.C <= x.lim, okNormal: h.C <= xn.lim, exceso: Math.max(0, h.C - x.esp) };
     };
     for (const ln of LINEAS) {
       const L = porLinea[ln];
@@ -162,7 +167,7 @@
           if (!enP(d.f)) continue;
           const x = juzgar(ln, d, sv);
           if (!x) continue;
-          real += x.real; esp += x.esp; n++; if (x.ok) dentro++;
+          real += x.real; esp += x.esp; n++; if (x.okNormal) dentro++;
         }
         if (n) a.servicios[sv] = { real, esp, desvio: esp > 0 ? real / esp - 1 : null, dias: n, dentro };
       }
@@ -180,9 +185,9 @@
         for (const f of diasP) {
           if (!real.has(f)) continue;
           const p = predf(M, pd.get(f))[k];
-          if (!p || p.estimado == null) continue;
+          if (!p || p.estimado == null || p.habilitado === false || !p.intervalo) continue;
           r += real.get(f); e += p.estimado; n++;
-          if (!p.intervalo || real.get(f) <= p.intervalo[1]) dentro++;
+          if (real.get(f) <= p.intervalo[1]) dentro++;
         }
         if (n) a.servicios[sv] = { real: r, esp: e, desvio: e > 0 ? r / e - 1 : null, dias: n, dentro };
       }
@@ -209,8 +214,8 @@
     const exRel = (tipo) => { const xs = JUZGA.map((sv) => exceso[tipo][sv]).filter((x) => x.esp > 0); return xs.length ? xs.reduce((s, x) => s + x.exceso / x.esp, 0) / xs.length : 0; };
     let focoTM = null;
     if (pa != null || pp != null) {
-      if (pa == null) focoTM = "parada";
-      else if (pp == null) focoTM = "arranque";
+      if (pa == null) focoTM = pp < 1 ? "parada" : null;
+      else if (pp == null) focoTM = pa < 1 ? "arranque" : null;
       else if (Math.abs(pa - pp) > 1e-9) focoTM = pa < pp ? "arranque" : "parada";
       else focoTM = exRel("arranque") >= exRel("parada") ? "arranque" : "parada";
     }
@@ -233,10 +238,11 @@
   function mco(X, y) {
     const k = X[0].length, A = Array.from({ length: k }, () => new Array(k + 1).fill(0));
     for (let i = 0; i < X.length; i++) for (let a = 0; a < k; a++) { A[a][k] += X[i][a] * y[i]; for (let b = 0; b < k; b++) A[a][b] += X[i][a] * X[i][b]; }
+    const escala = Math.max(...A.map((r, i) => Math.abs(r[i])));
     for (let c = 0; c < k; c++) {
       let p = c; for (let r = c + 1; r < k; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
       [A[c], A[p]] = [A[p], A[c]];
-      if (Math.abs(A[c][c]) < 1e-12) return null;
+      if (Math.abs(A[c][c]) < 1e-10 * escala) return null;
       for (let r = 0; r < k; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let j = c; j <= k; j++) A[r][j] -= f * A[c][j]; }
     }
     return A.map((r, i) => r[k] / r[i]);
