@@ -548,13 +548,17 @@
     if (res.lineas) {
       for (const ln of Object.keys(res.lineas)) { const L = res.lineas[ln]; for (const s of Object.keys(L.servicios || {})) escalarObj(L.servicios[s], frac); }
       for (const k of Object.keys(res.totales || {})) escalarObj(res.totales[k], frac);
+      res.frac = frac;
     } else for (const k of Object.keys(res)) escalarObj(res[k], frac);
-    res.frac = frac;
     return res;
   }
-  const aRitmo = (prod, frac) => (frac < 1 && frac > 0 ? { coc: prod.coc / frac, fil: prod.fil / frac, env: prod.env / frac } : prod);
-  const predElab = (E, d) => escalarRes(SrvElab.predecir(E, aRitmo(d.prod, d.frac || 1)), d.frac || 1);
-  const predInd = (I, d) => escalarRes(SrvInd.predecir(I, aRitmo(d.prod, d.frac || 1)), d.frac || 1);
+  // Solo se llevan a ritmo de día completo las cantidades que ya son de las horas que cubre el
+  // plan (envasado; cocción habitual y filtración estimada, que van × frac). Los cocimientos del
+  // plan de cocinas y la filtración del plan de filtración son del día entero: se toman como
+  // ritmo del día tal cual, y al multiplicar por frac cuenta la parte que cae en las horas del plan.
+  const aRitmo = (prod, frac, enteros) => (frac < 1 && frac > 0 ? { coc: enteros && enteros.coc ? prod.coc : prod.coc / frac, fil: enteros && enteros.fil ? prod.fil : prod.fil / frac, env: prod.env / frac } : prod);
+  const predElab = (E, d) => escalarRes(SrvElab.predecir(E, aRitmo(d.prod, d.frac || 1, d.enteros)), d.frac || 1);
+  const predInd = (I, d) => escalarRes(SrvInd.predecir(I, aRitmo(d.prod, d.frac || 1, d.enteros)), d.frac || 1);
   function calcularPlanEnvasado() {
     const h = hlPorDia();
     if (!h || !h.dias.length) return null;
@@ -686,14 +690,15 @@
     if (!hd || !hd.dias.length) return null;
     const env = new Map(hd.dias.map((d) => [d.fecha, Object.values(d.hl).reduce((a, b) => a + b, 0)]));
     const rows = st && st.seq && st.seq.rows ? st.seq.rows.filter((r) => r.tipo === "cocimiento" && r.end && r.cocVolumenHL > 0) : [];
-    const coc = new Map();
-    let sinFactor = 0, mostoTot = 0, cervezaTot = 0;
+    const coc = new Map(), enPlan = new Set(hd.dias.map((d) => d.fecha));
+    let sinFactor = 0, mostoTot = 0, cervezaTot = 0, nCoc = 0, fueraPlan = 0;
     for (const r of rows) {
       const k = factorCerveza(r.mostoId, r.cocVolumenHL);
       if (!k) { sinFactor++; continue; }
       const f = r.end.toISOString().slice(0, 10);
+      if (!enPlan.has(f)) { fueraPlan++; continue; } // termina fuera de los días del plan de envasado
       coc.set(f, (coc.get(f) || 0) + r.cocVolumenHL * k);
-      mostoTot += r.cocVolumenHL; cervezaTot += r.cocVolumenHL * k;
+      mostoTot += r.cocVolumenHL; cervezaTot += r.cocVolumenHL * k; nCoc++;
     }
     const rel = relacionCocEnv();
     let fil = null, filFuente = rel ? "envasado × relación histórica" : "envasado", filRango = null;
@@ -714,7 +719,10 @@
     const rPlan = envTot > 0 ? cocTot / envTot : null;
     const lejos = !coc.size || (rel && rPlan != null && (rPlan < 0.7 * rel.r || rPlan > 1.3 * rel.r));
     let modo = S.coccion === "auto" ? (lejos && rel ? "habitual" : "plan") : S.coccion;
-    if (modo === "habitual" && !rel) modo = "plan";
+    const sinRelacion = modo === "habitual" && !rel;
+    if (sinRelacion) modo = "plan";
+    // Sin relación histórica y sin plan de cocinas no hay con qué proyectar la cocción.
+    if (modo === "plan" && !coc.size) return null;
     const sumFrac = hd.dias.reduce((a, d) => a + d.frac, 0);
     const cocRitmo = rel && sumFrac > 0 ? (envTot * rel.r) / sumFrac : 0; // hL cocinados por día completo
     const dias = hd.dias.map((d) => {
@@ -722,9 +730,9 @@
       const c = modo === "habitual" ? cocRitmo * d.frac : cp;
       const enFil = fil && d.fecha >= filRango[0] && d.fecha <= filRango[1];
       const fl = enFil ? fil.get(d.fecha) || 0 : e * (rel ? rel.rFil : 1);
-      return { fecha: d.fecha, frac: d.frac, parcial: d.parcial, prod: { coc: c, env: e, fil: fl }, coc_plan: cp, fil_de_plan: !!enFil };
+      return { fecha: d.fecha, frac: d.frac, parcial: d.parcial, prod: { coc: c, env: e, fil: fl }, coc_plan: cp, fil_de_plan: !!enFil, enteros: { coc: modo === "plan", fil: !!enFil } };
     });
-    return { dias, filFuente, filRango, coccion: { modo, elegido: S.coccion, lejos: !!lejos, r_plan: rPlan, rel, coc_plan_dia: cocTot / Math.max(1, sumFrac), env_dia: envTot / Math.max(1, sumFrac), semanas, hay_plan_cocinas: rows.length > 0, n_cocimientos: rows.length, mosto_hl: mostoTot, cerveza_hl: cervezaTot, sin_factor: sinFactor, coc_ritmo: cocRitmo } };
+    return { dias, filFuente, filRango, coccion: { modo, elegido: S.coccion, lejos: !!lejos, r_plan: rPlan, rel, coc_plan_dia: cocTot / Math.max(1, sumFrac), env_dia: envTot / Math.max(1, sumFrac), semanas, hay_plan_cocinas: rows.length > 0, n_cocimientos: nCoc, fuera_plan: fueraPlan, mosto_hl: mostoTot, cerveza_hl: cervezaTot, sin_factor: sinFactor, coc_ritmo: cocRitmo, sin_relacion: sinRelacion } };
   }
   function conectarCoccion(el, repintar) {
     el.querySelectorAll("[data-coccion]").forEach((b) => (b.onclick = () => { S.coccion = b.dataset.coccion; guardarCfg(); repintar(); }));
@@ -737,8 +745,8 @@
     const n0 = (x) => SrvDatos.numEs(x, 0);
     const sem = (c.semanas || []).map((w, i) => `semana ${i + 1}: ${pctR(w.env ? w.coc / w.env : null)}`).join(" · ");
     const txt = !c.hay_plan_cocinas
-      ? "No hay plan de cocinas: se usa la cocción habitual."
-      : `El plan de cocinas de T-minus tiene ${n0(c.n_cocimientos)} cocimientos: ${n0(c.mosto_hl)} hL de mosto, que son ${n0(c.cerveza_hl)} hL de cerveza con el factor de dilución de cada mosto (así cuenta el Excel los hL cocinados). Eso es ${pctR(c.r_plan)} de lo que envasa el plan (${sem}).` + (c.rel ? ` En el histórico la planta cocinó ${pctR(c.rel.r)} de lo que envasó (${n0(c.rel.coc_dia)} hL/día, ${esc(c.rel.desde)} a ${esc(c.rel.hasta)}).` : "") + (c.lejos ? " El plan de cocinas solo trae los cocimientos que necesita el plan de envasado cargado: los de las semanas siguientes todavía no están, por eso la cocción planeada cae hacia el final y la elaboración saldría baja." : "") + (c.sin_factor ? ` ${c.sin_factor} cocimiento(s) sin mosto reconocido no se cuentan.` : "");
+      ? "No hay plan de cocinas cargado."
+      : `El plan de cocinas de T-minus tiene ${n0(c.n_cocimientos)} cocimientos: ${n0(c.mosto_hl)} hL de mosto, que son ${n0(c.cerveza_hl)} hL de cerveza con el factor de dilución de cada mosto (así cuenta el Excel los hL cocinados). Eso es ${pctR(c.r_plan)} de lo que envasa el plan (${sem}).` + (c.rel ? ` En el histórico la planta cocinó ${pctR(c.rel.r)} de lo que envasó (${n0(c.rel.coc_dia)} hL/día, ${esc(c.rel.desde)} a ${esc(c.rel.hasta)}).` : "") + (c.lejos ? " El plan de cocinas solo trae los cocimientos que necesita el plan de envasado cargado: los de las semanas siguientes todavía no están, por eso la cocción planeada cae hacia el final y la elaboración saldría baja." : "") + (c.sin_factor ? ` ${c.sin_factor} cocimiento(s) sin mosto reconocido no se cuentan.` : "") + (c.fuera_plan ? ` ${c.fuera_plan} cocimiento(s) terminan fuera de los días del plan de envasado y no se cuentan.` : "") + (c.sin_relacion ? " No hay relación histórica cocinado/envasado (vuelve a cargar el Excel): se usa el plan de cocinas." : "");
     const usada = c.modo === "habitual" ? `Se usa la <b>cocción habitual</b>: lo envasado en el plan × ${c.rel ? SrvDatos.numEs(c.rel.r, 2) : "—"}, parejo por día (${n0(c.coc_ritmo)} hL/día).` : "Se usa el <b>plan de cocinas</b> (en hL de cerveza).";
     return `<div class="srv-aviso ${c.lejos && c.modo === "plan" ? "warn" : "info"} srv-coccion"><div>${txt} ${usada}</div>
       <div class="srv-campo"><label>Cocción para proyectar</label><div class="srv-seg">${[["auto", "Automática"], ["plan", "Plan de cocinas"], ["habitual", "Habitual (según envasado)"]].map(([k, t]) => `<button type="button" data-coccion="${k}" class="${S.coccion === k ? "on" : ""}">${t}</button>`).join("")}</div></div></div>`;
