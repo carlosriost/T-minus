@@ -374,8 +374,16 @@
     cero: "Consumo 0 en un día con producción: lectura faltante probable.",
     sin_produccion: "Día sin producción en la línea: no entra al modelo de producción; se usa para describir el consumo base.",
     balance: "Lectura imposible: el vapor de la L9 supera el vapor de envase de calderas menos lo que marcan las líneas 5, 7 y 8.",
+    ajuste_grande: "La fórmula del Excel suma o resta a mano más del 5 % del valor (p. ej. ±1.000 kWh pasados de una línea a otra en agosto): el dato no es lo que midió la línea y no se usa para entrenar.",
+    sin_lectura: "Vapor exactamente 0 en las líneas 5, 7 y 8 el mismo día: falta la lectura (con la línea parada el vapor suele ser varias toneladas), no es un consumo real.",
   };
+  // Ajuste a mano que pesa más del 5 % del valor. La L9 queda por fuera: por decisión de la
+  // planta su vapor es la columna PET (MAESTRA CC) tal cual.
+  const ajusteGrande = (r) => r.procedencia === "ajuste_manual" && r.linea !== "L9" && Math.abs(r.ajuste_manual || 0) > 0.05 * Math.max(1, Math.abs(r.consumo || 0));
   function aplicarReglas(filas) {
+    // Días con el vapor de L5, L7 y L8 en 0 a la vez (lectura faltante, p. ej. 12/10).
+    const ceros = new Map();
+    for (const r of filas) if (r.servicio === "vapor" && ["L5", "L7", "L8"].includes(r.linea) && r.consumo === 0) ceros.set(r.fecha, (ceros.get(r.fecha) || 0) + 1);
     for (const r of filas) {
       let e, m = "";
       if (r.fuera_de_periodo) { e = "fuera_de_periodo"; m = MOTIVOS.fuera; }
@@ -384,6 +392,8 @@
       else if (r.procedencia === "imputado") { e = "excluido"; m = MOTIVOS.imputado; }
       else if (r.balance_imposible) { e = "excluido"; m = MOTIVOS.balance; }
       else if (r.consumo < 0) { e = "excluido"; m = MOTIVOS.negativo; }
+      else if (ajusteGrande(r)) { e = "excluido"; m = MOTIVOS.ajuste_grande; }
+      else if (r.servicio === "vapor" && r.consumo === 0 && ceros.get(r.fecha) === 3 && ["L5", "L7", "L8"].includes(r.linea)) { e = "excluido"; m = MOTIVOS.sin_lectura; }
       else if (r.produccion_hL === null || r.produccion_hL === undefined || r.produccion_hL <= 0) { e = "sin_produccion"; m = MOTIVOS.sin_produccion; }
       else if (r.consumo === 0) { e = "excluido"; m = MOTIVOS.cero; }
       else e = "valido";

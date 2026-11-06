@@ -95,7 +95,7 @@
   /* ------------------------------------------------------------ resumen */
   function vResumen(el, I) {
     const vis = seriesVis(I);
-    const planta = { electricidad: I.modelos[clave(I, "elec_planta")], agua: I.modelos.agua_planta, vapor: I.modelos[clave(I, "vapor_planta")], "térmica": I.modelos[clave(I, "termica_planta")] };
+    const planta = { electricidad: I.modelos[clave(I, "elec_planta")], agua: I.modelos[clave(I, "agua_planta")], vapor: I.modelos[clave(I, "vapor_planta")], "térmica": I.modelos[clave(I, "termica_planta")] };
     // Una tabla por servicio: sistema, promedio diario, parte de la planta y si se puede proyectar.
     const grupo = (servs, titulo, nota) => {
       const filas = vis.filter((m) => servs.includes(m.servicio) && m.sistema !== "Planta");
@@ -406,6 +406,16 @@
     });
   }
 
+  // Agua de planta: cuánto pone la «lectura» EEPPMM por encima de los contadores (oficial − contador), por mes.
+  function aguaEscrita(I) {
+    const o = I.modelos.agua_planta_oficial, m = I.modelos.agua_planta_medido;
+    if (!o || !m) return `<li><b>Agua de planta:</b> la «lectura EEPPMM» (AGUA SERV-PERI CL) no es un contador: es la del día anterior más los contadores de elaboración, envase y perímetros más un número escrito a mano casi todos los días. Vuelve a cargar el Excel para ver la versión contador.</li>`;
+    const mo = new Map(o.historico.map((h) => [h.f, h])), mes = new Map();
+    for (const h of m.historico) { const x = mo.get(h.f); if (!x || x.c == null || h.c == null) continue; const k = h.f.slice(0, 7), v = mes.get(k) || [0, 0]; v[0] += x.c - h.c; v[1] += x.c; mes.set(k, v); }
+    const tx = [...mes].sort().map(([k, v]) => `${MES[Number(k.slice(5, 7)) - 1]} ${pct(v[0] / v[1], 1, true)}`).join(", ");
+    return `<li><b>Agua de planta:</b> la «lectura EEPPMM» (AGUA SERV-PERI CL) no es un contador: es la del día anterior más los contadores de elaboración (CH), envase (CK) y perímetros (AN) más un número escrito a mano casi todos los días (+100 a +600 m³), y 48 días la lectura está escrita entera; desde el 02/10 la fórmula deja de sumar los perímetros. Lo que eso pone por encima de los contadores, como parte del agua de planta: ${tx}. Ese agua escrita a mano es casi todo el «resto» del agua en la pestaña General. La versión «Contador sin ajustes» usa los tres contadores.</li>`;
+  }
+
   /* ------------------------------------------------------------ calidad de datos */
   function vCalidad(el, I) {
     const a = I.auditoria, m = I.modelos;
@@ -420,12 +430,21 @@
           <li><b>Refrigeración (oficial):</b> el Excel le suma un porcentaje de maquinaria auxiliar que cambia según el día: ${esc((a.refrigeracion_pct || []).map((x) => `${x.pct} (${x.dias} ${x.dias === 1 ? "día" : "días"})`).join(", "))}. Por eso la versión contador usa solo los compresores Mycom, y el total de servicios cuenta maquinaria aparte, una vez.</li>
           ${a.doble_conteo_kwh_dia ? `<li><b>TOTAL SERVICIOS del Excel:</b> suma maquinaria auxiliar completa y además la parte que ya está en refrigeración: cuenta dos veces ≈ ${nf(a.doble_conteo_kwh_dia)} kWh/día. Aquí no se usa esa celda.</li>` : ""}
           ${fact.length ? `<li><b>Factores raros en contadores:</b> ${fact.map((f) => `${esc(COL[f.columna] || f.columna)}: ${esc(f.detalle.replace(/^\w+: /, ""))} — ${esc(tramos(f.tramos))} (${f.dias} días)`).join("; ")}. Esos días se excluyen de las series que usan ese contador (oficial y contador); el taller también deja marcada la electricidad de planta de octubre (≈ 0,7 % del día).</li>` : ""}
-          <li><b>Ajustes manuales en la versión oficial:</b> ${Object.entries(a.ajustes || {}).map(([k, x]) => `${esc(nombre(k))}: ${x.dias} días, ${pct(x.suma / x.oficial, 1, true)} del total`).join("; ") || "ninguno"}.</li>
+          <li><b>Ajustes manuales en la versión oficial:</b> ${Object.entries(a.ajustes || {}).filter(([, x]) => x.dias).map(([k, x]) => `${esc(nombre(k))}: ${x.dias} días, ${pct(x.suma / x.oficial, 1, true)} del total`).join("; ") || "ninguno"}.${Object.values(a.ajustes || {}).some((x) => x.reinicios) ? " No se cuentan los números que solo corrigen el reinicio de un contador (aire comprimido, 01/06)." : ""}</li>
           ${a.vapor_oficial_vs_contador ? `<li><b>Vapor de planta:</b> el oficial es ${pct(a.vapor_oficial_vs_contador, 1, true)} mayor que los contadores (lo mismo que se vio en cocinas y cavas). El casino (≈ 0,1 %) no tiene lecturas confiables y no entra en la versión contador.</li>` : ""}
-          <li><b>Agua de planta:</b> la columna «EEPPMM» del Excel no es una lectura propia: es la suma de los contadores de elaboración, envase y perímetros, con números sumados a mano en muchos días; a eso se le resta lo que va fuera de planta. No hay versión contador para el agua de planta. La suma de consumos por área difiere de la entrada en ${nf(a.agua_areas_menos_entrada_hl_dia)} hL/día en promedio; ${a.agua_dias_variacion_tanques} días tienen variación de tanques. La potabilizadora propia no operó en el periodo.</li>
+          <li><b>Agua de planta (cuadre):</b> a la entrada EEPPMM se le resta lo que va fuera de planta. La suma de consumos por área difiere de la entrada en ${nf(a.agua_areas_menos_entrada_hl_dia)} hL/día en promedio; ${a.agua_dias_variacion_tanques} días tienen variación de tanques. La potabilizadora propia no operó en el periodo.</li>
           <li><b>Otros ajustes a mano detectados:</b> el «ajuste autorizado» de electricidad (ISAGEN) en ${a.ajustes && a.ajustes.elec_planta_oficial ? a.ajustes.elec_planta_oficial.dias : 0} días (la versión contador lo quita); ajustes autorizados de gas natural (esos días se excluyen de la térmica por contador); algunas lecturas «anterior» corregidas a mano y el secador en febrero restando dos días atrás (efecto pequeño, no corregido).</li>
           <li><b>Valores escritos a mano (excluidos):</b> ${Object.entries(a.escritos || {}).map(([k, l]) => `${esc(nombre(k))}: ${l.length} día(s)`).join("; ") || "ninguno"}.</li>
           <li><b>Sin proyección confiable:</b> ${esc(Object.values(m).filter((x) => /no confiable/i.test(x.calidad)).map((x) => nombre(x.serie)).join("; ") || "ninguna")}. BTS tiene muchos días en cero (uso intermitente); agua de calderas tiene días en cero seguidos de días altos (lecturas atrasadas).</li>
+          ${aguaEscrita(I)}
+          <li><b>Agua de refrigeración (oficial, DATOS SEMANA DE):</b> la fórmula cambia de definición en el año: en enero el chester no se multiplica por 10; en febrero, agosto y septiembre suma además el Resiter de maquinaria (S×10), y hay −400 del 22 al 31/08 y +350 el 26/02. Frente al contador: febrero +63 %, agosto +21 %, septiembre +17 %. Para refrigeración use la versión «Contador sin ajustes».</li>
+          <li><b>Agua de calderas (DATOS SEMANA CY):</b> hasta marzo es el total de los contadores de calderas (AGUA SERV-PERI CU×10); desde el 1 de abril es solo el agua desclorada (Contadores vapor CF×10), que marca 20 a 50 % de lo anterior; el 02/06 toma la fila del 18/06. Además, el total de calderas no incluía el agua caliente (M) hasta el 23/02, así que el agua de servicios de enero sale ≈ 15 % baja. Esta serie ya figura como no confiable.</li>
+          <li><b>Secador (Contadores vapor AS), febrero:</b> la fórmula restaba la lectura de dos días atrás (02/03 daba 2,7 t; el consumo real del día era 1,3 t). Aquí se recalcula con la lectura del día anterior en el secador, en elaboración y en la versión contador del vapor de planta. El vapor de planta oficial (Gran total) sigue tal cual el Excel (≈ +0,3 % en febrero).</li>
+          <li><b>Contador del cabezal de envase (Contadores vapor AY):</b> escrito a mano 119 días entre el 05/02 y el 25/10, con ajustes dentro (−2 t/día en febrero, −1,5 t en marzo y abril, +9 a +15 t algunos días de mayo); las lecturas del 05/09 y 08/09 están calculadas hacia atrás. Afecta a la L9 en los días en que su vapor es «por diferencia» (se usa tal cual por decisión de la planta). En octubre la suma de las líneas supera al cabezal (1,05×) en 18 de 27 días, algo físicamente imposible: revisar los contadores de vapor de envase de octubre.</li>
+          <li><b>Electricidad de planta:</b> desde el 1/10 el taller industrial (ENERGIA SERV-PERI CQ) perdió el factor ×40, así que se resta menos perímetro y la planta de octubre sale ≈ 0,6 % alta; en enero el perímetro incluía también el compresor Centac (CN), y la planta de enero sale ≈ 0,4 % baja. Casino y edificio técnico tienen ≈ 23 lecturas inventadas («anterior + 20/27/30»); efecto pequeño.</li>
+          <li><b>Referencias erradas en DATOS SEMANA:</b> W del 01/03 busca el 04/03; M del 06/05 y 15/07 buscan celdas vacías (dan 0; aquí se excluyen); Q del 30/04 usa M17; CY del 02/06 usa el 18/06.</li>
+          <li><b>CO2 por contador, 1 al 12/07:</b> el vaporizador (CONSUMO CO2 G) copia el contador de filtración (V) con sus números sumados; esos días no es una lectura del vaporizador.</li>
+          <li><b>Agua por línea:</b> en L5, L7 y L8 cerca de un tercio de los días terminan en ,333/,667 (un contador compartido dividido en tres, no por producción). El agua de la L9 casi no se relaciona con la producción del mismo día (correlación 0,09); se proyecta con su promedio.</li>
           <li><b>Carga base:</b> la planta casi nunca para (envasado y cocción por debajo del 5 % de su media a la vez solo el 1 de enero), así que se usa el consumo fijo en marcha (corte de la recta) para hablar de base.</li>
         </ul>
       </div>`;

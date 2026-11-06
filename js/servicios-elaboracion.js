@@ -105,6 +105,14 @@
       const rV = mV.get(f);
       if (rV) {
         r.vapSec = valor(wb, "Contadores vapor", "AS", rV);
+        // Febrero: la fórmula del secador resta la lectura de dos días atrás (AR[r] − AR[r−2]).
+        // Se recalcula con la lectura del día anterior para que sea consumo de un día.
+        const fS = String(formula(wb, "Contadores vapor", "AS", rV) || ""), mS2 = /AR(\d+)\s*-\s*AR(\d+)/.exec(fS);
+        const fAnt = new Date(Date.parse(f + "T00:00:00Z") - 86400000).toISOString().slice(0, 10), rAnt = mV.get(fAnt);
+        if (mS2 && Number(mS2[1]) === rV && rAnt && Number(mS2[2]) < rAnt) {
+          const a = valor(wb, "Contadores vapor", "AR", rV), b = valor(wb, "Contadores vapor", "AR", rAnt);
+          if (a !== null && b !== null && a >= b) { r.vapSec = (a - b) / 1000; r.secCorregido = true; }
+        }
         r.vapCoc = valor(wb, "Contadores vapor", "AU", rV);
         r.vapCyf = valor(wb, "Contadores vapor", "AW", rV);
         const a = ajusteContador(wb, formula(wb, "Contadores vapor", "AU", rV), r.vapCoc, "AT");

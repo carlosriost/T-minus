@@ -41,7 +41,11 @@
   // clave: [sistema, servicio, unidad, oficial, contador|null, opciones, descripción]
   const CAT = {
     elec_planta: ["Planta", "electricidad", "kWh", [[EE, "B", 1]], [[EE, "B", 1]], { ajuste_valor: [[E, "DO", 1]], marca_de: ["BV", "CH", "CQ"] }, "ISAGEN 44 kV menos perímetros (hoja ENERGIA ELECTRICA); contador = sin el «ajuste autorizado»"],
-    agua_planta: ["Planta", "agua", "hL", [[DS, "T", 1]], null, {}, "entrada EEPPMM (contadores de elaboración + envase + perímetros) menos lo que va fuera de planta (DATOS SEMANA)"],
+    // Agua de planta: la «lectura EEPPMM» (AGUA SERV-PERI CL) no es un contador propio: es la del día
+    // anterior + elaboración (CH) + envase (CK) + perímetros (AN) + un número escrito a mano casi todos
+    // los días (y algunos días la lectura entera escrita). DATOS SEMANA T = … + CN×10 − lo de fuera.
+    // Contador = T quitando lo que CN pone por encima de los tres contadores: T + 10·(CH + CK + AN − CN).
+    agua_planta: ["Planta", "agua", "hL", [[DS, "T", 1]], [[DS, "T", 1], [A, "CH", 10], [A, "CK", 10], [A, "AN", 10], [A, "CN", -10]], {}, "entrada EEPPMM menos lo que va fuera de planta (DATOS SEMANA T); contador = con los contadores de elaboración, envase y perímetros, sin los números escritos a mano en la «lectura» EEPPMM"],
     vapor_planta: ["Planta", "vapor", "kg", [[V, "BG", 1000]], VAPOR_LECT, {}, "vapor consumido por todas las áreas (Gran total de Contadores vapor)"],
     termica_planta: ["Planta", "térmica", "MJ", [[C, "AK", 1], [C, "BL", 1], [C, "AN", -1]], [[C, "AK", 1], [C, "BC", 1, "BI"], [C, "AN", -1]], { excluye_si: [[V, "DV", "ajuste autorizado de gas natural"]] }, "gas natural + biogás + GLP, sin el calor vendido al casino"],
     termica_comprada: ["Planta", "térmica comprada", "MJ", [[C, "AE", 1], [C, "AG", 1], [C, "BL", 1], [C, "AN", -1]], [[C, "AE", 1], [C, "AG", 1], [C, "BC", 1, "BI"], [C, "AN", -1]], { excluye_si: [[V, "DV", "ajuste autorizado de gas natural"]] }, "gas natural + GLP comprados, sin biogás propio ni el calor vendido al casino (es el indicador oficial «Térmica comprada»)"],
@@ -145,7 +149,14 @@
         const t = cel(sh, tot, d);
         const mm = t && esFormula(t.f) ? new RegExp(lc + "(\\d+)\\s*-\\s*" + lc + "(\\d+)").exec(t.f) : null;
         let a, b;
-        if (mm) { a = crudo(wb, sh, lc, Number(mm[1])).v; b = crudo(wb, sh, lc, Number(mm[2])).v; }
+        const fsd = fechasOrd[sh], id = fsd.indexOf(d), filaAnt = id > 0 ? m.get(fsd[id - 1]) : null;
+        if (mm) {
+          a = crudo(wb, sh, lc, Number(mm[1])).v;
+          // Si la fórmula resta una lectura de dos días atrás (secador en febrero: AR[r] − AR[r−2])
+          // se usa la del día anterior, para que sea consumo de un solo día.
+          const r2 = Number(mm[1]) === m.get(d) && filaAnt && Number(mm[2]) < filaAnt ? filaAnt : Number(mm[2]);
+          b = crudo(wb, sh, lc, r2).v;
+        }
         else {
           const fs = fechasOrd[sh], i = fs.indexOf(d);
           a = crudo(wb, sh, lc, m.get(d)).v;
@@ -286,8 +297,12 @@
     for (const key of Object.keys(S.series)) {
       if (!/_oficial$/.test(key)) continue;
       const rows = S.series[key].filter((r) => r.consumo !== null);
-      const n = rows.filter((r) => Math.abs(r.ajuste) > 1e-9).length;
-      if (n) ajustesPor[key] = { dias: n, suma: rows.reduce((a, r) => a + r.ajuste, 0), oficial: rows.reduce((a, r) => a + r.consumo, 0) };
+      // Un número sumado que solo corrige el reinicio de un contador (la diferencia de lecturas
+      // sin él sale negativa, p. ej. aire 01/06: +82.647 kWh) no es un ajuste a mano.
+      const reinicio = (r) => r.consumo >= 0 && r.consumo - r.ajuste < 0 && r.ajuste > 0;
+      const conAj = rows.filter((r) => Math.abs(r.ajuste) > 1e-9 && !reinicio(r));
+      const n = conAj.length, nr = rows.filter((r) => Math.abs(r.ajuste) > 1e-9 && reinicio(r)).length;
+      if (n || nr) ajustesPor[key] = { dias: n, suma: conAj.reduce((a, r) => a + r.ajuste, 0), oficial: rows.reduce((a, r) => a + r.consumo, 0), reinicios: nr };
     }
     const factores = [];
     for (const [col, m] of Object.entries(raros)) {

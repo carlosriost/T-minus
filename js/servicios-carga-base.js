@@ -33,7 +33,7 @@
   const SERIES = [
     ["planta", "electricidad", "ind", "elec_planta_oficial", "kWh", "ISAGEN menos perímetros"],
     ["planta", "vapor", "ind", "vapor_planta_oficial", "kg", "Gran total de Contadores vapor"],
-    ["planta", "agua", "ind", "agua_planta", "hL", ""],
+    ["planta", "agua", "ind", "agua_planta_oficial", "hL", "entrada EEPPMM menos lo de fuera de planta"],
     ["planta", "térmica", "ind", "termica_planta_oficial", "MJ", "gas + biogás + GLP"],
     ["planta", "electricidad de servicios", "ind", "elec_servicios_medido", "kWh", "refrigeración, aire, CO2, calderas, agua y maquinaria"],
     ["envasado", "electricidad", "envsum", "electricidad", "kWh", "4 líneas + auxiliares"],
@@ -79,7 +79,7 @@
     const usar = (e) => e !== "excluido" && e !== "fuera_de_periodo";
     if (fuente === "ind" || fuente === "elab") {
       const M = fuente === "ind" ? B.industriales : B.elaboracion;
-      const m = M && M.modelos[clave];
+      const m = M && (M.modelos[clave] || M.modelos[clave.replace(/_oficial$/, "")]);
       if (!m) return null;
       for (const h of m.historico) if (h.c !== null && usar(h.e)) out.set(h.f, h.c);
       return out;
@@ -120,7 +120,8 @@
         // Referencia cuando casi no hay días parados: consumo fijo con el área en marcha (corte de la recta).
         let fijo = null;
         const M = fuente === "ind" ? B.industriales : fuente === "elab" ? B.elaboracion : null;
-        if (M && M.modelos[clave] && M.modelos[clave].fijo_operando != null) fijo = Math.max(0, M.modelos[clave].fijo_operando);
+        const mm = M && (M.modelos[clave] || M.modelos[clave.replace(/_oficial$/, "")]);
+        if (mm && mm.fijo_operando != null) fijo = Math.max(0, mm.fijo_operando);
         filas.push({
           area: A.id, area_nombre: A.nombre, condicion: A.texto, servicio, unidad, nota,
           dias_parada: parados.length, n: c.length, mediana: cuantil(c, 0.5), p10: cuantil(c, 0.1), p90: cuantil(c, 0.9),

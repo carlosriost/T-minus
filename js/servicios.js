@@ -50,7 +50,7 @@
   // anteriores usaban localStorage (se migra solo).
   const CLAVE_IDB = "servicios.paquete";
   // Sube cuando cambia cómo se leen o modelan los datos: los paquetes viejos piden recargar el Excel.
-  const MOTOR = 5;
+  const MOTOR = 6;
   S.almacen = { estado: "cargando", guardado_en: null };
   function cargarGuardado() {
     if (S.B || S.borrado) return;
@@ -216,7 +216,7 @@
               ${B ? (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') : ""}
             </div>
           </div>
-          ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (vapor de la línea 9 desde la columna PET, carga base, kWh por línea frente a las fórmulas, indicadores por hL). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
+          ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (revisión de datos: versión contador del agua de planta, ajustes a mano grandes fuera del entrenamiento, secador de febrero, lecturas faltantes). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
           ${S.estado ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
           ${B ? `<nav class="srv-tabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-tab ${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}</nav><div id="srvCuerpo"></div>` : vacio()}
         </div>
@@ -392,19 +392,19 @@
     }).join("");
     el.innerHTML = `
       <div class="srv-filtros">
-        <div class="srv-campo"><label>Vapor y electricidad</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-gv="${k}" class="${v === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
+        <div class="srv-campo"><label>Versión de los datos</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-gv="${k}" class="${v === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
         <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([x, t]) => `<button type="button" data-corte="${x}" class="${S.corte === x ? "on" : ""}">${t}</button>`).join("")}</div></div>
       </div>
       <div class="srv-card"><div class="srv-card-t">Consumo de la planta <small class="muted">· datos reales del Excel, ${esc(I.desde)} a ${esc(I.hasta)}</small></div>
         <div class="srv-kpis">${kpis}</div>
         <div class="srv-grid3">${G_SERV.filter((s) => G[s]).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} diario <small class="muted">· ${uG(s)}/día · línea = promedio de 7 días</small></div><div class="chart" id="gHist-${s}"></div><p class="muted" style="margin:2px 0 0">Gráfica: últimos ${Math.min(180, G[s].P.h.length)} días. ${G[s].P.h.length} días con dato en total${G[s].P.excluidos ? `, ${G[s].P.excluidos} excluidos por calidad (ver «Servicios industriales → Histórico»)` : ""}.</p></div>`).join("")}</div>
-        <p class="muted">Agua de la planta = entrada EEPPMM menos lo que va fuera de planta (columna T de DATOS SEMANA). Vapor = gran total de «Contadores vapor». Electricidad = ISAGEN 44 kV menos perímetros. ${v === "contador" ? "Versión contador: sin los números sumados a mano en las fórmulas." : "Versión oficial: la celda del Excel tal cual (con sus ajustes a mano)."}</p>
+        <p class="muted">Agua de la planta = entrada EEPPMM menos lo que va fuera de planta (columna T de DATOS SEMANA). Vapor = gran total de «Contadores vapor». Electricidad = ISAGEN 44 kV menos perímetros. ${v === "contador" ? "Versión contador: sin los números sumados a mano en las fórmulas; en agua, con los contadores de elaboración, envase y perímetros en vez de la «lectura» EEPPMM." : "Versión oficial: la celda del Excel tal cual, con sus ajustes a mano. En agua, la «lectura» EEPPMM lleva un número escrito a mano casi todos los días (de mayo a octubre, 7 a 10 % del agua de planta): use «Contador sin ajustes» para ver lo medido."}</p>
       </div>
       ${planHtml}
       <div class="srv-card"><div class="srv-card-t">Cómo se reparte <small class="muted">· días con dato de planta, envasado y elaboración a la vez</small></div>
         <div class="srv-grid3">${G_SERV.filter((s) => G[s] && G[s].meses.size).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} por mes <small class="muted">· promedio diario, ${uG(s)}/día</small></div><div class="chart" id="gRep-${s}"></div>${gLeyenda(s)}</div>`).join("")}</div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Servicio</th><th class="n">Días</th><th class="n">Planta (promedio)</th><th class="n">Envasado</th><th class="n">Elaboración</th><th class="n">Resto</th><th class="n">Días con envasado + elaboración &gt; planta</th></tr></thead><tbody>${repTabla}</tbody></table></div>
-        <p class="muted">Envasado = suma de las líneas (vapor: columnas de MAESTRA; electricidad: medidores de línea más auxiliares; agua: DATOS SEMANA). Elaboración = cocinas + cavas + filtración (vapor y agua) o cocinas + filtración (electricidad). El resto incluye refrigeración, aire comprimido, CO2, calderas, periféricos y lo que no tiene medidor propio. Cada parte viene de contadores distintos, así que algunos días no cuadran con el total; en el mes se compensan.</p>
+        <p class="muted">Envasado = suma de las líneas (vapor: columnas de MAESTRA; electricidad: medidores de línea más auxiliares; agua: DATOS SEMANA). Elaboración = cocinas + cavas + filtración (vapor y agua) o cocinas + filtración (electricidad). El resto incluye refrigeración, aire comprimido, CO2, calderas, periféricos y lo que no tiene medidor propio; en agua (versión oficial) es sobre todo el número escrito a mano en la «lectura» EEPPMM. Cada parte viene de contadores distintos, así que algunos días no cuadran con el total; en el mes se compensan.</p>
       </div>
       <div class="srv-card"><div class="srv-card-t">Histórico mensual <small class="muted">· promedio diario de los días con dato y consumo por hL envasado</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados/día</th>${G_SERV.map((s) => (G[s] ? `<th class="n">${PLANTA[s].nombre} (${uG(s)}/día)</th><th class="n">${espU[s]}</th>` : "")).join("")}</tr></thead><tbody>${mesTabla}</tbody></table></div>
