@@ -43,6 +43,7 @@
         <nav class="sb-nav" id="sbNav">
           <button class="sb-item" data-view="view-inicio"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></span><span class="sb-txt">Inicio</span></button>
           <button class="sb-item" data-view="view-datos"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span><span class="sb-txt">Datos de entrada</span></button>
+          <button class="sb-item" data-view="view-guia"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/></svg></span><span class="sb-txt">Cómo funciona</span></button>
           <button class="sb-item" data-view="view-recomendaciones"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span><span class="sb-txt">Recomendaciones</span></button>
           <div class="sb-label">Envasado</div>
           <button class="sb-item" data-view="view-gantt-plan"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14M4 12h9M4 18h12"/></svg></span><span class="sb-txt">Gantt de envasado</span></button>
@@ -86,18 +87,22 @@
 
       <main class="main-area">
         <div class="container">
-          <section class="view" id="view-inicio" data-view-el><div id="inicioPanel"></div></section>
+          <section class="view" id="view-inicio" data-view-el><div id="inicioPanel"></div>
+            <details class="datos-revision" id="datosRevision">
+              <summary><span>Lo que leyó T-minus del instructivo</span><small id="datosRevisionResumen">Qué leyó T-minus del instructivo: SKU, semanas, hL y validaciones</small></summary>
+              <div id="volumenPanel"></div>
+            </details>
+          </section>
 
           <section class="view" id="view-datos" data-view-el>
-            <div class="page-head"><h2>Datos de entrada</h2><p>Los archivos de la semana, en un solo lugar. Se procesan en este navegador, no se envían a ningún servidor y quedan guardados: al volver a abrir T-minus aparecen solos.</p></div>
+            <div class="page-head"><h2>Datos de entrada</h2><p>Los archivos de la semana. Quedan guardados en este navegador. <button class="datos-guia" data-goto="view-guia">¿Cómo funciona T-minus?</button></p></div>
 
             <div id="datosResumen" class="datos-resumen"></div>
 
             <div class="datos-grid">
               <div class="datos-card" id="dropZone" data-archivo="instructivo">
                 <div class="dc-head"><span class="dc-num">1</span><h3>Plan de envasado</h3><span class="dc-tag ob">Obligatorio</span></div>
-                <p class="dc-que">Instructivo de envasado de <b>Suite 360</b> (.xlsx): el plan línea por línea (L5, L7, L8 y L9) con cada SKU, sus horas y sus hL.</p>
-                <p class="dc-para">Lo usan el Gantt, el plan de cocinas, T-minus por línea, los acuerdos y la proyección de servicios.</p>
+                <p class="dc-que">Instructivo de envasado de <b>Suite 360</b> (.xlsx).</p>
                 <div class="dc-estado" id="datEstado-instructivo"></div>
                 <div class="dc-acc"><label class="btn primary" for="fileInput" id="datBtn-instructivo">Elegir archivo .xlsx</label><input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
                 <div id="status" class="dc-msg"></div>
@@ -105,8 +110,7 @@
 
               <div class="datos-card" id="ppDropZone" data-archivo="pp">
                 <div class="dc-head"><span class="dc-num">2</span><h3>Producto en proceso</h3><span class="dc-tag ob">Para el plan de cocinas</span></div>
-                <p class="dc-que">Reporte de tanques <b>FV / SV / BBT</b> (.xlsm), hojas «Reporte» y «BBTs»: lo que ya está fermentando, madurando o listo para filtrar.</p>
-                <p class="dc-para">Descuenta del plan de cocinas lo que ya está en tanques. El I0 se pone solo en la hora de la foto del reporte.</p>
+                <p class="dc-que">Reporte de tanques <b>FV / SV / BBT</b> (.xlsm).</p>
                 <div class="dc-estado" id="datEstado-pp"></div>
                 <div class="dc-acc"><label class="btn primary" for="ppFileInput" id="datBtn-pp">Elegir archivo</label><input type="file" id="ppFileInput" accept=".xlsm,.xlsx,.xls" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
                 <div id="ppStatus" class="dc-msg"></div>
@@ -114,8 +118,7 @@
 
               <div class="datos-card" id="datDrop-srv" data-archivo="srv">
                 <div class="dc-head"><span class="dc-num">3</span><h3>Indicadores de servicios</h3><span class="dc-tag">Para servicios</span></div>
-                <p class="dc-que">Excel <b>«Indicadores servicios 2026»</b> (.xlsm) de Utilities, descargado de SharePoint: consumos diarios de vapor, agua y electricidad.</p>
-                <p class="dc-para">Lo usan Consumos de servicios (Reporte, proyección del plan, fórmulas) y Carga base. Basta actualizarlo una vez por semana.</p>
+                <p class="dc-que">Excel <b>«Indicadores servicios 2026»</b> (.xlsm) de SharePoint.</p>
                 <div class="dc-estado" id="datEstado-srv"></div>
                 <div class="dc-acc"><label class="btn primary" for="datFile-srv" id="datBtn-srv">Elegir archivo .xlsm</label><input type="file" id="datFile-srv" accept=".xlsm,.xlsx" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
                 <div id="datMsg-srv" class="dc-msg"></div>
@@ -123,8 +126,7 @@
 
               <div class="datos-card" id="datDrop-pc" data-archivo="pc">
                 <div class="dc-head"><span class="dc-num">4</span><h3>Programa de cocinas real</h3><span class="dc-tag">Opcional</span></div>
-                <p class="dc-que">Excel de Elaboración <b>«Programa_Cocinas»</b> (.xlsx): los cocimientos que de verdad se hicieron.</p>
-                <p class="dc-para">Habilita Programa real y Plan vs. real, y suma a la cerveza en proceso los cocimientos que el reporte de tanques todavía no trae.</p>
+                <p class="dc-que">Excel de Elaboración <b>«Programa_Cocinas»</b> (.xlsx).</p>
                 <div class="dc-estado" id="datEstado-pc"></div>
                 <div class="dc-acc"><label class="btn primary" for="datFile-pc" id="datBtn-pc">Elegir archivo .xlsx</label><input type="file" id="datFile-pc" accept=".xlsx,.xlsm,.xls" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
                 <div id="datMsg-pc" class="dc-msg"></div>
@@ -134,7 +136,7 @@
             <div class="i0-panel" id="i0Panel">
               <div>
                 <div class="i0-title">Fecha y hora I0 (momento de programación)</div>
-                <div class="i0-sub">Se pone sola en la hora de la foto del producto en proceso; cámbiela solo si programa desde otro momento.</div>
+                <div class="i0-sub">Se pone sola con la hora de la foto del producto en proceso.</div>
               </div>
               <input
                 type="datetime-local"
@@ -144,10 +146,92 @@
               <span class="i0-badge" id="i0Badge">I0: —</span>
             </div>
 
-            <details class="datos-revision" id="datosRevision">
-              <summary><span>Revisión del plan de envasado cargado</span><small id="datosRevisionResumen">Qué leyó T-minus del instructivo: SKU, semanas, hL y validaciones</small></summary>
-              <div id="volumenPanel"></div>
-            </details>
+          </section>
+
+          <section class="view" id="view-guia" data-view-el>
+            <div class="guia-tm">
+              <div class="page-head"><h2>Cómo funciona T-minus</h2><p>Guía para usar T-minus sin conocimientos técnicos: qué hace, qué cargar cada semana y para qué sirve cada pantalla.</p></div>
+
+              <section class="gt-sec">
+                <h3>Qué hace, en una frase</h3>
+                <p>T-minus toma el plan de envasado de la semana y, mirando hacia atrás, calcula <b>qué hay que cocinar y cuándo</b> para que la cerveza y la Pony Malta estén listas a tiempo en cada línea. Con eso muestra qué va a pasar en las líneas, en las cocinas, en los tanques y en los servicios (vapor, agua y electricidad).</p>
+                <div class="gt-flujo">
+                  <div><b>1 · Envasado</b><span>Qué se envasa, en qué línea y a qué hora (el instructivo de Suite 360).</span></div>
+                  <div><b>2 · Lo que ya hay</b><span>La cerveza que ya está fermentando, madurando o lista en tanques (producto en proceso).</span></div>
+                  <div><b>3 · Lo que falta cocinar</b><span>Los cocimientos que faltan, con el tiempo que cada marca necesita para fermentar y madurar.</span></div>
+                  <div><b>4 · Lo que eso pide</b><span>Tanques, aseos, paradas de líneas y consumo de servicios.</span></div>
+                </div>
+                <p class="gt-nota">Todo se calcula en este computador. Nada se envía a internet y nada cambia los archivos originales.</p>
+              </section>
+
+              <section class="gt-sec">
+                <h3>Cada semana, paso a paso</h3>
+                <ol class="gt-pasos">
+                  <li><b>Descargue los archivos.</b> El instructivo de envasado de Suite 360 y el reporte de producto en proceso (tanques FV, SV y BBT). Si los va a usar, también el Excel «Indicadores servicios 2026» y el «Programa_Cocinas» de Elaboración.</li>
+                  <li><b>Cárguelos en «Datos de entrada».</b> Cada archivo tiene su recuadro. Al cargar el reporte de tanques, el I0 (el momento desde el que se programa) se pone solo con la hora de la foto del reporte.</li>
+                  <li><b>Revise el «Inicio».</b> Ahí está el resumen: hectolitros por línea, cocimientos por marca, cerveza y Pony Malta semana a semana, y las paradas de líneas y de cocinas.</li>
+                  <li><b>Mire «Recomendaciones».</b> Es la lista, de más a menos urgente, de lo que conviene corregir en el plan.</li>
+                  <li><b>Comparta el paquete de la semana.</b> En «Datos de entrada», «Descargar paquete» guarda todo en un solo archivo. Déjelo en la carpeta del equipo en SharePoint o Teams; quien lo necesite lo carga con «Cargar paquete» y ve exactamente lo mismo.</li>
+                </ol>
+                <p class="gt-nota">Lo cargado queda guardado en el navegador de cada computador: al volver a abrir el enlace aparece solo. Solo hay que cargar de nuevo cuando llega el plan de la semana siguiente.</p>
+              </section>
+
+              <section class="gt-sec">
+                <h3>Qué hay en cada pantalla</h3>
+                <div class="table-scroll mod-noclip"><table class="gt-tabla">
+                  <thead><tr><th>Pantalla</th><th>Para qué sirve</th></tr></thead>
+                  <tbody>
+                    <tr class="gt-grupo"><td colspan="2">General</td></tr>
+                    <tr><td>Inicio</td><td>El resumen del plan: hL por línea, cocimientos por marca, semana a semana y eventos de modulación (paradas de líneas y de cocinas).</td></tr>
+                    <tr><td>Datos de entrada</td><td>Donde se cargan los archivos de la semana y el paquete para otro computador.</td></tr>
+                    <tr><td>Recomendaciones</td><td>Lo que T-minus encontró para mejorar el plan, con prioridad y a dónde ir para revisarlo. No cambia nada solo: decide el planeador.</td></tr>
+                    <tr class="gt-grupo"><td colspan="2">Envasado</td></tr>
+                    <tr><td>Gantt de envasado</td><td>La línea de tiempo de L5, L7, L8 y L9: qué se envasa, los cambios de formato y las paradas. Abajo, la filtración y cuándo parar o arrancar lavadora, agua y paster (modulación).</td></tr>
+                    <tr><td>T-minus por línea</td><td>La cuenta regresiva de cada línea: qué está haciendo, cuánto le falta para terminar la corrida, para el próximo cambio y para la próxima parada.</td></tr>
+                    <tr><td>Acuerdos de servicio</td><td>La calificación, semana a semana, de los acuerdos del SLA de planta y de logística (por ejemplo, no arrancar las cocinas con malta o no pasar el tope de Pony por semana).</td></tr>
+                    <tr class="gt-grupo"><td colspan="2">Cocinas</td></tr>
+                    <tr><td>Plan de cocinas</td><td>Los cocimientos que propone T-minus, con las mismas gráficas del Excel de Elaboración.</td></tr>
+                    <tr><td>Programa real (Excel)</td><td>Lo que Elaboración cocinó de verdad (sale del «Programa_Cocinas»).</td></tr>
+                    <tr><td>Plan vs. real</td><td>Compara lo que propuso T-minus con lo que se cocinó: cuántos cocimientos y con cuántas horas de diferencia.</td></tr>
+                    <tr><td>Del cocimiento al envasado</td><td>A qué línea y a qué producto va cada cocimiento, y en qué momentos sube la demanda de frío.</td></tr>
+                    <tr><td>Detalle de programación</td><td>Las tablas de trabajo: orden de cocimientos y aseos, Gantt de cocina, tanque asignado a cada cocimiento, falta de tanques y marcas del instructivo que T-minus no reconoce.</td></tr>
+                    <tr class="gt-grupo"><td colspan="2">Servicios</td></tr>
+                    <tr><td>Consumos de servicios</td><td>Vapor, agua y electricidad: si las líneas arrancan y paran bien, cuánto va a gastar la planta con el plan y las fórmulas para otros tableros.</td></tr>
+                    <tr><td>Carga base</td><td>Cuánto se gasta con las áreas paradas, y si los kWh de cada línea cuadran con las fórmulas de la planta.</td></tr>
+                    <tr><td>CIP A/B/C</td><td>Qué tanques gastan menos agua en cada aseo. T-minus llena primero los que gastan menos.</td></tr>
+                    <tr class="gt-grupo"><td colspan="2">Configuración</td></tr>
+                    <tr><td>Parámetros de planta</td><td>Los datos fijos con los que calcula: marcas y sus tiempos, tanques, levadura y reglas de aseo. Solo se cambian si cambia la planta.</td></tr>
+                  </tbody>
+                </table></div>
+              </section>
+
+              <section class="gt-sec">
+                <h3>Palabras que va a ver</h3>
+                <dl class="gt-glosario">
+                  <dt>I0</dt><dd>El momento desde el que T-minus programa. Lo que se envasó antes no cuenta.</dd>
+                  <dt>hL</dt><dd>Hectolitro: 100 litros.</dd>
+                  <dt>Cocimiento</dt><dd>Una tanda de mosto hecha en la sala de cocción.</dd>
+                  <dt>Mosto y cerveza</dt><dd>El mosto sale de las cocinas concentrado; se diluye y se vuelve más hectolitros de cerveza. Por eso un cocimiento de 600 hL de mosto da más de 600 hL envasados.</dd>
+                  <dt>FV, SV y BBT</dt><dd>Tanques de fermentación (FV), de maduración (SV) y de cerveza filtrada lista para envasar (BBT).</dd>
+                  <dt>Aseo o CIP</dt><dd>La limpieza de un equipo. Se hace al cambiar de marca y cada cierto tiempo.</dd>
+                  <dt>DPA y NST</dt><dd>En el instructivo, DPA es un cambio o mantenimiento programado; NST es tiempo sin programación (línea sin envasar).</dd>
+                  <dt>Modulación</dt><dd>Parar y arrancar los equipos de una línea (lavadora, agua, paster) cuando la línea va a estar quieta, para no gastar servicios sin producir.</dd>
+                  <dt>Acuerdo de servicio</dt><dd>Una regla pactada entre áreas (por ejemplo, el tope de Pony por semana). T-minus revisa si el plan la cumple.</dd>
+                  <dt>Paquete de la semana</dt><dd>Un solo archivo con todo lo cargado, para ver lo mismo en otro computador. Tiene datos de la planta: compártalo solo dentro del equipo.</dd>
+                </dl>
+              </section>
+
+              <section class="gt-sec">
+                <h3>Preguntas frecuentes</h3>
+                <dl class="gt-faq">
+                  <dt>Cargué un archivo y sale un error</dt><dd>Revise que sea el archivo del recuadro: el instructivo de Suite 360 es el plan línea por línea; el plan nacional por planta (columnas UN01, PAÍS) no sirve para T-minus.</dd>
+                  <dt>No veo un cambio reciente de la plataforma</dt><dd>Pulse Ctrl + F5: el navegador guarda copias de la página.</dd>
+                  <dt>En otro computador no aparece nada</dt><dd>Cada navegador guarda lo suyo. Cargue ahí el paquete de la semana o los archivos.</dd>
+                  <dt>¿Se puede dañar algo?</dt><dd>No. T-minus no modifica los archivos ni envía datos; solo lee lo que se le carga.</dd>
+                  <dt>Quiero empezar de cero</dt><dd>Cargue los archivos nuevos encima: cada archivo reemplaza al anterior del mismo tipo.</dd>
+                </dl>
+              </section>
+            </div>
           </section>
 
           <section class="view" id="view-gantt-envasado" data-view-el>
@@ -574,6 +658,7 @@
           "view-servicios",
           "view-carga-base",
           "view-inicio",
+          "view-guia",
         ];
 
         // vista -> { show: [ids de contenedores a mostrar], panel: id de .tab-panel,
@@ -641,6 +726,7 @@
           "view-servicios": { show: ["view-servicios"] },
           "view-carga-base": { show: ["view-carga-base"] },
           "view-inicio": { show: ["view-inicio"] },
+          "view-guia": { show: ["view-guia"] },
         };
 
         var DEFAULT_VIEW = "view-inicio";

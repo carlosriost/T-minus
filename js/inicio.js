@@ -103,37 +103,140 @@
       ${rango ? `<p class="ini-nota">${esc(rango)}</p>` : ""}`);
   }
 
+  // Cocimientos programados (los de la secuencia: ya descuentan lo que hay en
+  // tanques y lo que el programa real cocinó y el reporte aún no trae).
+  function cocimientos() {
+    const rows = (STATE && STATE.seq && STATE.seq.rows) || [];
+    return rows.filter((r) => r.tipo === "cocimiento" && r.start).sort((a, b) => a.start - b.start);
+  }
+  const mosto = (id) => (typeof MOSTO_CATALOG !== "undefined" && MOSTO_CATALOG.find((m) => m.id === id)) || {};
+  const esPony = (id) => (typeof esMostoPony === "function" ? esMostoPony(id) : /pony/.test(String(id || "")));
+  // hL de producto que salen del cocimiento (el mosto ya diluido).
+  const hlProducto = (r) => (Number(r.cocVolumenHL) || 0) * (Number(mosto(r.mostoId).factorDilucion) || 1);
+
   function cardCocinas() {
     const plan = hayPlan() && STATE.plan;
     if (!plan) return tarjeta("coc", "Cocinas", "view-programa-feria", `<p class="ini-vacio">El plan de cocinas se calcula al cargar el plan de envasado.</p>`);
-    const res = plan.results || [];
-    const coc = res.reduce((a, r) => a + (r.numCocimientos || 0), 0);
-    const hl = res.reduce((a, r) => a + (r.volumenCocinar || 0), 0);
+    const coc = cocimientos();
+    const porMarca = {};
+    coc.forEach((r) => {
+      const k = r.mostoId || "?";
+      const m = (porMarca[k] = porMarca[k] || { nombre: mosto(k).nombre || r.nombre || k, n: 0, hl: 0 });
+      m.n++;
+      m.hl += hlProducto(r);
+    });
+    const marcas = Object.values(porMarca).sort((a, b) => b.n - a.n);
+    const max = Math.max(1, ...marcas.map((m) => m.n));
     const seq = STATE.seq;
     const tarde = seq ? (seq.capacityWarnings || []).filter((w) => w.tipo === "deadline").length : 0;
     const sinTanque = seq && seq.tankAssignment ? (seq.tankAssignment.sinTanque || []).length : 0;
+    const total = marcas.reduce((a, m) => a + m.hl, 0);
     return tarjeta("coc", "Cocinas", "view-programa-feria", `
-      <div class="ini-cifras">${cifra(nf(coc), "", "cocimientos")}${cifra(nf(hl), "hL", "mosto a cocinar")}</div>
+      <div class="ini-cifras">${cifra(nf(coc.length), "", "cocimientos")}${cifra(nf(total), "hL", "de producto (ya diluido)")}</div>
+      <div class="ini-bars ini-bars-marca">${marcas
+        .map((m) => `<div class="ini-bar"><span>${esc(m.nombre)}</span><i style="--w:${((m.n / max) * 100).toFixed(1)}%"></i><em>${nf(m.n)} · ${nf(m.hl)} hL</em></div>`)
+        .join("")}</div>
       <ul class="ini-estado">
         <li class="${tarde ? "warn" : "ok"}">${tarde ? `${tarde} bloque(s) llegan tarde a envasado` : "Todo llega a tiempo a envasado"}</li>
         <li class="${sinTanque ? "warn" : "ok"}">${sinTanque ? `${sinTanque} cocimiento(s) sin tanque` : "Todos los cocimientos tienen tanque"}</li>
       </ul>`);
   }
 
-  function cardServicios() {
-    const r = typeof resumenServicios === "function" ? resumenServicios() : null;
-    if (!r) return tarjeta("srv", "Servicios", "view-servicios", `<p class="ini-vacio">Carga los Indicadores de servicios para estimar vapor, electricidad y agua del plan.</p>`);
-    if (!r.plan) return tarjeta("srv", "Servicios", "view-servicios", `<p class="ini-vacio">Modelos listos. Falta el plan de envasado para calcular el consumo esperado.</p>`);
-    const p = r.plan;
-    return tarjeta("srv", "Servicios", "view-servicios", `
-      <div class="ini-cifras ini-tres">
-        ${cifra(nf(p.vapor / 1000), "t", "vapor")}
-        ${cifra(nf(p.electricidad / 1000), "MWh", "electricidad")}
-        ${cifra(nf(p.agua / 10), "m³", "agua")}
-      </div>
-      <p class="ini-nota">Envasado, ${p.dias} días del plan (todo el plan cargado, también lo anterior al I0)${p.sinVapor && p.sinVapor.length ? ` · vapor sin ${esc(p.sinVapor.join(", "))} (sin modelo confiable)` : ""}</p>
-      ${r.elab ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.elab.vapor / 1000), "t", "vapor elab.")}${cifra(nf(r.elab.electricidad / 1000), "MWh", "electricidad elab.")}${cifra(nf(r.elab.agua / 10), "m³", "agua elab.")}</div><p class="ini-nota">Elaboración, ${r.elab.dias} días del plan · cocción ${r.elab.coccion === "habitual" ? "habitual (según lo envasado)" : "del plan de cocinas"}</p>` : ""}
-      ${r.planta ? `<div class="ini-cifras ini-tres ini-sep">${cifra(nf(r.planta.vapor / 1000), "t", "vapor planta")}${cifra(nf(r.planta.electricidad / 1000), "MWh", "electricidad planta")}${cifra(nf(r.planta.agua / 10), "m³", "agua planta")}</div><p class="ini-nota">Planta completa, mismos días${r.planta["térmica"] != null ? ` · térmica ${nf(r.planta["térmica"] / 1000)} GJ` : ""}${r.planta.env > 0 ? ` · ${nf(r.planta.electricidad / r.planta.env, 2)} kWh/hL · ${nf(r.planta.agua / r.planta.env, 2)} hL agua/hL${r.planta.termica_comprada != null ? ` · ${nf(r.planta.termica_comprada / r.planta.env, 1)} MJ/hL térmica comprada` : ""}` : ""}</p>` : ""}`);
+  // Semana a semana: envasado (semana completa del instructivo) y cocinado
+  // (cocimientos que arrancan en la semana), separando cerveza y Pony Malta.
+  function porSemana() {
+    if (!hayPlan() || typeof semanasAcuerdos !== "function") return "";
+    const sem = semanasAcuerdos();
+    if (!sem.length) return "";
+    const prod = typeof bloquesProduccion === "function" ? bloquesProduccion() : [];
+    const coc = cocimientos();
+    const filas = sem.map((w) => {
+      const p = prod.filter((b) => enSemana(b.start, w));
+      const c = coc.filter((r) => enSemana(r.start, w));
+      const envP = p.filter((b) => esPony(b.familiaId)).reduce((a, b) => a + b.hl, 0);
+      const envC = p.reduce((a, b) => a + b.hl, 0) - envP;
+      const cP = c.filter((r) => esPony(r.mostoId));
+      const cC = c.filter((r) => !esPony(r.mostoId));
+      return { w, envC, envP, nC: cC.length, nP: cP.length, hlC: cC.reduce((a, r) => a + hlProducto(r), 0), hlP: cP.reduce((a, r) => a + hlProducto(r), 0) };
+    });
+    const T = filas.reduce((t, f) => {
+      ["envC", "envP", "nC", "nP", "hlC", "hlP"].forEach((k) => (t[k] = (t[k] || 0) + f[k]));
+      return t;
+    }, {});
+    const celda = (n, hl) => (n ? `${nf(hl)} <small>· ${nf(n)} coc.</small>` : `<span class="ini-cero">—</span>`);
+    const fila = (lbl, f, cls) => `<tr class="${cls || ""}"><td>${lbl}</td><td class="num">${f.envC ? nf(f.envC) : "—"}</td><td class="num">${f.envP ? nf(f.envP) : "—"}</td><td class="num">${celda(f.nC, f.hlC)}</td><td class="num">${celda(f.nP, f.hlP)}</td></tr>`;
+    return `<section class="ini-sec">
+      <div class="ini-sec-h"><h2>Semana a semana</h2><span>Envasado: la semana completa del instructivo. Cocinado: los cocimientos que arrancan en la semana, en hL de producto ya diluido (comparables con lo envasado).</span></div>
+      <div class="table-scroll ini-tabla-wrap"><table class="ini-tabla">
+        <thead><tr><th rowspan="2">Semana</th><th colspan="2" class="grp">Envasado (hL)</th><th colspan="2" class="grp">Cocinado (hL)</th></tr>
+        <tr><th class="num">Cerveza</th><th class="num">Pony Malta</th><th class="num">Cerveza</th><th class="num">Pony Malta</th></tr></thead>
+        <tbody>${filas.map((f) => fila(`<b>${esc(f.w.corto)}</b> <small>${esc(f.w.label.replace(/^Semana \d+ · /, ""))}</small>`, f)).join("")}</tbody>
+        <tfoot>${fila("<b>Total</b>", T, "tot")}</tfoot>
+      </table></div></section>`;
+  }
+
+  // Eventos de modulación: paradas de líneas (las mismas de la modulación de
+  // equipos: 2 h o más sin envasar por mantenimiento o sin programación) y
+  // cocinas sin cocimientos 12 h o más. Solo lo que sigue desde el I0.
+  function durTxt(ms) {
+    const m = Math.round(ms / 60000);
+    if (m >= 24 * 60) {
+      const h = Math.round(m / 60);
+      return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ""}`;
+    }
+    return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+  }
+  function eventosModulacion() {
+    if (!hayPlan()) return "";
+    const i0 = (typeof getI0Date === "function" && getI0Date()) || null;
+    const t0 = i0 ? i0.getTime() : -Infinity;
+    const ev = [];
+    if (typeof calcularModulacion === "function") {
+      let r = null;
+      try {
+        r = calcularModulacion(STATE.mergedByTrain);
+      } catch (e) {
+        console.error(e);
+      }
+      ((r && r.paradas) || []).forEach((p) => {
+        if (p.arranca <= t0) return;
+        ev.push({
+          ms: Math.max(p.para, t0),
+          area: TRENES[p.tren] || "L" + p.tren,
+          dur: p.hastaFin ? null : p.arranca - Math.max(p.para, t0),
+          desde: p.para < t0,
+          hasta: p.hastaFin,
+          que: p.por === "sin programación" ? "Sin programación" : p.por === "mantenimiento (DPA)" ? "Mantenimiento" : "Mantenimiento y sin programación",
+          det: p.motivo,
+        });
+      });
+    }
+    const coc = cocimientos();
+    const aseos = ((STATE.seq && STATE.seq.rows) || []).filter((r) => r.tipo === "aseo");
+    const LIM = 12 * 3600000;
+    const huecos = [];
+    if (coc.length && coc[0].start.getTime() - t0 >= LIM && isFinite(t0)) huecos.push([t0, coc[0].start.getTime(), true]);
+    for (let i = 1; i < coc.length; i++) {
+      const a = coc[i - 1].end.getTime();
+      const z = coc[i].start.getTime();
+      if (z - a >= LIM && z > t0) huecos.push([Math.max(a, t0), z, a < t0]);
+    }
+    huecos.forEach(([a, z, desde]) => {
+      const n = aseos.filter((x) => x.start.getTime() < z && x.end.getTime() > a).length;
+      ev.push({ ms: a, area: "Cocinas", dur: z - a, desde, que: "Sin cocimientos", det: n ? `${n} aseo(s) en ese tiempo` : "" });
+    });
+    ev.sort((x, y) => x.ms - y.ms || x.area.localeCompare(y.area));
+    const ultimo = coc.length ? coc[coc.length - 1].end : null;
+    const filas = ev
+      .map((e) => `<tr><td>${esc(fmtDateTime(new Date(e.ms)))}${e.desde ? ' <small>(viene de antes del I0)</small>' : ""}</td><td><span class="ini-area ${e.area === "Cocinas" ? "coc" : ""}">${esc(e.area)}</span></td><td class="num">${e.dur == null ? "hasta el fin del plan" : esc(durTxt(e.dur))}</td><td>${esc(e.que)}${e.det ? `<small>${esc(e.det)}</small>` : ""}</td></tr>`)
+      .join("");
+    return `<section class="ini-sec">
+      <div class="ini-sec-h"><h2>Eventos de modulación</h2><span>Paradas de líneas de 2 h o más y cocinas sin cocimientos 12 h o más, desde el I0.</span><button class="ini-link" data-goto="view-gantt-plan">Ver en el Gantt <span aria-hidden="true">→</span></button></div>
+      ${ev.length
+        ? `<div class="table-scroll ini-tabla-wrap"><table class="ini-tabla ini-eventos"><thead><tr><th>Desde</th><th>Línea / área</th><th class="num">Duración</th><th>Motivo</th></tr></thead><tbody>${filas}</tbody></table></div>`
+        : `<p class="ini-vacio">No hay paradas de líneas ni de cocinas en lo que queda del plan.</p>`}
+      ${ultimo ? `<p class="ini-nota ini-nota-sep">El plan de cocinas termina con el cocimiento del ${esc(fmtDateTime(ultimo))}: después no trae más cocimientos porque solo cocina lo que pide el envasado cargado.</p>` : ""}
+    </section>`;
   }
 
   function atencion() {
@@ -172,7 +275,7 @@
           ${faltaPlan ? `<div class="ini-hero-acc"><button class="btn primary" data-goto="view-datos">Cargar los archivos de la semana</button><small>¿Le pasaron el paquete de la semana? También se carga en «Datos de entrada».</small></div>` : ""}
         </div>
 
-        ${faltaPlan ? "" : `<div class="ini-grid">${cardEnvasado()}${cardCocinas()}${cardServicios()}</div>${atencion()}`}
+        ${faltaPlan ? "" : `<div class="ini-grid ini-grid-2">${cardEnvasado()}${cardCocinas()}</div>${porSemana()}${eventosModulacion()}${atencion()}`}
 
         <section class="ini-sec">
           <div class="ini-sec-h"><h2>Archivos</h2><span>${arch.filter((a) => a.ok).length} de ${arch.length} cargados · se procesan en este navegador</span></div>

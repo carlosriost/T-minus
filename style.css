@@ -3461,3 +3461,53 @@ body.theme-light { --pc-c1: #4a7fc1; --pc-c2: #d0703f; --pc-c3: #3a9a76; --pc-c4
 .datos-revision > #volumenPanel { padding: 0 12px 12px; }
 .ini-hero-acc { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .ini-hero-acc small { color: var(--muted); font-size: 12px; }
+
+/* Datos de entrada: enlace a la guía */
+.datos-guia { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Inicio: resumen semanal y eventos de modulación */
+.ini-grid.ini-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .ini-grid.ini-grid-2 { grid-template-columns: 1fr; } }
+.ini-bars-marca .ini-bar { grid-template-columns: 74px 1fr 128px; }
+.ini-tabla-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.ini-tabla { width: 100%; border-collapse: collapse; font-size: 13px; font-family: var(--sans); }
+.ini-tabla td, .ini-tabla th { font-family: var(--sans); }
+.ini-tabla-wrap.table-scroll { max-height: 460px; }
+.ini-tabla th, .ini-tabla td { padding: 9px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ini-tabla th { font-size: 11.5px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; background: var(--panel2); }
+.ini-tabla th.grp { text-align: center; border-left: 1px solid var(--line); }
+.ini-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ini-tabla td small { color: var(--muted); font-size: 11.5px; }
+.ini-tabla td > small:only-of-type { display: block; }
+.ini-tabla tbody tr:last-child td { border-bottom: 0; }
+.ini-tabla tfoot td { border-top: 1px solid var(--line); border-bottom: 0; font-weight: 650; }
+.ini-cero { color: var(--muted); }
+.ini-eventos td:last-child small { display: block; margin-top: 2px; }
+.ini-area { display: inline-block; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, #6b93c9 18%, transparent); color: var(--text); }
+.ini-area.coc { background: color-mix(in srgb, #c99a4a 22%, transparent); }
+.ini-nota-sep { margin-top: 8px; }
+#view-inicio .datos-revision { margin-top: 0; }
+
+/* Cómo funciona T-minus */
+.guia-tm { max-width: 980px; }
+.gt-sec { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+.gt-sec h3 { margin: 0 0 10px; font-size: 16px; color: var(--text); }
+.gt-sec p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; color: var(--text); max-width: 78ch; }
+.gt-nota { color: var(--muted) !important; font-size: 13px !important; margin-bottom: 0 !important; }
+.gt-flujo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 12px; }
+@media (max-width: 900px) { .gt-flujo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .gt-flujo { grid-template-columns: 1fr; } }
+.gt-flujo > div { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.gt-flujo b { font-size: 13.5px; color: var(--text); }
+.gt-flujo span { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.gt-pasos { margin: 0 0 10px; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.55; color: var(--text); max-width: 80ch; }
+.gt-tabla { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.gt-tabla td, .gt-tabla th { font-family: var(--sans); }
+.gt-tabla th, .gt-tabla td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.5; color: var(--text); }
+.gt-tabla th { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.gt-tabla td:first-child { font-weight: 650; white-space: nowrap; width: 1%; }
+.gt-tabla tr.gt-grupo td { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding-top: 14px; background: none; }
+.gt-glosario, .gt-faq { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; margin: 0; font-size: 13.5px; line-height: 1.5; }
+.gt-glosario dt, .gt-faq dt { font-weight: 650; color: var(--text); padding: 8px 12px 8px 0; border-top: 1px solid var(--line); }
+.gt-glosario dd, .gt-faq dd { margin: 0; color: var(--text); padding: 8px 0; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { .gt-glosario, .gt-faq { grid-template-columns: 1fr; } .gt-glosario dd, .gt-faq dd { border-top: 0; padding-top: 0; } .gt-tabla td:first-child { white-space: normal; } }

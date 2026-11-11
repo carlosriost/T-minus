@@ -150,7 +150,7 @@
     renderResumen(E);
     teclado();
     const rev = $("datosRevisionResumen");
-    if (rev) rev.textContent = E.instructivo.ok ? `${E.instructivo.resumen} · qué leyó T-minus del instructivo y sus validaciones` : "Aparece al cargar el plan de envasado";
+    if (rev) rev.textContent = E.instructivo.ok ? `${E.instructivo.resumen} · SKU, hL por semana y validaciones` : "Aparece al cargar el plan de envasado";
     const det = $("datosRevision");
     if (det) {
       det.hidden = !E.instructivo.ok;
@@ -179,14 +179,14 @@
       ? `Vienen del paquete «${esc(origen.archivo)}»${origen.semanas ? ` (${esc(origen.semanas)})` : ""}, creado el ${esc(fecha(origen.creado))}. Quedan guardados en este navegador.`
       : E.instructivo.ok
         ? "Quedan guardados en este navegador: al volver a abrir T-minus aparecen solos."
-        : "Cargue los archivos en las tarjetas de abajo, o el paquete de la semana si se lo pasaron.";
+        : "Cargue los archivos abajo, o el paquete de la semana si se lo pasaron.";
     cont.innerHTML = `
       <div class="dr-estado ${E.instructivo.ok ? "ok" : ""}">
         <span class="dr-ico" aria-hidden="true">${E.instructivo.ok ? "✓" : "!"}</span>
         <div><b>${esc(titulo)}</b><small>${sub}</small></div>
       </div>
       <div class="dr-paquete">
-        <div><b>Paquete de la semana</b><small>Para que otro computador vea lo mismo: descargue el paquete, déjelo en la carpeta del equipo en SharePoint o Teams y, en el otro computador, use «Cargar paquete». Contiene datos de la planta: compártalo solo dentro del equipo.</small></div>
+        <div><b>Paquete de la semana</b><small>Todo lo cargado en un solo archivo, para ver lo mismo en otro computador. Compártalo solo dentro del equipo.</small></div>
         <div class="dr-acc">
           <button class="btn small" id="datPaqueteBajar" ${E.instructivo.ok ? "" : 'disabled title="Primero cargue el plan de envasado"'}>Descargar paquete</button>
           <label class="btn small" for="datPaqueteIn">Cargar paquete</label><input type="file" id="datPaqueteIn" accept=".json,.tminus" hidden />
