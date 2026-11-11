@@ -89,39 +89,52 @@
           <section class="view" id="view-inicio" data-view-el><div id="inicioPanel"></div></section>
 
           <section class="view" id="view-datos" data-view-el>
-            <div class="page-head"><h2>Datos de entrada</h2><p>Los archivos se procesan en tu navegador; no se envían a ningún servidor.</p></div>
+            <div class="page-head"><h2>Datos de entrada</h2><p>Los archivos de la semana, en un solo lugar. Se procesan en este navegador, no se envían a ningún servidor y quedan guardados: al volver a abrir T-minus aparecen solos.</p></div>
 
-            <div class="upload-zone" id="dropZone">
-              <h2>1 · Plan de envasado (instructivo Suite 360)</h2>
-              <p>Arrástralo aquí o selecciónalo manualmente.</p>
-              <label class="btn primary" for="fileInput">Elegir archivo .xlsx</label>
-              <input type="file" id="fileInput" accept=".xlsx,.xls" />
-              <div id="status"></div>
-            </div>
+            <div id="datosResumen" class="datos-resumen"></div>
 
-            <div class="upload-compact hidden" id="uploadCompact">
-              <div class="uc-file">
-                <b>✓ Plan de envasado cargado</b
-                ><span class="uc-name" id="uploadCompactName"></span>
+            <div class="datos-grid">
+              <div class="datos-card" id="dropZone" data-archivo="instructivo">
+                <div class="dc-head"><span class="dc-num">1</span><h3>Plan de envasado</h3><span class="dc-tag ob">Obligatorio</span></div>
+                <p class="dc-que">Instructivo de envasado de <b>Suite 360</b> (.xlsx): el plan línea por línea (L5, L7, L8 y L9) con cada SKU, sus horas y sus hL.</p>
+                <p class="dc-para">Lo usan el Gantt, el plan de cocinas, T-minus por línea, los acuerdos y la proyección de servicios.</p>
+                <div class="dc-estado" id="datEstado-instructivo"></div>
+                <div class="dc-acc"><label class="btn primary" for="fileInput" id="datBtn-instructivo">Elegir archivo .xlsx</label><input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
+                <div id="status" class="dc-msg"></div>
               </div>
-              <button class="btn small" id="changeFileBtn">Cambiar archivo</button>
-            </div>
 
-            <div class="upload-zone" id="ppDropZone" style="margin-top: 16px">
-              <h2>2 · Producto en proceso (FV / SV / BBT)</h2>
-              <p>Hojas «Reporte» y «BBTs».</p>
-              <label class="btn primary" for="ppFileInput">Elegir archivo</label>
-              <input
-                type="file"
-                id="ppFileInput"
-                accept=".xlsm,.xlsx,.xls"
-              />
-              <div id="ppStatus"></div>
+              <div class="datos-card" id="ppDropZone" data-archivo="pp">
+                <div class="dc-head"><span class="dc-num">2</span><h3>Producto en proceso</h3><span class="dc-tag ob">Para el plan de cocinas</span></div>
+                <p class="dc-que">Reporte de tanques <b>FV / SV / BBT</b> (.xlsm), hojas «Reporte» y «BBTs»: lo que ya está fermentando, madurando o listo para filtrar.</p>
+                <p class="dc-para">Descuenta del plan de cocinas lo que ya está en tanques. El I0 se pone solo en la hora de la foto del reporte.</p>
+                <div class="dc-estado" id="datEstado-pp"></div>
+                <div class="dc-acc"><label class="btn primary" for="ppFileInput" id="datBtn-pp">Elegir archivo</label><input type="file" id="ppFileInput" accept=".xlsm,.xlsx,.xls" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
+                <div id="ppStatus" class="dc-msg"></div>
+              </div>
+
+              <div class="datos-card" id="datDrop-srv" data-archivo="srv">
+                <div class="dc-head"><span class="dc-num">3</span><h3>Indicadores de servicios</h3><span class="dc-tag">Para servicios</span></div>
+                <p class="dc-que">Excel <b>«Indicadores servicios 2026»</b> (.xlsm) de Utilities, descargado de SharePoint: consumos diarios de vapor, agua y electricidad.</p>
+                <p class="dc-para">Lo usan Consumos de servicios (Reporte, proyección del plan, fórmulas) y Carga base. Basta actualizarlo una vez por semana.</p>
+                <div class="dc-estado" id="datEstado-srv"></div>
+                <div class="dc-acc"><label class="btn primary" for="datFile-srv" id="datBtn-srv">Elegir archivo .xlsm</label><input type="file" id="datFile-srv" accept=".xlsm,.xlsx" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
+                <div id="datMsg-srv" class="dc-msg"></div>
+              </div>
+
+              <div class="datos-card" id="datDrop-pc" data-archivo="pc">
+                <div class="dc-head"><span class="dc-num">4</span><h3>Programa de cocinas real</h3><span class="dc-tag">Opcional</span></div>
+                <p class="dc-que">Excel de Elaboración <b>«Programa_Cocinas»</b> (.xlsx): los cocimientos que de verdad se hicieron.</p>
+                <p class="dc-para">Habilita Programa real y Plan vs. real, y suma a la cerveza en proceso los cocimientos que el reporte de tanques todavía no trae.</p>
+                <div class="dc-estado" id="datEstado-pc"></div>
+                <div class="dc-acc"><label class="btn primary" for="datFile-pc" id="datBtn-pc">Elegir archivo .xlsx</label><input type="file" id="datFile-pc" accept=".xlsx,.xlsm,.xls" hidden /><span class="dc-arrastre">o arrástrelo aquí</span></div>
+                <div id="datMsg-pc" class="dc-msg"></div>
+              </div>
             </div>
 
             <div class="i0-panel" id="i0Panel">
               <div>
                 <div class="i0-title">Fecha y hora I0 (momento de programación)</div>
+                <div class="i0-sub">Se pone sola en la hora de la foto del producto en proceso; cámbiela solo si programa desde otro momento.</div>
               </div>
               <input
                 type="datetime-local"
@@ -130,11 +143,11 @@
               />
               <span class="i0-badge" id="i0Badge">I0: —</span>
             </div>
-            <div class="datos-extra">
-              <button class="datos-link" data-goto="view-programa-cocinas"><b>3 · Programa de cocinas real</b><span>Excel de Elaboración · opcional · se carga en «Programa real (Excel)»</span></button>
-              <button class="datos-link" data-goto="view-servicios"><b>4 · Indicadores de servicios</b><span>Excel de MED Servicios · opcional · se carga en «Consumos de servicios»</span></button>
-            </div>
-            <div id="volumenPanel"></div>
+
+            <details class="datos-revision" id="datosRevision">
+              <summary><span>Revisión del plan de envasado cargado</span><small id="datosRevisionResumen">Qué leyó T-minus del instructivo: SKU, semanas, hL y validaciones</small></summary>
+              <div id="volumenPanel"></div>
+            </details>
           </section>
 
           <section class="view" id="view-gantt-envasado" data-view-el>
@@ -534,6 +547,7 @@
     <script src="js/asistente-datos.js?v=20261111a"></script>
     <script src="js/asistente.js?v=20261111a"></script>
     <script src="js/ui.js?v=20261111a"></script>
+    <script src="js/datos-entrada.js?v=20261111a"></script>
     <script>
       /* =====================================================================
          Navegación por menú lateral con íconos.
@@ -783,7 +797,9 @@
           var _origRender = window.render;
           window.render = function () {
             var r = _origRender.apply(this, arguments);
-            if (currentView === "view-datos" || currentView === "view-inicio") go("view-inicio");
+            // Desde «Datos de entrada» se sigue cargando el resto de archivos: solo
+            // se repinta el Inicio si es la vista abierta.
+            if (currentView === "view-inicio") go("view-inicio");
             return r;
           };
         }

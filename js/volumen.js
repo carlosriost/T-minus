@@ -246,6 +246,8 @@ function renderVolumen() {
 
   // Historial: se agrega una entrada por cada archivo nuevo procesado.
   let hist = volLeerHistorial();
+  // Al abrir la página se vuelve a leer el plan guardado: eso no es una carga nueva.
+  if (STATE.parsed !== VOL_ULTIMO_PARSED && STATE.parsed.__restaurado) VOL_ULTIMO_PARSED = STATE.parsed;
   if (STATE.parsed !== VOL_ULTIMO_PARSED) {
     VOL_ULTIMO_PARSED = STATE.parsed;
     hist.unshift({

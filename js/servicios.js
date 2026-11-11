@@ -193,8 +193,34 @@
     rd.readAsText(file);
   }
 
+  // Para «Datos de entrada»: cargar el Excel desde su tarjeta, ver el estado
+  // y armar o recibir el paquete de la semana.
+  window.SrvApp = {
+    cargarExcel: (file) => leerExcel(file),
+    info: () => {
+      cargarGuardado();
+      const B = S.B;
+      return {
+        ok: !!B,
+        archivo: B && B.fuente ? B.fuente.archivo : "",
+        desde: B && B.fuente ? B.fuente.primera_fecha : "",
+        hasta: B && B.fuente ? B.fuente.ultima_fecha : "",
+        guardado_en: B ? B.guardado_en : null,
+        habilitados: B ? Object.values(B.modelos || {}).filter((m) => m.habilitado).length : 0,
+        modelos: B ? Object.keys(B.modelos || {}).length : 0,
+        estado: S.estado || "",
+        ocupado: /^(Leyendo|Entrenando)/.test(S.estado || ""),
+      };
+    },
+    paquete: () => S.B,
+    claveAlmacen: CLAVE_IDB,
+    claveLocal: LS,
+  };
+  const avisarDatos = () => document.dispatchEvent(new CustomEvent("tminus:datos"));
+
   /* ------------------------------------------------------------ render principal */
   function renderServicios() {
+    setTimeout(avisarDatos, 0);
     const cont = document.getElementById("serviciosPanel");
     if (!cont) return;
     cargarGuardado();

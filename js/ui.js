@@ -8,9 +8,6 @@ const fileInput = document.getElementById("fileInput");
 const dropZone = document.getElementById("dropZone");
 const statusEl = document.getElementById("status");
 
-const uploadCompact = document.getElementById("uploadCompact");
-const uploadCompactName = document.getElementById("uploadCompactName");
-const changeFileBtn = document.getElementById("changeFileBtn");
 const programI0Input = document.getElementById("programI0Input");
 const i0Badge = document.getElementById("i0Badge");
 
@@ -36,6 +33,41 @@ programI0Input.addEventListener("change", () => {
 });
 refreshI0Badge();
 
+// El plan nacional de envase por planta (CSV con columnas AG01 … UN01, PAÍS)
+// se confunde fácil con el instructivo: no trae líneas, SKU ni horas.
+function esPlanNacionalPorPlanta(workbook) {
+  try {
+    const ws = workbook.Sheets[workbook.SheetNames[0]];
+    const fila = (XLSX.utils.sheet_to_json(ws, { header: 1, range: 0 })[0] || []).map((x) => String(x || "").toUpperCase());
+    return fila.includes("UN01") && fila.some((x) => /^PA.?S$/.test(x.trim()));
+  } catch (_) {
+    return false;
+  }
+}
+
+// Lee el instructivo desde sus bytes. opts.restaurado: viene de lo guardado en
+// este navegador (o de un paquete) al abrir la página.
+function procesarInstructivo(buffer, nombre, opts) {
+  opts = opts || {};
+  const data = new Uint8Array(buffer);
+  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  let parsed;
+  try {
+    parsed = parseWorkbook(workbook);
+  } catch (err) {
+    if (esPlanNacionalPorPlanta(workbook))
+      throw new Error(
+        "Ese archivo es el plan nacional de envase por planta (columnas AG01 … UN01 y PAÍS): trae solo hL por planta y por día, sin líneas, SKU ni horas. Aquí va el instructivo de envasado de Suite 360 (.xlsx) con las hojas de la semana.",
+      );
+    throw new Error(err.message + " ¿Es el instructivo de envasado de Suite 360 (.xlsx)?");
+  }
+  if (opts.restaurado) parsed.__restaurado = true;
+  if (typeof VOL_ARCHIVO_ACTUAL !== "undefined") VOL_ARCHIVO_ACTUAL = nombre;
+  render(parsed);
+  if (window.DatosEntrada) DatosEntrada.instructivoCargado(buffer, nombre, opts);
+  return parsed;
+}
+
 function handleFile(file) {
   if (!file) return;
   statusEl.classList.remove("error");
@@ -43,25 +75,12 @@ function handleFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, {
-        type: "array",
-        cellDates: true,
-      });
-      const parsed = parseWorkbook(workbook);
-      render(parsed);
-      statusEl.textContent =
-        "Listo — " + file.name + " procesado correctamente.";
-      // Oculta la zona de arrastre y muestra la barra compacta con el nombre del archivo
-      dropZone.classList.add("hidden");
-      uploadCompactName.textContent = file.name;
-      uploadCompact.classList.remove("hidden");
+      procesarInstructivo(e.target.result, file.name);
+      statusEl.textContent = "";
     } catch (err) {
       console.error(err);
       statusEl.classList.add("error");
       statusEl.textContent = "Error: " + err.message;
-      document.getElementById("results").classList.add("hidden");
-      document.getElementById("ganttTopPanel").classList.add("hidden");
     }
   };
   reader.onerror = () => {
@@ -71,7 +90,10 @@ function handleFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+fileInput.addEventListener("change", (e) => {
+  handleFile(e.target.files[0]);
+  e.target.value = "";
+});
 ["dragenter", "dragover"].forEach((ev) =>
   dropZone.addEventListener(ev, (e) => {
     e.preventDefault();
@@ -87,11 +109,6 @@ fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
 dropZone.addEventListener("drop", (e) => {
   const f = e.dataTransfer.files[0];
   if (f) handleFile(f);
-});
-
-changeFileBtn.addEventListener("click", () => {
-  uploadCompact.classList.add("hidden");
-  dropZone.classList.remove("hidden");
 });
 
 // ---- Ocultar/mostrar el panel de catálogos hacia el lado ----

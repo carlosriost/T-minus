@@ -47,7 +47,7 @@
 
   function estadoArchivos() {
     const plan = hayPlan();
-    const nombre = (document.getElementById("uploadCompactName") || {}).textContent || "";
+    const nombre = window.DatosEntrada ? DatosEntrada.nombre("instructivo") : "";
     const inv = (typeof INVENTORY_BALANCE !== "undefined" && INVENTORY_BALANCE) || [];
     const foto = inv.map((e) => e && e.fotoEn && Date.parse(e.fotoEn)).filter(isFinite).sort((a, b) => b - a)[0];
     const pc = typeof PC !== "undefined" && PC && Array.isArray(PC.filas) && PC.filas.length;
@@ -67,16 +67,16 @@
         ir: "view-datos",
       },
       {
-        ok: !!pc,
-        t: "Programa de cocinas real",
-        d: pc ? `${nf(PC.filas.length)} filas leídas` : "Excel de Elaboración. Opcional: habilita Plan vs. real.",
-        ir: "view-programa-cocinas",
-      },
-      {
         ok: !!srv,
         t: "Indicadores de servicios",
         d: srv ? `Modelos de ${srv.archivo || "Excel"}${srv.hasta ? " · datos hasta " + srv.hasta : ""}` : "Excel de MED Servicios (.xlsm). Opcional: consumos de vapor, electricidad y agua.",
-        ir: "view-servicios",
+        ir: "view-datos",
+      },
+      {
+        ok: !!pc,
+        t: "Programa de cocinas real",
+        d: pc ? `${nf(PC.filas.length)} filas leídas` : "Excel de Elaboración. Opcional: habilita Plan vs. real.",
+        ir: "view-datos",
       },
     ];
   }
@@ -169,7 +169,7 @@
               ? "Planeación de envasado, cocinas y servicios. Empieza cargando el plan de envasado; el resto es opcional."
               : `${esc(semanasCortas(STATE.parsed.weekLabel))}${i0 ? ` · programado desde el I0 ${esc(fmtDateTime(i0))}` : ""}`}</p>
           </div>
-          ${faltaPlan ? `<button class="btn primary" data-goto="view-datos">Cargar plan de envasado</button>` : ""}
+          ${faltaPlan ? `<div class="ini-hero-acc"><button class="btn primary" data-goto="view-datos">Cargar los archivos de la semana</button><small>¿Le pasaron el paquete de la semana? También se carga en «Datos de entrada».</small></div>` : ""}
         </div>
 
         ${faltaPlan ? "" : `<div class="ini-grid">${cardEnvasado()}${cardCocinas()}${cardServicios()}</div>${atencion()}`}

@@ -1252,6 +1252,11 @@ let PP_AVISO_TIEMPOS = "";
           const nVac = filas.filter((x) => x.vacio).length;
           status.textContent = `✓ ${filas.length} equipos (${filas.length - nBBT - nVac} con producto + ${nVac} disponibles + ${nBBT} BBT) desde ${file.name}${filas.foto ? " · foto del " + fmtDateTime(new Date(filas.foto)) : ""}${avisoI0}${avisoFactores}${PP_AVISO_TIEMPOS ? " · ⚠ " + PP_AVISO_TIEMPOS : ""}`;
         }
+        // «Datos de entrada» muestra el archivo y lo que se leyó en su tarjeta.
+        if (window.DatosEntrada && status) {
+          DatosEntrada.registrar("pp", { nombre: file.name, resumen: status.textContent.replace(/^✓\s*/, "").replace(" desde " + file.name, "") });
+          status.textContent = "";
+        }
       } catch (err) {
         console.error(err);
         if (status) {
