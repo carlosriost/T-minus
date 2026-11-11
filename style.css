@@ -3396,3 +3396,19 @@ body.theme-light { --pc-c1: #4a7fc1; --pc-c2: #d0703f; --pc-c3: #3a9a76; --pc-c4
 .srv .chart svg .titulo-eje { fill: var(--text); font-weight: 600; }
 .srv .chart svg .rej { stroke: var(--grid); }
 .srv .srv-pre { white-space: pre-wrap; font-family: var(--mono, monospace); font-size: 12px; background: var(--panel2, var(--panel)); border: 1px solid var(--line); border-radius: 8px; padding: 10px; user-select: all; }
+
+/* Acuerdos de servicio: calificación por semana */
+.acu-semanas { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+.acu-semanas > span:first-child { font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
+.acu-sem-lbl { font-family: var(--sans); }
+.acu-matriz .acu-nom { min-width: 240px; max-width: 420px; }
+.acu-matriz th.acu-c, .acu-matriz td.acu-c { width: 64px; }
+.acu-matriz .acu-sem-on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.acu-sem-th { font: inherit; font-weight: 650; color: var(--text); background: none; border: 0; padding: 2px 6px; cursor: pointer; border-radius: 4px; }
+.acu-sem-th:hover { color: var(--accent); }
+.acu-sem { display: inline-block; min-width: 40px; padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 11px; font-weight: 650; cursor: default; }
+.acu-sem.cumple { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.acu-sem.parcial { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.acu-sem.critico { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.acu-sem.sin { color: var(--muted); }
+.acu-matriz tfoot td { border-top: 1px solid var(--line); }

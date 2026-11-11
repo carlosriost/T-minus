@@ -86,7 +86,15 @@ function semanaCalendario(ms) {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia);
 }
 
-function evaluarSLA() {
+// Sin semana se califica cada semana del plan y se promedia (el registro del
+// Excel también es semanal). Con w, solo cuenta lo que empieza en esa semana.
+function evaluarSLA(w) {
+  if (w === undefined) {
+    const sem = typeof semanasAcuerdos === "function" ? semanasAcuerdos() : [];
+    if (sem.length) return resumirSLASemanal(sem);
+    w = null;
+  }
+  const en = (d) => !w || enSemana(d, w);
   const pesos = slaPesos();
   const seq = STATE && STATE.seq;
   const plan = STATE && STATE.plan;
@@ -102,19 +110,26 @@ function evaluarSLA() {
     const arranques = [coc[0]];
     for (let i = 1; i < coc.length; i++)
       if (coc[i].start - coc[i - 1].start >= 12 * 3600000) arranques.push(coc[i]);
-    const conMalta = arranques.filter((r) => esMostoPony(r.mostoId));
-    add(
+    const delPeriodo = arranques.filter((r) => en(r.start));
+    const conMalta = delPeriodo.filter((r) => esMostoPony(r.mostoId));
+    if (delPeriodo.length) add(
       1,
-      Math.round(((arranques.length - conMalta.length) / arranques.length) * 100),
-      `${conMalta.length} de ${arranques.length} arranques con malta`,
+      Math.round(((delPeriodo.length - conMalta.length) / delPeriodo.length) * 100),
+      `${conMalta.length} de ${delPeriodo.length} arranques con malta`,
       conMalta.length
         ? `Arrancan con malta: ${conMalta.map((r) => fmtDateTime(r.start)).join(", ")}.`
-        : `Los ${arranques.length} arranques de cocina (inicio y después de paradas de 12 h o más) son con cerveza.`,
+        : `Los ${delPeriodo.length} arranques de cocina (inicio y después de paradas de 12 h o más) son con cerveza.`,
     );
   }
 
   /* SLA 3 — máximo 4 cambios Pony ↔ cerveza por semana de cocimientos. */
-  if (coc.length) {
+  if (coc.length && w) {
+    let n = 0;
+    for (let i = 1; i < coc.length; i++)
+      if (en(coc[i].start) && esMostoPony(coc[i].mostoId) !== esMostoPony(coc[i - 1].mostoId)) n++;
+    if (coc.some((r) => en(r.start)))
+      add(3, Math.max(0, 100 - Math.max(0, n - 4) * 25), `${n} cambios`, `${n} cambios Pony ↔ cerveza en la semana (máximo 4). Cada cambio de más resta 25 puntos.`);
+  } else if (coc.length) {
     const porSemana = {};
     for (let i = 1; i < coc.length; i++) {
       if (esMostoPony(coc[i].mostoId) !== esMostoPony(coc[i - 1].mostoId)) {
@@ -136,7 +151,7 @@ function evaluarSLA() {
 
   /* SLA 9, 10, 11, 12, 13, 19 — los mide el tablero de Elaboración. */
   if (typeof evaluarAcuerdos === "function" && plan) {
-    const ev = evaluarAcuerdos(plan, seq);
+    const ev = evaluarAcuerdos(plan, seq, w);
     Object.keys(SLA_A_REGLA).forEach((n) => {
       const f = ev.filas.find((x) => x.id === SLA_A_REGLA[n]);
       if (f && f.medible) add(Number(n), f.cumplimiento, f.medida, `${f.detalle} (Medido como el acuerdo ${f.id} de Elaboración.)`);
@@ -157,7 +172,7 @@ function evaluarSLA() {
         let c = null;
         (p.segments || []).forEach((s) => {
           if (s.tipo === "fil") {
-            c = c || { filtro: f, hl: 0, cerrado: false };
+            c = c || { filtro: f, hl: 0, cerrado: false, start: s.start };
             c.hl += Number(s.hl) || 0;
           } else if ((s.tipo === "cambio" || s.tipo === "cip") && c) {
             c.cerrado = true;
@@ -167,7 +182,7 @@ function evaluarSLA() {
         });
         if (c) ciclos.push(c);
       });
-    const cuentan = ciclos.filter((c) => c.cerrado || c.hl >= 5000);
+    const cuentan = ciclos.filter((c) => (c.cerrado || c.hl >= 5000) && en(c.start));
     if (cuentan.length) {
       const ok = cuentan.filter((c) => c.hl >= 5000);
       add(
@@ -191,12 +206,14 @@ function evaluarSLA() {
         const clave = cfg.agrupar === "formato" ? b.formato : b.codigo || b.nombre;
         const prev = corridas[corridas.length - 1];
         if (prev && prev.clave === clave) prev.hl += b.hl;
-        else corridas.push({ clave, ml, hl: b.hl, nombre: cfg.agrupar === "formato" ? b.formato : b.nombre });
+        else corridas.push({ clave, ml, hl: b.hl, nombre: cfg.agrupar === "formato" ? b.formato : b.nombre, start: b.start });
       });
-      const evaluables = corridas.filter((c) => c.ml && cfg.minimos[c.ml] != null);
+      // Una corrida que cruza el domingo no se parte: cuenta entera en la
+      // semana en que arranca.
+      const evaluables = corridas.filter((c) => c.ml && cfg.minimos[c.ml] != null && en(c.start));
       if (!evaluables.length) {
-        if (bs.length)
-          add(Number(n), null, "—", `TREN-${cfg.tren} no envasa en este plan ninguno de los formatos del acuerdo.`);
+        if (bs.some((b) => en(b.start)))
+          add(Number(n), null, "—", `TREN-${cfg.tren} no arranca ${w ? "en la semana" : "en este plan"} ninguna corrida de los formatos del acuerdo.`);
         return;
       }
       const ok = evaluables.filter((c) => c.hl >= cfg.minimos[c.ml]);
@@ -212,7 +229,38 @@ function evaluarSLA() {
   /* SLA 39 — balance < 5 % entre hL cocinados y hL envasados.
      Cocinado = cocimientos × hL por cocimiento × factor de dilución (más lo que
      cubre el inventario), contra lo que pide el plan de envasado. */
-  if (plan && plan.results && plan.results.length) {
+  if (w && STATE && STATE.mergedByTrain) {
+    // Por semana: lo que se cocina en la semana (mosto × factor de dilución)
+    // contra lo que se envasa en la semana.
+    const prod = bloquesProduccion().filter((b) => en(b.start));
+    const env = prod.reduce((a, b) => a + b.hl, 0);
+    const cocS = coc.filter((r) => en(r.start));
+    const cocHL = cocS.reduce((a, r) => {
+      const m = MOSTO_CATALOG.find((x) => x.id === r.mostoId) || {};
+      return a + (Number(r.cocVolumenHL) || 0) * (Number(m.factorDilucion) || 1);
+    }, 0);
+    // El balance no se califica por semana con un plan: lo que se envasa en
+    // las primeras semanas sale de los tanques que ya están llenos, y al final
+    // del plan solo se cocina lo que pide el envasado cargado. La semana
+    // muestra las cifras y el acuerdo se califica sobre todo el plan.
+    if (env > 0)
+      add(
+        39,
+        null,
+        `${nf((Math.abs(cocHL - env) / env) * 100, 1)} % en la semana`,
+        `Por semana no se califica: el envasado de las primeras semanas sale del inventario en tanques y al final del plan solo se cocina lo que pide el envasado cargado. En la semana: cocinado (diluido) ${nf(cocHL)} hL · envasado ${nf(env)} hL. Se califica con el balance de todo el plan.`,
+      );
+    if (env > 0) {
+      const pony = prod.filter((b) => esFamiliaPony(b.familiaId)).reduce((a, b) => a + b.hl, 0);
+      const pct = (pony / env) * 100;
+      add(
+        40,
+        pct <= 20 ? 100 : Math.max(0, Math.round(100 - (pct - 20) * 5)),
+        `Pony ${nf(pct, 1)} % del total`,
+        `Pony ${nf(pony)} hL de ${nf(env)} hL envasados en la semana. Interpretación: la Pony no debe pasar del 20 % del volumen (confirmar con Logística). Cada punto por encima resta 5.`,
+      );
+    }
+  } else if (plan && plan.results && plan.results.length) {
     let env = 0;
     let prodHL = 0;
     plan.results.forEach((r) => {
@@ -286,6 +334,34 @@ function evaluarSLA() {
   };
 }
 
+// Acuerdos que se califican sobre todo el plan y no por semana.
+const SLA_TODO_EL_PLAN = [39];
+
+function resumirSLASemanal(semanas) {
+  const porSemana = semanas.map((s) => ({ semana: s, ev: evaluarSLA(s) }));
+  const plan = evaluarSLA(null);
+  const filas = porSemana[0].ev.filas.map((f0) => {
+    if (SLA_TODO_EL_PLAN.includes(f0.id)) {
+      const fp = plan.filas.find((x) => x.id === f0.id);
+      return { ...fp, detalle: `Calificado sobre todo el plan (no entra en el score semanal). ${fp.detalle}`, semanas: [] };
+    }
+    const vacio = porSemana[0].ev.filas.find((x) => x.id === f0.id).detalle;
+    const r = resumirFilaSemanal(f0.id, porSemana, vacio);
+    return { ...f0, medible: r.medible, peso: r.medible ? f0.pesoConfig : 0, cumplimiento: r.cumplimiento, estado: r.estado, medida: r.medida, detalle: r.detalle, semanas: r.semanas };
+  });
+  const med = filas.filter((f) => f.medible);
+  return {
+    filas,
+    medibles: med,
+    sinDatos: filas.filter((f) => !f.medible),
+    score: scorePromedioSemanas(porSemana),
+    cumplidos: med.filter((f) => f.estado === "cumple").length,
+    parciales: med.filter((f) => f.estado === "parcial").length,
+    criticos: med.filter((f) => f.estado === "critico").length,
+    porSemana,
+  };
+}
+
 function slaTiraHistorico(h) {
   return `<div class="sla-hist" title="Histórico del Excel SLA Planta: verde OK, rojo NOK, gris sin registro">${h.historico
     .split("")
@@ -294,7 +370,10 @@ function slaTiraHistorico(h) {
 }
 
 function renderSLAPlanta(cont) {
-  const ev = evaluarSLA();
+  const evTodas = evaluarSLA();
+  const selSem = semanaAcuerdosElegida(evTodas.porSemana);
+  const ev = selSem ? selSem.ev : evTodas;
+  const periodo = selSem ? selSem.semana.label : evTodas.porSemana ? "promedio de las semanas" : "plan cargado";
   const score = ev.score == null ? null : Math.round(ev.score);
   const col = colorScore(score);
   const EST = typeof ACUERDOS_ESTADO !== "undefined" ? ACUERDOS_ESTADO : {};
@@ -302,7 +381,7 @@ function renderSLAPlanta(cont) {
   const histTot = ev.filas.reduce((a, f) => a + f.histOk + f.histNok, 0);
   const histOk = ev.filas.reduce((a, f) => a + f.histOk, 0);
   const kpis =
-    modKpi("◎", "Score SLA (plan actual)", score == null ? "—" : `${score} <small>/ 100</small>`, `${nMed} de ${ev.filas.length} acuerdos medibles con los archivos cargados`, col) +
+    modKpi("◎", selSem ? `Score SLA · ${selSem.semana.corto}` : "Score SLA (promedio semanal)", score == null ? "—" : `${score} <small>/ 100</small>`, `${nMed} de ${ev.filas.length} acuerdos medibles ${selSem ? "en la semana" : "en alguna semana"}`, col) +
     modKpi("✓", "Cumplen", `${ev.cumplidos} <small>de ${nMed}</small>`, "≥ 90 % de cumplimiento", "var(--ok)") +
     modKpi("⚠", "Críticos", String(ev.criticos), "< 60 % de cumplimiento", ev.criticos ? "var(--danger)" : "var(--muted)") +
     modKpi("▤", "Histórico del Excel", histTot ? `${Math.round((histOk / histTot) * 100)}%` : "—", `OK en ${histOk} de ${histTot} registros semanales (meta 85 %)`, histTot && histOk / histTot >= 0.85 ? "var(--ok)" : "var(--warn)");
@@ -344,14 +423,20 @@ function renderSLAPlanta(cont) {
     "% OK",
   );
 
+  const matriz = matrizSemanalAcuerdos(
+    SLA_PLANTA_VERDES.map((a) => ({ id: a.n, rotulo: a.n, corto: textoCortoAcuerdo(a.texto), texto: a.texto })),
+    evTodas.porSemana,
+  );
   cont.innerHTML = `
+    ${selectorSemanasAcuerdos(evTodas.porSemana)}
     <div class="acu-kpis">${kpis}</div>
+    ${matriz}
     <div class="acu-card">
-      <div class="acu-card-tit">Acuerdos SLA Planta en verde (${ev.filas.length}) <small style="color:var(--muted);font-weight:400;">· medidos sobre el plan actual · histórico tal como viene en el Excel</small></div>
+      <div class="acu-card-tit">Acuerdos SLA Planta en verde (${ev.filas.length}) <small style="color:var(--muted);font-weight:400;">· ${escapeHtml(periodo)} · histórico tal como viene en el Excel</small></div>
       <div class="table-scroll mod-noclip"><table class="acu-tabla sla-tabla"><thead><tr><th class="acu-c">#</th><th>Acuerdo</th><th>Área</th><th class="acu-c">Indicador</th><th class="acu-c">Peso</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Estado</th><th>Histórico S1→S${SLA_PLANTA_VERDES.reduce((m, a) => Math.max(m, a.historico.length), 0)}</th></tr></thead><tbody>${filas}</tbody></table></div>
     </div>
     <div class="vol-grid3">
-      <div class="acu-card"><div class="acu-card-tit">Plan actual</div>${modAnillo(
+      <div class="acu-card"><div class="acu-card-tit">${selSem ? escapeHtml(selSem.semana.label) : "Promedio de las semanas"}</div>${modAnillo(
         [
           { label: "Cumple", valor: ev.cumplidos, color: "var(--ok)" },
           { label: "Parcial", valor: ev.parciales, color: "var(--warn)" },
@@ -362,8 +447,9 @@ function renderSLAPlanta(cont) {
         "/ 100",
       )}</div>
       <div class="acu-card"><div class="acu-card-tit">Histórico del Excel por indicador</div>${barrasInd}</div>
-      <div class="acu-card"><div class="acu-card-tit">Cómo se mide</div><p class="acu-nota" style="margin-top:0;">Solo entran los acuerdos con la celda en verde en «SLA Planta». Los acuerdos 9, 10, 11, 12, 13 y 19 son los mismos de Elaboración y reutilizan esa medición. Score = promedio ponderado por «Peso» de los acuerdos medibles. Un acuerdo sin datos no castiga el score.</p></div>
+      <div class="acu-card"><div class="acu-card-tit">Cómo se mide</div><p class="acu-nota" style="margin-top:0;">Solo entran los acuerdos con la celda en verde en «SLA Planta». Los acuerdos 9, 10, 11, 12, 13 y 19 son los mismos de Elaboración y reutilizan esa medición. Cada acuerdo se califica por semana (lunes a domingo, día desde las 22:00), como en el registro OK/NOK del Excel. Score de una semana = promedio ponderado por «Peso» de los acuerdos que se pudieron medir esa semana; el del periodo es el promedio de los scores semanales. Un acuerdo sin datos no castiga el score.</p></div>
     </div>`;
+  conectarSelectorSemanas(cont, renderAcuerdosLogistica);
   cont.querySelectorAll("[data-sla-peso]").forEach((inp) =>
     inp.addEventListener("change", () => {
       const p = slaPesos();

@@ -94,7 +94,7 @@ function corridasDeFiltro() {
     let actual = null;
     (p.segments || []).forEach((s) => {
       if (s.tipo === "fil") {
-        actual = actual || { filtro: f, hl: 0, cerrada: false };
+        actual = actual || { filtro: f, hl: 0, cerrada: false, start: s.start };
         actual.hl += Number(s.hl) || 0;
       } else if (s.tipo === "cip" && actual) {
         actual.cerrada = true;
@@ -133,9 +133,17 @@ function hallazgosLogistica() {
   return out;
 }
 
-function evaluarAcuerdosLogistica() {
+// Sin semana se califica cada semana del plan y se promedia. Con w, solo
+// cuentan las línea-semanas, corridas y ciclos que arrancan en esa semana.
+function evaluarAcuerdosLogistica(w) {
+  if (w === undefined) {
+    const sem = typeof semanasAcuerdos === "function" ? semanasAcuerdos() : [];
+    if (sem.length) return resumirLogisticaSemanal(sem);
+    w = null;
+  }
+  const en = (d) => !w || enSemana(d, w);
   const cfg = configLogistica();
-  const ls = lineasSemanas();
+  const ls = lineasSemanas().filter((x) => en(x.bloques[0].start));
   const medido = {};
 
   // L1 y L2: línea-semanas que NO arrancan con Light / malta.
@@ -158,8 +166,39 @@ function evaluarAcuerdosLogistica() {
     };
   }
 
-  // L3: corridas de línea sobre el umbral, ponderadas por volumen.
-  const corridas = TRAINS.flatMap((t) => corridasDeLinea(t));
+  // L3: corridas de línea sobre el umbral, ponderadas por volumen. Por semana:
+  // qué parte de lo que se envasa en la semana va en corridas largas (la
+  // corrida se mide completa, aunque empiece o termine en otra semana).
+  if (w) {
+    const prod = bloquesProduccion();
+    let tot = 0;
+    let largo = 0;
+    const cortas = [];
+    TRAINS.forEach((t) => {
+      const runs = [];
+      prod.filter((b) => b.tren === t).forEach((b) => {
+        const prev = runs[runs.length - 1];
+        if (prev && prev.familia === b.familia) {
+          prev.hl += b.hl;
+          prev.bloques.push(b);
+        } else runs.push({ tren: t, familia: b.familia, hl: b.hl, bloques: [b] });
+      });
+      runs.forEach((r) => {
+        const hlSem = r.bloques.filter((b) => en(b.start)).reduce((a, b) => a + b.hl, 0);
+        if (!hlSem) return;
+        tot += hlSem;
+        if (r.hl >= cfg.umbralLineaHL) largo += hlSem;
+        else cortas.push(`${r.familia} en TREN-${t} (${MOD_NF(r.hl)} hL)`);
+      });
+    });
+    if (tot > 0)
+      medido.L3 = {
+        cumplimiento: Math.round((largo / tot) * 100),
+        medida: `${MOD_NF((largo / tot) * 100)} % del volumen de la semana`,
+        detalle: `${MOD_NF(largo)} de ${MOD_NF(tot)} hL envasados en la semana van en corridas de ${MOD_NF(cfg.umbralLineaHL)} hL o más.${cortas.length ? ` Corridas más cortas: ${cortas.slice(0, 6).join("; ")}${cortas.length > 6 ? ` y ${cortas.length - 6} más` : ""}.` : ""}`,
+      };
+  }
+  const corridas = w ? [] : TRAINS.flatMap((t) => corridasDeLinea(t));
   const totalHL = corridas.reduce((a, c) => a + c.hl, 0);
   if (totalHL > 0) {
     const largas = corridas.filter((c) => c.hl >= cfg.umbralLineaHL);
@@ -193,8 +232,11 @@ function evaluarAcuerdosLogistica() {
   }
 
   // L5: corridas de filtro entre CIP (solo si hay plan de filtración).
-  const cf = corridasDeFiltro();
-  if (cf) {
+  const cfTodas = corridasDeFiltro();
+  const cf = cfTodas && w ? cfTodas.filter((c) => en(c.start)) : cfTodas;
+  if (cfTodas && w && !cf.length)
+    medido.L5 = { cumplimiento: null, medida: "—", detalle: "No arranca ninguna corrida de filtro en la semana." };
+  if (cf && cf.length) {
     const total = cf.reduce((a, c) => a + c.hl, 0);
     const cuentan = cf.filter((c) => c.cerrada || c.hl >= cfg.umbralFiltroHL);
     const totalCuentan = cuentan.reduce((a, c) => a + c.hl, 0);
@@ -258,6 +300,30 @@ function evaluarAcuerdosLogistica() {
   };
 }
 
+function resumirLogisticaSemanal(semanas) {
+  const cfg = configLogistica();
+  const porSemana = semanas.map((s) => ({ semana: s, ev: evaluarAcuerdosLogistica(s) }));
+  const filas = porSemana[0].ev.filas.map((f0) => {
+    const r = resumirFilaSemanal(f0.id, porSemana, f0.id === "L5" ? "Llena el Gantt de filtración (flujo, I0 y secuencia) para medir este acuerdo." : "Carga el plan de envasado para medir este acuerdo.");
+    const ponderacion = r.medible ? Number(cfg.pond[f0.id]) || 0 : 0;
+    return { ...f0, medible: r.medible, ponderacion, cumplimiento: r.cumplimiento, puntaje: r.medible ? (ponderacion * r.cumplimiento) / 100 : 0, estado: r.estado, medida: r.medida, detalle: r.detalle, semanas: r.semanas };
+  });
+  const medibles = filas.filter((f) => f.medible);
+  return {
+    filas,
+    medibles,
+    sinDatos: filas.filter((f) => !f.medible),
+    pondTotal: medibles.reduce((a, f) => a + f.ponderacion, 0),
+    puntajeTotal: medibles.reduce((a, f) => a + f.puntaje, 0),
+    score: scorePromedioSemanas(porSemana),
+    cumplidos: medibles.filter((f) => f.estado === "cumple").length,
+    parciales: medibles.filter((f) => f.estado === "parcial").length,
+    criticos: medibles.filter((f) => f.estado === "critico").length,
+    cfg,
+    porSemana,
+  };
+}
+
 function colorScore(score) {
   return score == null ? "var(--muted)" : score >= 90 ? "var(--ok)" : score >= 60 ? "var(--warn)" : "var(--danger)";
 }
@@ -303,14 +369,17 @@ function renderAcuerdosLogistica() {
 }
 
 function renderLogisticaEnvasado(cont) {
-  const ev = evaluarAcuerdosLogistica();
+  const evTodas = evaluarAcuerdosLogistica();
+  const selSem = semanaAcuerdosElegida(evTodas.porSemana);
+  const ev = selSem ? selSem.ev : evTodas;
+  const periodo = selSem ? selSem.semana.label : evTodas.porSemana ? "promedio de las semanas" : "plan cargado";
   const score = ev.score == null ? null : Math.round(ev.score);
   const col = colorScore(score);
   const nMed = ev.medibles.length;
   const EST = typeof ACUERDOS_ESTADO !== "undefined" ? ACUERDOS_ESTADO : {};
 
   const kpis =
-    modKpi("◎", "Score de logística", score == null ? "—" : `${score} <small>/ 100</small>`, "Envasado y filtración", col) +
+    modKpi("◎", "Score de logística", score == null ? "—" : `${score} <small>/ 100</small>`, `Envasado y filtración · ${periodo}`, col) +
     modKpi("✓", "Acuerdos cumplidos", `${ev.cumplidos} <small>de ${nMed}</small>`, nMed ? `${Math.round((ev.cumplidos / nMed) * 100)}% de los medibles` : "—", "var(--ok)") +
     modKpi("⚠", "Críticos", String(ev.criticos), nMed ? `${Math.round((ev.criticos / nMed) * 100)}% de los medibles` : "—", ev.criticos ? "var(--danger)" : "var(--muted)") +
     modKpi("▤", "Sin datos para medir", String(ev.sinDatos.length), `de ${ev.filas.length} acuerdos`, "var(--muted)");
@@ -348,11 +417,17 @@ function renderLogisticaEnvasado(cont) {
     .join("");
 
   const c = ev.cfg;
+  const matriz = matrizSemanalAcuerdos(
+    evTodas.filas.map((f) => ({ id: f.id, rotulo: f.id, corto: f.texto, texto: f.texto })),
+    evTodas.porSemana,
+  );
   cont.innerHTML = `
+        ${selectorSemanasAcuerdos(evTodas.porSemana)}
         <div class="acu-kpis">${kpis}</div>
+        ${matriz}
         <div class="acu-grid">
           <div class="acu-card">
-            <div class="acu-card-tit">Detalle de acuerdos de logística</div>
+            <div class="acu-card-tit">Detalle de acuerdos de logística <small style="color:var(--muted);font-weight:400;">· ${escapeHtml(periodo)}</small></div>
             <div class="table-scroll mod-noclip"><table class="acu-tabla"><thead><tr><th>Acuerdo</th><th class="acu-c">Ponderación</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th><th class="acu-c">Estado</th></tr></thead>
             <tbody>${filasHtml}</tbody>
             <tfoot><tr><td><b>Total medible</b></td><td class="acu-c"><b>${MOD_NF(ev.pondTotal)}%</b></td><td class="acu-c">—</td><td class="acu-c"><b>${MOD_NF(ev.puntajeTotal, 1)}</b></td><td class="acu-c"><b style="color:${col};">${score == null ? "—" : score + " / 100"}</b></td></tr></tfoot></table></div>
@@ -369,6 +444,7 @@ function renderLogisticaEnvasado(cont) {
           </div>
         </div>`;
 
+  conectarSelectorSemanas(cont, renderAcuerdosLogistica);
   const rerender = () => {
     renderAcuerdosLogistica();
     if (typeof renderRecomendacionesPlan === "function") renderRecomendacionesPlan();

@@ -75,6 +75,172 @@ function semanaIdxDe(ms, semanas) {
   return semanas.length - 1;
 }
 
+/* ---- Semanas de los acuerdos de servicio ----
+   Los acuerdos se califican por semana, como en el registro OK/NOK del SLA
+   Planta: lunes a domingo, con el día de planeación que arranca a las 22:00
+   (un evento del domingo a las 22:00 ya cuenta en la semana siguiente). Las
+   semanas cubren lo programado en envasado y en cocinas, aunque los
+   cocimientos empiecen o terminen en otra semana que el plan de envasado. */
+const SEM_MS = 7 * 86400000;
+function lunesDe(ms) {
+  const d = new Date(ms + 2 * 3600000);
+  const dia = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia);
+}
+function numSemanaIso(lunesMs) {
+  const jueves = new Date(lunesMs + 3 * 86400000);
+  const ene1 = Date.UTC(jueves.getUTCFullYear(), 0, 1);
+  return 1 + Math.floor((jueves.getTime() - ene1) / SEM_MS);
+}
+function enSemana(fecha, w) {
+  if (!w) return true;
+  if (!fecha) return false;
+  const ms = (fecha instanceof Date ? fecha.getTime() : Number(fecha)) + 2 * 3600000;
+  return ms >= w.start && ms < w.end;
+}
+function semanasAcuerdos() {
+  const t = [];
+  const add = (d) => {
+    const ms = d instanceof Date ? d.getTime() : Number(d);
+    if (isFinite(ms)) t.push(ms);
+  };
+  if (STATE && STATE.mergedByTrain) bloquesProduccion().forEach((b) => add(b.start));
+  const seq = STATE && STATE.seq;
+  ((seq && seq.rows) || []).forEach((r) => r.tipo === "cocimiento" && add(r.start));
+  if (!t.length) return [];
+  const lunes = [...new Set(t.map(lunesDe))].sort((a, b) => a - b);
+  const dd = (ms) => {
+    const d = new Date(ms);
+    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  const out = [];
+  for (let s = lunes[0]; s <= lunes[lunes.length - 1] && out.length < 12; s += SEM_MS) {
+    const n = numSemanaIso(s);
+    out.push({ start: s, end: s + SEM_MS, num: n, corto: `S${n}`, label: `Semana ${n} · ${dd(s)} al ${dd(s + 6 * 86400000)}` });
+  }
+  return out;
+}
+
+// Junta la calificación de cada semana en una fila por acuerdo: el
+// cumplimiento del periodo es el promedio de las semanas en que se pudo medir,
+// y la fila guarda sus semanas para la tabla semana a semana.
+function resumirFilaSemanal(id, porSemana, detalleVacio) {
+  const semanas = porSemana.map(({ semana, ev }) => {
+    const f = ev.filas.find((x) => x.id === id) || {};
+    return { semana, medible: !!f.medible, cumplimiento: f.medible ? f.cumplimiento : null, estado: f.estado || "sin-datos", medida: f.medida || "—", detalle: f.detalle || "" };
+  });
+  const med = semanas.filter((s) => s.medible);
+  if (!med.length) return { medible: false, cumplimiento: null, estado: "sin-datos", medida: "—", detalle: detalleVacio, semanas };
+  const cumplimiento = Math.round(med.reduce((a, s) => a + s.cumplimiento, 0) / med.length);
+  const ok = med.filter((s) => s.cumplimiento >= 90);
+  const peor = med.reduce((m, s) => (s.cumplimiento < m.cumplimiento ? s : m), med[0]);
+  return {
+    medible: true,
+    cumplimiento,
+    estado: cumplimiento >= 90 ? "cumple" : cumplimiento >= 60 ? "parcial" : "critico",
+    medida: `${ok.length} de ${med.length} semana${med.length === 1 ? "" : "s"} cumple${ok.length === 1 ? "" : "n"}`,
+    detalle:
+      ok.length === med.length
+        ? `Cumple en todas las semanas medidas (${med.map((s) => s.semana.corto).join(", ")}).`
+        : `Peor semana: ${peor.semana.corto} con ${peor.cumplimiento} % (${peor.medida}). ${peor.detalle}`,
+    semanas,
+  };
+}
+// Score del periodo = promedio de los scores semanales.
+function scorePromedioSemanas(porSemana) {
+  const s = porSemana.map((p) => p.ev.score).filter((x) => x != null);
+  return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null;
+}
+
+// Semana elegida en el módulo de acuerdos ("todas" o el inicio de la semana).
+let ACUERDOS_SEMANA = (() => {
+  try {
+    return localStorage.getItem("planAcuerdosSemana") || "todas";
+  } catch (_) {
+    return "todas";
+  }
+})();
+function semanaAcuerdosElegida(porSemana) {
+  if (!porSemana || !porSemana.length) return null;
+  return porSemana.find((p) => String(p.semana.start) === ACUERDOS_SEMANA) || null;
+}
+function selectorSemanasAcuerdos(porSemana) {
+  if (!porSemana || !porSemana.length) return "";
+  const sel = semanaAcuerdosElegida(porSemana);
+  const b = (v, txt, on, title) => `<button data-acu-sem="${v}" class="${on ? "active" : ""}"${title ? ` title="${escapeHtml(title)}"` : ""}>${txt}</button>`;
+  return `<div class="acu-semanas"><span>Periodo</span><div class="filtro-equipos" style="margin:0;">${b("todas", `Todas (${porSemana.length} semanas)`, !sel)}${porSemana
+    .map((p) => b(p.semana.start, p.semana.corto, sel === p, p.semana.label))
+    .join("")}</div><span class="acu-sem-lbl">${sel ? escapeHtml(sel.semana.label) : `Promedio de ${escapeHtml(porSemana[0].semana.corto)} a ${escapeHtml(porSemana[porSemana.length - 1].semana.corto)}`}</span></div>`;
+}
+function conectarSelectorSemanas(cont, rerender) {
+  cont.querySelectorAll("[data-acu-sem]").forEach((el) =>
+    el.addEventListener("click", () => {
+      ACUERDOS_SEMANA = el.dataset.acuSem;
+      try {
+        localStorage.setItem("planAcuerdosSemana", ACUERDOS_SEMANA);
+      } catch (_) {}
+      rerender();
+    }),
+  );
+}
+// Tabla acuerdo × semana. filas: [{id, rotulo, corto, texto}] en el orden a mostrar.
+function matrizSemanalAcuerdos(filas, porSemana) {
+  if (!porSemana || !porSemana.length) return "";
+  const sel = semanaAcuerdosElegida(porSemana);
+  const EST = typeof ACUERDOS_ESTADO !== "undefined" ? ACUERDOS_ESTADO : {};
+  const on = (p) => (sel === p ? " acu-sem-on" : "");
+  const cab = porSemana
+    .map((p) => `<th class="acu-c${on(p)}"><button class="acu-sem-th" data-acu-sem="${p.semana.start}" title="${escapeHtml(p.semana.label)}">${p.semana.corto}</button></th>`)
+    .join("");
+  const cuerpo = filas
+    .map((f) => {
+      const celdas = porSemana
+        .map((p) => {
+          const x = p.ev.filas.find((y) => y.id === f.id) || {};
+          if (!x.medible) return `<td class="acu-c${on(p)}"><span class="acu-sem sin" title="${escapeHtml(`${p.semana.corto}: ${x.detalle || "sin datos"}`)}">—</span></td>`;
+          const e = EST[x.estado] || {};
+          return `<td class="acu-c${on(p)}"><span class="acu-sem ${x.estado}" title="${escapeHtml(`${p.semana.corto} · ${e.txt || ""} · ${x.medida}. ${x.detalle}`)}">${MOD_NF(x.cumplimiento)}</span></td>`;
+        })
+        .join("");
+      return `<tr><td class="acu-nom" title="${escapeHtml(f.texto)}"><b>${escapeHtml(String(f.rotulo))}.</b> ${escapeHtml(f.corto)}</td>${celdas}</tr>`;
+    })
+    .join("");
+  const pie = porSemana
+    .map((p) => {
+      const s = p.ev.score == null ? null : Math.round(p.ev.score);
+      return `<td class="acu-c${on(p)}"><b style="color:${colorScore(s)};">${s == null ? "—" : s}</b></td>`;
+    })
+    .join("");
+  return `<div class="acu-card"><div class="acu-card-tit">Semana a semana <small style="color:var(--muted);font-weight:400;">· % de cumplimiento de cada acuerdo en cada semana; pase el mouse por una celda para ver el detalle o haga clic en una semana para abrirla</small></div>
+    <div class="table-scroll mod-noclip"><table class="acu-tabla acu-matriz"><thead><tr><th>Acuerdo</th>${cab}</tr></thead><tbody>${cuerpo}</tbody>
+    <tfoot><tr><td><b>Score de la semana</b></td>${pie}</tr></tfoot></table></div>
+    <div class="acu-nota">Semanas de lunes a domingo; el día arranca a las 22:00, como en el instructivo. Cada cocimiento, corrida, parada, maduración o ciclo de filtración cuenta entero en la semana en que empieza. «—»: ese acuerdo no tiene qué medir esa semana y no pesa en su score.</div></div>`;
+}
+// Tramos del Gantt de filtración (filtrado, cambios de ciclo y CIP) de todos
+// los filtros, en orden de tiempo. Vacío si no se llenó el Gantt.
+function tramosFiltracion() {
+  if (typeof buildFiltracionPlanes !== "function") return [];
+  let planes = null;
+  try {
+    planes = buildFiltracionPlanes();
+  } catch (_) {
+    return [];
+  }
+  if (!planes || !planes.porFiltro) return [];
+  const out = [];
+  Object.keys(planes.porFiltro).forEach((f) => {
+    const p = planes.porFiltro[f];
+    if (p && p.ok) (p.segments || []).forEach((s) => s.start && out.push({ ...s, filtro: f }));
+  });
+  return out.filter((s) => s.tipo === "fil").sort((a, b) => a.start - b.start);
+}
+
+// Primera frase de un texto, para nombrar el acuerdo en una tabla angosta.
+function textoCortoAcuerdo(t) {
+  const s = String(t || "").split(/(?<=\.)\s|\s\(/)[0].replace(/\.$/, "");
+  return s.length > 90 ? s.slice(0, 88).replace(/\s+\S*$/, "") + "…" : s;
+}
+
 // Todos los bloques del Gantt de envasado, por tren, ordenados.
 function bloquesPorTren() {
   const out = {};

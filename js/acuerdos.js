@@ -51,19 +51,37 @@ function cumplimientoPorTope(valor, tope) {
   return Math.max(0, Math.round((1 - (valor - tope) / tope) * 100));
 }
 
-function evaluarAcuerdos(plan, seq) {
+// Sin semana (w sin pasar) se califica cada semana del plan y se promedia: los
+// topes de estos acuerdos son semanales. Con w = una semana de
+// semanasAcuerdos(), solo cuenta lo que empieza en esa semana.
+function evaluarAcuerdos(plan, seq, w) {
+  if (w === undefined) {
+    const sem = typeof semanasAcuerdos === "function" ? semanasAcuerdos() : [];
+    if (sem.length) return resumirAcuerdosSemanal(plan, seq, sem);
+    w = null;
+  }
+  const en = (d) => !w || enSemana(d, w);
   const DIA = 24 * 3600000;
   const pond = ponderacionAcuerdos();
-  const filasSeq = (seq && seq.rows) || [];
-  const cocimientos = filasSeq.filter((r) => r.tipo === "cocimiento");
+  const filasSeq = ((seq && seq.rows) || []).slice().sort((a, b) => a.start - b.start);
+  const todosCoc = filasSeq.filter((r) => r.tipo === "cocimiento");
+  const cocimientos = todosCoc.filter((r) => en(r.start));
   const aseos = filasSeq.filter((r) => r.tipo === "aseo");
-  const results = (plan && plan.results) || [];
-  const hlDe = (pred) =>
-    results
-      .filter(pred)
-      .reduce((a, r) => a + (Number(r.volumenCocinar) || 0), 0);
-  const hlTotal = hlDe(() => true);
-  const hlPony = hlDe((r) => esMostoPony(r.mostoId));
+  let hlTotal;
+  let hlPony;
+  if (w) {
+    // hL de mosto de los cocimientos que arrancan en la semana.
+    hlTotal = cocimientos.reduce((a, r) => a + (Number(r.cocVolumenHL) || 0), 0);
+    hlPony = cocimientos.filter((r) => esMostoPony(r.mostoId)).reduce((a, r) => a + (Number(r.cocVolumenHL) || 0), 0);
+  } else {
+    const results = (plan && plan.results) || [];
+    const hlDe = (pred) =>
+      results
+        .filter(pred)
+        .reduce((a, r) => a + (Number(r.volumenCocinar) || 0), 0);
+    hlTotal = hlDe(() => true);
+    hlPony = hlDe((r) => esMostoPony(r.mostoId));
+  }
   const hlCerveza = hlTotal - hlPony;
 
   const medido = {};
@@ -89,21 +107,30 @@ function evaluarAcuerdos(plan, seq) {
         ),
       }))
       .sort((a, b) => b.c - a.c)[0];
+    // Separación entre aseos: en una semana cuentan los intervalos entre dos
+    // aseos seguidos que se cruzan con ella.
     let huecoMax = 0;
+    let nHuecos = 0;
     const t = aseos.map((a) => a.start.getTime()).sort((a, b) => a - b);
-    for (let i = 1; i < t.length; i++)
+    for (let i = 1; i < t.length; i++) {
+      if (w && !(t[i] + 2 * 3600000 > w.start && t[i - 1] + 2 * 3600000 < w.end)) continue;
+      nHuecos++;
       huecoMax = Math.max(huecoMax, (t[i] - t[i - 1]) / DIA);
-    const cAseo = t.length > 1 ? cumplimientoPorTope(huecoMax, 14) : 100;
+    }
+    const cAseo = nHuecos ? cumplimientoPorTope(huecoMax, 14) : 100;
+    const hayAlgo = !w || cocimientos.length || nHuecos;
     add(
       1,
-      Math.min(mejor.c, cAseo),
+      hayAlgo ? Math.min(mejor.c, cAseo) : null,
       `${Math.round(hlTotal).toLocaleString("es-CO")} hL`,
-      `${Math.round(hlTotal).toLocaleString("es-CO")} hL en total ` +
+      `${Math.round(hlTotal).toLocaleString("es-CO")} hL ${w ? "de mosto en la semana" : "en total"} ` +
         `(${Math.round(hlCerveza).toLocaleString("es-CO")} de cerveza y ${Math.round(hlPony).toLocaleString("es-CO")} de Pony) ` +
         `contra el tope de 81.000 hL priorizando ${mejor.e.nombre}. ` +
-        (t.length > 1
+        (nHuecos
           ? `La mayor separación entre aseos es de ${huecoMax.toFixed(1)} días (máximo 14).`
-          : "No hay dos aseos que comparar en el horizonte cargado."),
+          : w
+            ? "No hay dos aseos seguidos que se crucen con la semana."
+            : "No hay dos aseos que comparar en el horizonte cargado."),
     );
   }
 
@@ -125,16 +152,21 @@ function evaluarAcuerdos(plan, seq) {
 
   /* --- R4: cada bloque de Pony con mínimo dos cocimientos seguidos. */
   {
+    // Los bloques se arman con toda la programación (un bloque que cruza el
+    // domingo no se parte) y cuentan en la semana de su primer cocimiento.
     const corridas = [];
     let n = 0;
-    cocimientos.forEach((r) => {
-      if (esMostoPony(r.mostoId)) n++;
-      else if (n) {
-        corridas.push(n);
+    let ini = null;
+    todosCoc.forEach((r) => {
+      if (esMostoPony(r.mostoId)) {
+        if (!n) ini = r.start;
+        n++;
+      } else if (n) {
+        if (en(ini)) corridas.push(n);
         n = 0;
       }
     });
-    if (n) corridas.push(n);
+    if (n && en(ini)) corridas.push(n);
     const cortas = corridas.filter((x) => x < 2).length;
     add(
       4,
@@ -163,6 +195,7 @@ function evaluarAcuerdos(plan, seq) {
     (typeof TRAINS !== "undefined" ? TRAINS : []).forEach((tr) => {
       (porTren[tr] || []).forEach((b) => {
         if (!/nst|sin programaci/.test(normalizeText(b.name || ""))) return;
+        if (!en(b.start)) return;
         total++;
         const dias = (b.end.getTime() - b.start.getTime()) / DIA;
         mayor = Math.max(mayor, dias);
@@ -171,7 +204,11 @@ function evaluarAcuerdos(plan, seq) {
     });
     add(
       5,
-      total ? Math.round(((total - paradas) / total) * 100) : 100,
+      total
+        ? Math.round(((total - paradas) / total) * 100)
+        : !w || (typeof bloquesProduccion === "function" && bloquesProduccion().some((b) => en(b.start)))
+          ? 100
+          : null,
       total ? `${paradas} de ${total}` : "sin paradas",
       total
         ? `${total} tramo(s) sin programación; ${paradas} pasa(n) de dos días. La más larga dura ${mayor.toFixed(1)} días.`
@@ -182,9 +219,9 @@ function evaluarAcuerdos(plan, seq) {
   /* --- R6: el volumen de Pony no pasa de 23.600 hL por semana. */
   add(
     6,
-    cumplimientoPorTope(hlPony, 23600),
+    w && !cocimientos.length ? null : cumplimientoPorTope(hlPony, 23600),
     `${Math.round(hlPony).toLocaleString("es-CO")} hL`,
-    `${Math.round(hlPony).toLocaleString("es-CO")} hL de Pony contra el tope semanal de 23.600 hL.`,
+    `${Math.round(hlPony).toLocaleString("es-CO")} hL de Pony ${w ? "(mosto) en la semana " : ""}contra el tope semanal de 23.600 hL.`,
   );
 
   /* --- R7: la maduración no pasa de cuatro días. */
@@ -192,7 +229,7 @@ function evaluarAcuerdos(plan, seq) {
     const bandas = (
       (seq && seq.tankAssignment && seq.tankAssignment.rows) ||
       []
-    ).filter((r) => /madur/i.test(r.etapa || ""));
+    ).filter((r) => /madur/i.test(r.etapa || "") && en(r.start));
     let excedidas = 0;
     let mayor = 0;
     bandas.forEach((r) => {
@@ -214,18 +251,31 @@ function evaluarAcuerdos(plan, seq) {
 
   /* --- R12: un único bloque semanal de filtración de Águila Light. */
   {
-    const filas =
-      (typeof FILTRACION_STATE !== "undefined" &&
-        FILTRACION_STATE &&
-        FILTRACION_STATE.filas) ||
-      [];
     let bloques = 0;
-    let prev = false;
-    filas.forEach((f) => {
-      const esLight = /light/.test(normalizeText(f.marca || ""));
-      if (esLight && !prev) bloques++;
-      prev = esLight;
-    });
+    if (w) {
+      // Por semana hace falta saber cuándo se filtra: se toman los tramos de
+      // filtración del Gantt, en orden de tiempo, y cada bloque de Light cuenta
+      // en la semana en que arranca.
+      const tramos = typeof tramosFiltracion === "function" ? tramosFiltracion() : [];
+      let prev = false;
+      tramos.forEach((s) => {
+        const esLight = /light/.test(normalizeText(s.marca || ""));
+        if (esLight && !prev && en(s.start)) bloques++;
+        prev = esLight;
+      });
+    } else {
+      const filas =
+        (typeof FILTRACION_STATE !== "undefined" &&
+          FILTRACION_STATE &&
+          FILTRACION_STATE.filas) ||
+        [];
+      let prev = false;
+      filas.forEach((f) => {
+        const esLight = /light/.test(normalizeText(f.marca || ""));
+        if (esLight && !prev) bloques++;
+        prev = esLight;
+      });
+    }
     add(
       12,
       bloques === 0
@@ -235,7 +285,9 @@ function evaluarAcuerdos(plan, seq) {
           : Math.max(0, 100 - (bloques - 1) * 50),
       bloques ? `${bloques} bloque(s)` : "—",
       bloques === 0
-        ? "No hay filtración de Águila Light en el Gantt de filtración."
+        ? w
+          ? "No arranca ningún bloque de Águila Light en la semana."
+          : "No hay filtración de Águila Light en el Gantt de filtración."
         : bloques === 1
           ? "Un solo bloque de Águila Light, como pide el acuerdo."
           : `${bloques} bloques separados de Águila Light: deberían ir en uno solo.`,
@@ -287,9 +339,48 @@ function evaluarAcuerdos(plan, seq) {
     cumplidos: medibles.filter((f) => f.estado === "cumple").length,
     parciales: medibles.filter((f) => f.estado === "parcial").length,
     criticos: medibles.filter((f) => f.estado === "critico").length,
-    semana:
-      (typeof STATE !== "undefined" && STATE && STATE.parsed
-        ? STATE.parsed.weekLabel
-        : "") || "",
+    semana: w
+      ? w.label
+      : (typeof STATE !== "undefined" && STATE && STATE.parsed
+          ? STATE.parsed.weekLabel
+          : "") || "",
+  };
+}
+
+// Promedio de las semanas: cada acuerdo con el promedio de las semanas en que
+// se pudo medir, y el score como promedio de los scores semanales.
+function resumirAcuerdosSemanal(plan, seq, semanas) {
+  const pond = ponderacionAcuerdos();
+  const porSemana = semanas.map((s) => ({ semana: s, ev: evaluarAcuerdos(plan, seq, s) }));
+  const filas = porSemana[0].ev.filas.map((f0) => {
+    const r = resumirFilaSemanal(f0.id, porSemana, "Depende de datos de líneas, mantenimiento o SUITE360 que no vienen en los archivos cargados.");
+    const ponderacion = r.medible ? Number(pond[f0.id]) || 0 : 0;
+    return {
+      id: f0.id,
+      texto: f0.texto,
+      impacto: f0.impacto,
+      medible: r.medible,
+      ponderacion,
+      cumplimiento: r.cumplimiento,
+      puntaje: r.medible ? (ponderacion * r.cumplimiento) / 100 : 0,
+      estado: r.estado,
+      medida: r.medida,
+      detalle: r.detalle,
+      semanas: r.semanas,
+    };
+  });
+  const medibles = filas.filter((f) => f.medible);
+  return {
+    filas,
+    medibles,
+    sinDatos: filas.filter((f) => !f.medible),
+    pondTotal: medibles.reduce((a, f) => a + f.ponderacion, 0),
+    puntajeTotal: medibles.reduce((a, f) => a + f.puntaje, 0),
+    score: scorePromedioSemanas(porSemana),
+    cumplidos: medibles.filter((f) => f.estado === "cumple").length,
+    parciales: medibles.filter((f) => f.estado === "parcial").length,
+    criticos: medibles.filter((f) => f.estado === "critico").length,
+    semana: `${semanas[0].corto} a ${semanas[semanas.length - 1].corto} (promedio semanal)`,
+    porSemana,
   };
 }
