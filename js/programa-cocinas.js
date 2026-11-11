@@ -534,7 +534,8 @@ function renderProgramaCocinas() {
   pcRenderCuerpo();
 }
 
-function pcCargarArchivo(file) {
+// fin(err): aviso para quien lo llamó (la tarjeta de «Datos de entrada»).
+function pcCargarArchivo(file, fin) {
   const est = document.getElementById("pcEstado");
   if (est) est.textContent = "Leyendo " + file.name + "…";
   const reader = new FileReader();
@@ -559,14 +560,18 @@ function pcCargarArchivo(file) {
       // Los cocimientos reales que todavía no aparecen en el Producto en
       // proceso cuentan como cerveza en proceso: el plan cambia con el archivo.
       if (typeof recompute === "function") recompute();
+      if (fin) fin(null);
+      document.dispatchEvent(new CustomEvent("tminus:datos"));
     } catch (err) {
       console.error(err);
       if (est) {
         est.textContent = "Error: " + err.message;
         est.classList.add("error");
       }
+      if (fin) fin(err);
     }
   };
+  reader.onerror = () => fin && fin(new Error("No se pudo leer el archivo."));
   reader.readAsArrayBuffer(file);
 }
 
@@ -1376,3 +1381,9 @@ window.addEventListener("resize", () => {
     else if (PCX !== PCX_EXCEL && PCX.D && PCX.F && vf && !vf.classList.contains("nav-hide")) pcRenderCuerpo();
   }, 250);
 });
+
+// El programa real guardado entra al plan desde que abre la página: los
+// cocimientos que el reporte de tanques todavía no trae cuentan como cerveza
+// en proceso. Antes solo se leía al abrir «Programa real» y el plan cambiaba
+// según qué pantalla se hubiera visitado.
+if (!PC) pcRecuperar();
