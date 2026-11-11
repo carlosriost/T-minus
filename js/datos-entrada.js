@@ -18,8 +18,15 @@
   const LS_META = "planArchivosMeta"; // localStorage: { instructivo, pp } → { nombre, cargado, resumen }
   const LS_ORIGEN = "planPaqueteOrigen"; // de qué paquete viene lo cargado en este navegador
   const FORMATO = "tminus-paquete/1";
-  // Lo que no viaja en el paquete: preferencias de pantalla de cada quien.
-  const NO_VIAJAN = ["planAcuerdosTab", "planAcuerdosSemana", "planTminusModo", "planVolumenHistorial", LS_ORIGEN];
+  // Lo que viaja en el paquete: solo claves de T-minus (el dominio
+  // carlosriost.github.io lo comparten otras aplicaciones). Las preferencias de
+  // pantalla de cada quien (pestañas, semana elegida, historial) no viajan.
+  const VIAJAN = [
+    "planCocinasI0", "planCocinasInventario", "planCocinasFactoresPP", "planCocinasLevadura", "planProgramaCocinasExcel",
+    "planFiltracion", "planArchivosMeta", "planAcuerdosPonderacion", "planAcuerdosLogistica", "planSlaPlanta",
+    "planUtilidades", "planSetpoints", "planModulacion", "planVsRealCocinas", "planTrazabilidad",
+    "planRecCalificaciones", "planRecOrdenarConCal", "planAsistente", "tminus.servicios.cfg", "tminus.cargabase.formulas",
+  ];
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -141,6 +148,7 @@
       $("datMsg-pc").classList.toggle("error", /^(Error|No se pudo)/.test(msg.pc));
     }
     renderResumen(E);
+    teclado();
     const rev = $("datosRevisionResumen");
     if (rev) rev.textContent = E.instructivo.ok ? `${E.instructivo.resumen} · qué leyó T-minus del instructivo y sus validaciones` : "Aparece al cargar el plan de envasado";
     const det = $("datosRevision");
@@ -257,6 +265,8 @@
       .catch((err) => {
         console.error(err);
         guardadoInstr = { estado: "error" };
+        // El plan anterior ya no vale: que no vuelva al abrir la página.
+        TMAlmacen.borrar(K_INSTR).catch(() => {});
         render();
       });
     render();
@@ -310,14 +320,13 @@
     return b.buffer;
   }
   function clavesQueViajan() {
-    const out = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k || NO_VIAJAN.includes(k)) continue;
-      if (window.SrvApp && k === SrvApp.claveLocal) continue; // los modelos van aparte
-      if (k.startsWith("plan") || k.startsWith("tminus.")) out.push(k);
-    }
-    return out;
+    return VIAJAN.filter((k) => {
+      try {
+        return localStorage.getItem(k) != null;
+      } catch (_) {
+        return false;
+      }
+    });
   }
   function descargar(texto, nombre) {
     const url = URL.createObjectURL(new Blob([texto], { type: "application/json" }));
@@ -387,7 +396,9 @@
         msgPaquete = "";
         return render();
       }
-      aplicarPaquete(p, file.name).catch((err) => {
+      Promise.resolve()
+        .then(() => aplicarPaquete(p, file.name))
+        .catch((err) => {
         console.error(err);
         msgPaquete = "No se pudo cargar el paquete: " + err.message;
         render();
@@ -399,39 +410,84 @@
     };
     rd.readAsText(file);
   }
+  // Se valida todo antes de tocar nada; si algo falla a mitad de camino se
+  // devuelve este navegador a como estaba.
   function aplicarPaquete(p, archivo) {
-    if (!window.TMAlmacen) return Promise.reject(new Error("este navegador no deja guardar datos (¿ventana de incógnito?)"));
-    const bytes = deBase64(p.instructivo.base64);
-    return TMAlmacen.escribir(K_INSTR, { nombre: p.instructivo.nombre, cargado: p.instructivo.cargado, bytes })
-      .then(() => {
-        if (!p.servicios || !window.SrvApp) return;
-        const B = Object.assign({}, p.servicios, { guardado_en: new Date().toISOString() });
-        return TMAlmacen.escribir(SrvApp.claveAlmacen, B).then(() => {
-          try {
-            localStorage.removeItem(SrvApp.claveLocal);
-          } catch (_) {}
-        });
-      })
-      .then(() => {
-        // Los ajustes del paquete reemplazan los de este navegador (menos las
-        // preferencias de pantalla de cada quien).
-        clavesQueViajan().forEach((k) => {
-          try {
-            localStorage.removeItem(k);
-          } catch (_) {}
-        });
-        Object.keys(p.ajustes || {}).forEach((k) => {
-          if (NO_VIAJAN.includes(k) || !(k.startsWith("plan") || k.startsWith("tminus."))) return;
-          try {
-            localStorage.setItem(k, p.ajustes[k]);
-          } catch (_) {}
-        });
-        escribirLS(LS_ORIGEN, { archivo, creado: p.creado, semanas: p.semanas || "", cargado: new Date().toISOString() });
-        sessionStorage.setItem("tminus.paqueteCargado", `Paquete cargado: ${archivo}. Todo queda guardado en este navegador.`);
-        location.reload();
+    if (!window.TMAlmacen) throw new Error("este navegador no deja guardar datos (¿ventana de incógnito?)");
+    if (!p.ajustes || typeof p.ajustes !== "object") throw new Error("el paquete no trae los ajustes del plan");
+    let bytes;
+    try {
+      bytes = deBase64(p.instructivo.base64);
+      parseWorkbook(XLSX.read(new Uint8Array(bytes), { type: "array", cellDates: true }));
+    } catch (err) {
+      throw new Error("el plan de envasado del paquete no se puede leer (" + err.message + ")");
+    }
+    const conSrv = !!(p.servicios && window.SrvApp);
+    const antes = {};
+    VIAJAN.concat([LS_ORIGEN]).forEach((k) => (antes[k] = localStorage.getItem(k)));
+    const devolverLS = () =>
+      Object.keys(antes).forEach((k) => {
+        try {
+          if (antes[k] == null) localStorage.removeItem(k);
+          else localStorage.setItem(k, antes[k]);
+        } catch (_) {}
       });
+    return Promise.all([TMAlmacen.leer(K_INSTR), conSrv ? TMAlmacen.leer(SrvApp.claveAlmacen) : null]).then(([instrAntes, srvAntes]) => {
+      const devolverIDB = () =>
+        Promise.all([
+          instrAntes ? TMAlmacen.escribir(K_INSTR, instrAntes) : TMAlmacen.borrar(K_INSTR),
+          conSrv ? (srvAntes ? TMAlmacen.escribir(SrvApp.claveAlmacen, srvAntes) : TMAlmacen.borrar(SrvApp.claveAlmacen)) : null,
+        ]).catch(() => {});
+      // 1) Ajustes (localStorage): cualquier error de espacio deshace todo.
+      try {
+        VIAJAN.forEach((k) => localStorage.removeItem(k));
+        Object.keys(p.ajustes).forEach((k) => {
+          if (VIAJAN.includes(k) && typeof p.ajustes[k] === "string") localStorage.setItem(k, p.ajustes[k]);
+        });
+        localStorage.setItem(LS_ORIGEN, JSON.stringify({ archivo, creado: p.creado, semanas: p.semanas || "", cargado: new Date().toISOString() }));
+      } catch (err) {
+        devolverLS();
+        throw new Error("no cupo en el almacenamiento de este navegador; no se cambió nada");
+      }
+      // 2) Modelos de servicios y plan de envasado (IndexedDB).
+      const B = conSrv ? Object.assign({}, p.servicios, { guardado_en: new Date().toISOString() }) : null;
+      return (conSrv ? TMAlmacen.escribir(SrvApp.claveAlmacen, B) : Promise.resolve())
+        .then(() => TMAlmacen.escribir(K_INSTR, { nombre: p.instructivo.nombre, cargado: p.instructivo.cargado, bytes }))
+        .then(
+          () => {
+            if (conSrv)
+              try {
+                localStorage.removeItem(SrvApp.claveLocal);
+              } catch (_) {}
+            sessionStorage.setItem("tminus.paqueteCargado", `Paquete cargado: ${archivo}. Todo queda guardado en este navegador.`);
+            location.reload();
+          },
+          (err) => {
+            devolverLS();
+            return devolverIDB().then(() => {
+              throw new Error("no se pudo guardar en este navegador (" + err.message + "); no se cambió nada");
+            });
+          },
+        );
+    });
   }
 
+  // Los botones de elegir archivo son <label>: con teclado se abren con Enter o espacio.
+  function teclado(raiz) {
+    (raiz || document).querySelectorAll("#view-datos label.btn[for]").forEach((l) => {
+      if (l.dataset.teclado) return;
+      l.dataset.teclado = "1";
+      l.tabIndex = 0;
+      l.setAttribute("role", "button");
+      l.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          const inp = document.getElementById(l.htmlFor);
+          if (inp) inp.click();
+        }
+      });
+    });
+  }
   document.addEventListener("tminus:datos", render);
   window.DatosEntrada = { render, registrar, instructivoCargado, nombre: (id) => (meta()[id] || {}).nombre || "" };
   restaurar();

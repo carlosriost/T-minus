@@ -430,7 +430,7 @@ function renderLogisticaEnvasado(cont) {
             <div class="acu-card-tit">Detalle de acuerdos de logística <small style="color:var(--muted);font-weight:400;">· ${escapeHtml(periodo)}</small></div>
             <div class="table-scroll mod-noclip"><table class="acu-tabla"><thead><tr><th>Acuerdo</th><th class="acu-c">Ponderación</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th><th class="acu-c">Estado</th></tr></thead>
             <tbody>${filasHtml}</tbody>
-            <tfoot><tr><td><b>Total medible</b></td><td class="acu-c"><b>${MOD_NF(ev.pondTotal)}%</b></td><td class="acu-c">—</td><td class="acu-c"><b>${MOD_NF(ev.puntajeTotal, 1)}</b></td><td class="acu-c"><b style="color:${col};">${score == null ? "—" : score + " / 100"}</b></td></tr></tfoot></table></div>
+            <tfoot><tr><td><b>${ev.porSemana ? "Total medible · score = promedio de los scores semanales" : "Total medible"}</b></td><td class="acu-c"><b>${MOD_NF(ev.pondTotal)}%</b></td><td class="acu-c">—</td><td class="acu-c"><b>${ev.porSemana ? "—" : MOD_NF(ev.puntajeTotal, 1)}</b></td><td class="acu-c"><b style="color:${col};">${score == null ? "—" : score + " / 100"}</b></td></tr></tfoot></table></div>
             <div class="log-umbrales">
               <label>Corrida de línea mínima <input type="number" class="acu-pond log-umbral" data-log-umbral="umbralLineaHL" min="0" step="1000" value="${c.umbralLineaHL}"> hL</label>
               <label>Cambios de formato máx. por semana <input type="number" class="acu-pond log-umbral" data-log-umbral="maxCambiosFormato" min="0" step="1" value="${c.maxCambiosFormato}"></label>

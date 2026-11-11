@@ -114,7 +114,7 @@ function semanasAcuerdos() {
     return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
   };
   const out = [];
-  for (let s = lunes[0]; s <= lunes[lunes.length - 1] && out.length < 12; s += SEM_MS) {
+  for (let s = lunes[0]; s <= lunes[lunes.length - 1] && out.length < 26; s += SEM_MS) {
     const n = numSemanaIso(s);
     out.push({ start: s, end: s + SEM_MS, num: n, corto: `S${n}`, label: `Semana ${n} · ${dd(s)} al ${dd(s + 6 * 86400000)}` });
   }
@@ -167,7 +167,7 @@ function semanaAcuerdosElegida(porSemana) {
 function selectorSemanasAcuerdos(porSemana) {
   if (!porSemana || !porSemana.length) return "";
   const sel = semanaAcuerdosElegida(porSemana);
-  const b = (v, txt, on, title) => `<button data-acu-sem="${v}" class="${on ? "active" : ""}"${title ? ` title="${escapeHtml(title)}"` : ""}>${txt}</button>`;
+  const b = (v, txt, on, title) => `<button data-acu-sem="${v}" class="${on ? "active" : ""}" aria-pressed="${on ? "true" : "false"}"${title ? ` title="${escapeHtml(title)}"` : ""}>${txt}</button>`;
   return `<div class="acu-semanas"><span>Periodo</span><div class="filtro-equipos" style="margin:0;">${b("todas", `Todas (${porSemana.length} semanas)`, !sel)}${porSemana
     .map((p) => b(p.semana.start, p.semana.corto, sel === p, p.semana.label))
     .join("")}</div><span class="acu-sem-lbl">${sel ? escapeHtml(sel.semana.label) : `Promedio de ${escapeHtml(porSemana[0].semana.corto)} a ${escapeHtml(porSemana[porSemana.length - 1].semana.corto)}`}</span></div>`;

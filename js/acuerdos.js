@@ -257,11 +257,12 @@ function evaluarAcuerdos(plan, seq, w) {
       // filtración del Gantt, en orden de tiempo, y cada bloque de Light cuenta
       // en la semana en que arranca.
       const tramos = typeof tramosFiltracion === "function" ? tramosFiltracion() : [];
-      let prev = false;
+      // Cada filtro por separado: dos filtros en paralelo no parten un bloque.
+      const prev = {};
       tramos.forEach((s) => {
         const esLight = /light/.test(normalizeText(s.marca || ""));
-        if (esLight && !prev && en(s.start)) bloques++;
-        prev = esLight;
+        if (esLight && !prev[s.filtro] && en(s.start)) bloques++;
+        prev[s.filtro] = esLight;
       });
     } else {
       const filas =

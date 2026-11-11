@@ -497,10 +497,12 @@ function renderReglas(seq) {
     '<th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th>' +
     '<th class="acu-c">Estado</th></tr></thead><tbody>' +
     filasHtml +
-    '</tbody><tfoot><tr><td><b>Total medible</b></td><td class="acu-c"><b>' +
+    '</tbody><tfoot><tr><td><b>' +
+    (ev.porSemana ? "Total medible · score = promedio de los scores semanales" : "Total medible") +
+    '</b></td><td class="acu-c"><b>' +
     nf(ev.pondTotal) +
     '%</b></td><td class="acu-c">—</td><td class="acu-c"><b>' +
-    nf(ev.puntajeTotal, 1) +
+    (ev.porSemana ? "—" : nf(ev.puntajeTotal, 1)) +
     '</b></td><td class="acu-c"><b style="color:' +
     colScore +
     ';">' +

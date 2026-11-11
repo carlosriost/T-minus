@@ -560,8 +560,6 @@ function pcCargarArchivo(file, fin) {
       // Los cocimientos reales que todavía no aparecen en el Producto en
       // proceso cuentan como cerveza en proceso: el plan cambia con el archivo.
       if (typeof recompute === "function") recompute();
-      if (fin) fin(null);
-      document.dispatchEvent(new CustomEvent("tminus:datos"));
     } catch (err) {
       console.error(err);
       if (est) {
@@ -569,7 +567,10 @@ function pcCargarArchivo(file, fin) {
         est.classList.add("error");
       }
       if (fin) fin(err);
+      return;
     }
+    if (fin) fin(null);
+    document.dispatchEvent(new CustomEvent("tminus:datos"));
   };
   reader.onerror = () => fin && fin(new Error("No se pudo leer el archivo."));
   reader.readAsArrayBuffer(file);

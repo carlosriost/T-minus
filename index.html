@@ -797,9 +797,11 @@
           var _origRender = window.render;
           window.render = function () {
             var r = _origRender.apply(this, arguments);
-            // Desde «Datos de entrada» se sigue cargando el resto de archivos: solo
-            // se repinta el Inicio si es la vista abierta.
-            if (currentView === "view-inicio") go("view-inicio");
+            // Desde «Datos de entrada» se sigue cargando el resto de archivos. Las
+            // demás vistas se vuelven a abrir: al abrir la página el plan guardado
+            // llega después de la primera pintada y una vista que pide plan
+            // quedaba en «Aún no hay datos».
+            if (currentView !== "view-datos") go(currentView, { keepMobileOpen: true });
             return r;
           };
         }
