@@ -366,3 +366,60 @@ function modTMinus(ms) {
   const mm = String(m % 60).padStart(2, "0");
   return `${neg ? "T+" : "T-"}${String(h).padStart(2, "0")}:${mm}`;
 }
+
+/* ------------------------------------------------ archivos de la misma semana
+   Cada archivo se carga por separado y queda guardado en el navegador, así
+   que es fácil cargar el plan de envasado nuevo y quedarse con el producto en
+   proceso (y su I0) o el Programa de cocinas de semanas pasadas. Los cálculos
+   no fallan, pero salen vacíos o raros. Esto solo compara fechas y avisa; no
+   cambia ningún dato. */
+const DIA_MS_FECHAS = 86400000;
+function avisosFechasDatos() {
+  const out = [];
+  if (typeof STATE === "undefined" || !STATE || !STATE.parsed) return out;
+  const f = (ms) => fmtDateTime(new Date(ms));
+  const dias = (ms) => Math.round(ms / DIA_MS_FECHAS);
+  let envIni = Infinity;
+  try {
+    bloquesProduccion().forEach((b) => {
+      if (b.hl > 0 && b.start) envIni = Math.min(envIni, b.start.getTime());
+    });
+  } catch (e) {
+    console.error(e);
+  }
+  const i0d = typeof getI0Date === "function" ? getI0Date() : null;
+  const i0 = i0d && !isNaN(i0d) ? i0d.getTime() : null;
+  if (i0 != null && isFinite(envIni)) {
+    if (envIni - i0 > 7 * DIA_MS_FECHAS)
+      out.push({
+        t: `El I0 (${f(i0)}) es ${dias(envIni - i0)} días anterior al plan de envasado, que empieza el ${f(envIni)}.`,
+        d: "El I0 sale de la foto del producto en proceso: parece que ese archivo es de otra semana. Cargue el producto en proceso de esta semana.",
+      });
+    else if (i0 - envIni > 10 * DIA_MS_FECHAS)
+      out.push({
+        t: `El plan de envasado empieza el ${f(envIni)}, ${dias(i0 - envIni)} días antes del I0 (${f(i0)}).`,
+        d: "Puede ser el instructivo de semanas pasadas. Cargue el de esta semana.",
+      });
+  }
+  const pc = typeof PC !== "undefined" && PC && Array.isArray(PC.filas) ? PC.filas : null;
+  if (pc) {
+    const ult = pc.reduce((m, x) => (x.tipo === "coc" && x.inicio != null && x.inicio > m ? x.inicio : m), -Infinity);
+    const coc = ((STATE.seq && STATE.seq.rows) || []).filter((r) => r.tipo === "cocimiento" && r.start);
+    const primero = coc.length ? Math.min(...coc.map((r) => r.start.getTime())) : null;
+    if (isFinite(ult) && primero != null && ult < primero)
+      out.push({
+        t: `El Programa de cocinas real llega hasta el ${f(ult)} y el plan T-minus empieza a cocinar el ${f(primero)}.`,
+        d: "No se cruzan, así que «Plan vs. real» no tiene nada que comparar. Cargue el Programa de cocinas de esta semana.",
+      });
+  }
+  return out;
+}
+
+function htmlAvisosFechas(boton) {
+  const av = avisosFechasDatos();
+  if (!av.length) return "";
+  const e = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return `<div class="tm-aviso-fechas" role="status"><b>Los archivos cargados no son de la misma semana</b><ul>${av
+    .map((a) => `<li>${e(a.t)} <small>${e(a.d)}</small></li>`)
+    .join("")}</ul>${boton ? `<button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button>` : ""}</div>`;
+}

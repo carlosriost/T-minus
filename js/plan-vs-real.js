@@ -500,6 +500,30 @@ function renderPlanVsReal() {
     ? `<div class="pvr-falta"><b>El Excel real no tiene cocimientos en esta ventana.</b> Cubre del ${escapeHtml(pvrFmt(rIni))} de ${new Date(rIni).getUTCFullYear()} al ${escapeHtml(pvrFmt(rFin))} de ${new Date(rFin).getUTCFullYear()}; la ventana va del ${escapeHtml(pvrFmt(PVR_F.desde))} al ${escapeHtml(pvrFmt(PVR_F.hasta))}. Revisa el I0 o carga el programa de Cocinas de estas fechas.</div>`
     : "";
 
+  // Sin cocimientos del plan en la ventana: no hay nada que comparar. En vez
+  // de tarjetas en cero y una línea de tiempo vacía, se explica por qué.
+  const sinPlan = !sinReal && !res.plan.length;
+  if (sinReal || sinPlan) {
+    const primero = src.cocF[0].start.getTime();
+    const esVentana = PVR_F.desde === PVR_F.ventana[0] && PVR_F.hasta === PVR_F.ventana[1];
+    const avisoSinPlan = sinPlan && !esVentana
+      ? `<div class="pvr-falta"><b>El plan T-minus no tiene cocimientos entre el ${escapeHtml(pvrFmt(PVR_F.desde))} y el ${escapeHtml(pvrFmt(PVR_F.hasta))}.</b> Su primer cocimiento es el ${escapeHtml(pvrFmt(primero))}. Amplía el rango o vuelve a «I0 → último cocimiento T-minus».</div>`
+      : sinPlan
+      ? `<div class="pvr-falta"><b>El plan T-minus no tiene cocimientos entre el ${escapeHtml(pvrFmt(PVR_F.desde))} y el ${escapeHtml(pvrFmt(PVR_F.hasta))}.</b> Su primer cocimiento es el ${escapeHtml(pvrFmt(primero))} y el Excel real llega hasta el ${escapeHtml(pvrFmt(rFin))}. Carga el Programa de cocinas de estas fechas, o revisa que el producto en proceso (I0) y el plan de envasado sean de esta semana.<button class="btn small" data-goto="view-datos">Ir a Datos de entrada →</button></div>`
+      : "";
+    cont.innerHTML = `
+    <div class="panel">
+      ${titulo(`T-minus: ${src.cocF.length} cocimientos desde el I0 · Real: ${escapeHtml(src.pc.archivo || "Excel")} (${realCoc.length.toLocaleString("es-CO")} cocimientos)`)}
+      <div class="panel-body">
+        ${typeof htmlAvisosFechas === "function" ? htmlAvisosFechas(false) : ""}
+        ${pvrHtmlFiltros(res)}
+        ${avisoSolape}${avisoSinPlan}
+      </div>
+    </div>`;
+    pvrConectar(res);
+    return;
+  }
+
   cont.innerHTML = `
     <div class="panel">
       ${titulo(`T-minus: ${src.cocF.length} cocimientos desde el I0 · Real: ${escapeHtml(src.pc.archivo || "Excel")} (${realCoc.length.toLocaleString("es-CO")} cocimientos)`)}

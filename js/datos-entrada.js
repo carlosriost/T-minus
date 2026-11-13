@@ -181,6 +181,7 @@
         ? "Quedan guardados en este navegador: al volver a abrir T-minus aparecen solos."
         : "Cargue los archivos abajo, o el paquete de la semana si se lo pasaron.";
     cont.innerHTML = `
+      ${typeof htmlAvisosFechas === "function" ? htmlAvisosFechas(false) : ""}
       <div class="dr-estado ${E.instructivo.ok ? "ok" : ""}">
         <span class="dr-ico" aria-hidden="true">${E.instructivo.ok ? "✓" : "!"}</span>
         <div><b>${esc(titulo)}</b><small>${sub}</small></div>

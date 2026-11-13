@@ -275,7 +275,7 @@
           ${faltaPlan ? `<div class="ini-hero-acc"><button class="btn primary" data-goto="view-datos">Cargar los archivos de la semana</button><small>¿Le pasaron el paquete de la semana? También se carga en «Datos de entrada».</small></div>` : ""}
         </div>
 
-        ${faltaPlan ? "" : `<div class="ini-grid ini-grid-2">${cardEnvasado()}${cardCocinas()}</div>${porSemana()}${eventosModulacion()}${atencion()}`}
+        ${faltaPlan ? "" : `${typeof htmlAvisosFechas === "function" ? htmlAvisosFechas(true) : ""}<div class="ini-grid ini-grid-2">${cardEnvasado()}${cardCocinas()}</div>${porSemana()}${eventosModulacion()}${atencion()}`}
 
         ${(() => {
           // La lista completa está en «Datos de entrada»; aquí solo lo que falta.
