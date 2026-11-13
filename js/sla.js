@@ -313,7 +313,7 @@ function evaluarSLA(w) {
         : a.n === 19
           ? "Pide el inventario de BBT por marca justo antes de cada filtración; T-minus todavía no lo calcula. Se sigue en el histórico del Excel."
           : a.n === 26
-            ? "Llena el Gantt de filtración (flujo, I0, tamaño de ciclo y secuencia) para medirlo."
+            ? "No hay plan de filtración para medirlo."
             : "Carga el plan de envasado (y la programación de cocinas) para medirlo.",
       histOk: ok,
       histNok: nok,

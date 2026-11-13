@@ -279,7 +279,7 @@ function evaluarAcuerdosLogistica(w) {
       detalle: e
         ? e.detalle
         : d.id === "L5"
-          ? "Llena el Gantt de filtración (flujo, I0 y secuencia) para medir este acuerdo."
+          ? "No hay plan de filtración para medir este acuerdo."
           : "Carga el plan de envasado para medir este acuerdo.",
     };
   });
@@ -304,7 +304,7 @@ function resumirLogisticaSemanal(semanas) {
   const cfg = configLogistica();
   const porSemana = semanas.map((s) => ({ semana: s, ev: evaluarAcuerdosLogistica(s) }));
   const filas = porSemana[0].ev.filas.map((f0) => {
-    const r = resumirFilaSemanal(f0.id, porSemana, f0.id === "L5" ? "Llena el Gantt de filtración (flujo, I0 y secuencia) para medir este acuerdo." : "Carga el plan de envasado para medir este acuerdo.");
+    const r = resumirFilaSemanal(f0.id, porSemana, f0.id === "L5" ? "No hay plan de filtración para medir este acuerdo." : "Carga el plan de envasado para medir este acuerdo.");
     const ponderacion = r.medible ? Number(cfg.pond[f0.id]) || 0 : 0;
     return { ...f0, medible: r.medible, ponderacion, cumplimiento: r.cumplimiento, puntaje: r.medible ? (ponderacion * r.cumplimiento) / 100 : 0, estado: r.estado, medida: r.medida, detalle: r.detalle, semanas: r.semanas };
   });

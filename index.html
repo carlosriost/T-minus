@@ -185,7 +185,7 @@
                     <tr><td>Datos de entrada</td><td>Donde se cargan los archivos de la semana y el paquete para otro computador.</td></tr>
                     <tr><td>Recomendaciones</td><td>Lo que T-minus encontró para mejorar el plan, con prioridad y a dónde ir para revisarlo. No cambia nada solo: decide el planeador.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Envasado</td></tr>
-                    <tr><td>Gantt de envasado</td><td>La línea de tiempo de L5, L7, L8 y L9: qué se envasa, los cambios de formato y las paradas. Abajo, la filtración y cuándo parar o arrancar lavadora, agua y paster (modulación).</td></tr>
+                    <tr><td>Gantt de envasado</td><td>La línea de tiempo de L5, L7, L8 y L9: qué se envasa, los cambios de formato y las paradas. Abajo, cuándo parar o arrancar lavadora, agua y paster (modulación) y los setpoints.</td></tr>
                     <tr><td>T-minus por línea</td><td>La cuenta regresiva de cada línea: qué está haciendo, cuánto le falta para terminar la corrida, para el próximo cambio y para la próxima parada.</td></tr>
                     <tr><td>Acuerdos de servicio</td><td>La calificación, semana a semana, de los acuerdos del SLA de planta, de logística y de elaboración (por ejemplo, no arrancar las cocinas con malta o no pasar el tope de Pony por semana).</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Cocinas</td></tr>
@@ -665,7 +665,9 @@
         var VIEWS = {
           "view-datos": { show: ["view-datos"] },
           "view-gantt-plan": {
-            show: ["view-gantt-envasado", "view-gantt-filtracion"],
+            // La filtración y los BBT en el tiempo se quitaron de la vista: se
+            // siguen calculando si hay plan de filtración guardado.
+            show: ["view-gantt-envasado"],
           },
           "view-gantt-cocina": {
             show: ["results"],

@@ -288,7 +288,7 @@ function evaluarAcuerdos(plan, seq, w) {
       bloques === 0
         ? w
           ? "No arranca ningún bloque de Águila Light en la semana."
-          : "No hay filtración de Águila Light en el Gantt de filtración."
+          : "No hay filtración de Águila Light en el plan de filtración."
         : bloques === 1
           ? "Un solo bloque de Águila Light, como pide el acuerdo."
           : `${bloques} bloques separados de Águila Light: deberían ir en uno solo.`,
