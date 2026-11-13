@@ -277,12 +277,13 @@
 
         ${faltaPlan ? "" : `<div class="ini-grid ini-grid-2">${cardEnvasado()}${cardCocinas()}</div>${porSemana()}${eventosModulacion()}${atencion()}`}
 
-        <section class="ini-sec">
-          <div class="ini-sec-h"><h2>Archivos</h2><span>${arch.filter((a) => a.ok).length} de ${arch.length} cargados · se procesan en este navegador</span></div>
-          <ul class="ini-files">${arch
-            .map((a) => `<li class="${a.ok ? "ok" : ""}"><span class="ini-dot" aria-hidden="true">${a.ok ? "✓" : ""}</span><div><b>${esc(a.t)}${a.req ? ' <em class="ini-req">obligatorio</em>' : ""}</b><small>${esc(a.d)}</small></div><button class="btn small" data-goto="${a.ir}">${a.ok ? "Ver" : "Cargar"}</button></li>`)
-            .join("")}</ul>
-        </section>
+        ${(() => {
+          // La lista completa está en «Datos de entrada»; aquí solo lo que falta.
+          const faltan = arch.filter((a) => !a.ok);
+          return faltaPlan || !faltan.length
+            ? ""
+            : `<p class="ini-faltan">Sin cargar: ${faltan.map((a) => esc(a.t)).join(", ")} · <button class="ini-link" data-goto="view-datos">Ir a Datos de entrada <span aria-hidden="true">→</span></button></p>`;
+        })()}
       </div>`;
   }
 

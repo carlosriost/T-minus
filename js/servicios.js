@@ -17,10 +17,12 @@
   };
   const COLOR_LINEA = { L5: "var(--srv-l5)", L7: "var(--srv-l7)", L8: "var(--srv-l8)", L9: "var(--srv-l9)", AUX: "var(--srv-aux)" };
   const ESC_N = { baja: "Baja", media: "Media", alta: "Alta" };
+  // Pestañas de uso diario a la vista; las técnicas quedan en «Más».
+  const VISTAS_MAS = ["simulador", "planificacion", "historico", "evaluacion", "calidad", "formulas", "guia"];
   const VISTAS = [
     ["reporte", "Reporte"],
-    ["general", "General (planta)"],
-    ["plan", "Plan de envasado"],
+    ["general", "Planta"],
+    ["plan", "Envasado"],
     ["elaboracion", "Elaboración"],
     ["industriales", "Servicios industriales"],
     ["simulador", "Simulador"],
@@ -229,24 +231,23 @@
     const hab = B ? Object.values(B.modelos).filter((m) => m.habilitado).length : 0;
     cont.innerHTML = `
       <div class="panel srv">
-        <div class="panel-head"><h3>Consumos de servicios</h3><span class="sub">Vapor, electricidad y agua esperados en envasado y elaboración, a partir del volumen</span></div>
+        <div class="panel-head"><h3>Consumos de servicios</h3><span class="sub">${
+          B
+            ? `${esc(B.fuente.archivo || "Excel")} · datos hasta ${esc(B.fuente.ultima_fecha)} · ${hab} de ${Object.keys(B.modelos).length} modelos habilitados`
+            : "Vapor, electricidad y agua del plan"
+        }</span></div>
         <div class="panel-body">
           <div class="srv-barra">
-            <div class="srv-estado">${
-              B
-                ? `<span class="srv-chip ok">Modelos de ${esc(B.fuente.archivo || "Excel")}</span><span class="srv-chip">Datos ${esc(B.fuente.primera_fecha)} → ${esc(B.fuente.ultima_fecha)}</span><span class="srv-chip">${hab} de ${Object.keys(B.modelos).length} habilitados</span>${chipGuardado()}`
-                : '<span class="srv-chip">Sin modelos todavía</span>'
-            }</div>
+            <div class="srv-estado">${B ? chipGuardado() : ""}</div>
             <div class="srv-acciones">
-              <label class="btn ${B ? "small" : "primary"}" for="srvExcel">${B ? "Actualizar con otro Excel" : "Cargar Indicadores de servicios (.xlsm)"}</label>
+              ${B ? '<button class="btn small" data-goto="view-datos">Cambiar archivo</button>' : '<label class="btn primary" for="srvExcel">Cargar Indicadores de servicios (.xlsm)</label>'}
               <input type="file" id="srvExcel" accept=".xlsm,.xlsx" hidden />
-              ${B ? '<button class="btn small" id="srvXls">Exportar resultados (Excel)</button><details class="srv-mas"><summary class="btn small">Más</summary><div><button class="btn small" id="srvJson">Exportar paquete de modelos (.json)</button><label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden /></div></details>' : '<label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden />'}
-              ${B ? (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') : ""}
+              ${B ? '<details class="srv-mas"><summary class="btn small">Exportar y más</summary><div><button class="btn small" id="srvXls">Exportar resultados (Excel)</button><button class="btn small" id="srvJson">Exportar paquete de modelos (.json)</button><label class="btn small" for="srvJsonIn">Cargar paquete de modelos (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden />' + (S.confirmarLimpiar ? '<span class="srv-confirma">¿Borrar los modelos guardados en este navegador? <button class="btn small danger" id="srvLimpiarSi">Sí, borrar</button><button class="btn small" id="srvLimpiarNo">Cancelar</button></span>' : '<button class="btn small" id="srvLimpiar" title="Borra de este navegador los modelos, la carga base y las predicciones guardadas">Limpiar datos</button>') + "</div></details>" : '<label class="btn small" for="srvJsonIn">Cargar paquete (.json)</label><input type="file" id="srvJsonIn" accept=".json" hidden />'}
             </div>
           </div>
           ${B && (B.motor || 0) < MOTOR ? '<div class="srv-aviso info"><b>Hay mejoras en la lectura de los datos</b> (revisión de datos: versión contador del agua de planta, ajustes a mano grandes fuera del entrenamiento, secador de febrero, lecturas faltantes). Estos modelos se guardaron con una versión anterior: vuelve a cargar el Excel de Indicadores de servicios para aplicarlas.</div>' : ""}
-          ${S.estado ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
-          ${B ? `<nav class="srv-tabs" role="tablist">${VISTAS.map(([k, t]) => `<button role="tab" class="srv-tab ${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}</nav><div id="srvCuerpo"></div>` : vacio()}
+          ${S.estado && !/^Listo/.test(S.estado) ? `<p class="srv-msg ${/^Error|No se pudo/.test(S.estado) ? "bad" : ""}">${esc(S.estado)}</p>` : ""}
+          ${B ? `<nav class="srv-tabs" role="tablist">${VISTAS.filter(([k]) => !VISTAS_MAS.includes(k)).map(([k, t]) => `<button role="tab" class="srv-tab ${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}<details class="srv-tab-mas"><summary class="srv-tab ${VISTAS_MAS.includes(S.vista) ? "on" : ""}">${VISTAS_MAS.includes(S.vista) ? "Más: " + esc(VISTAS.find(([k]) => k === S.vista)[1]) : "Más"} ▾</summary><div class="srv-tab-menu">${VISTAS.filter(([k]) => VISTAS_MAS.includes(k)).map(([k, t]) => `<button role="tab" class="${S.vista === k ? "on" : ""}" data-srv-vista="${k}">${t}</button>`).join("")}</div></details></nav><div id="srvCuerpo"></div>` : vacio()}
         </div>
       </div>`;
     $("#srvExcel").onchange = (e) => e.target.files[0] && leerExcel(e.target.files[0]);
@@ -421,7 +422,7 @@
       </details>
       <div class="srv-card"><div class="srv-card-t">Para seguir</div>
         <div class="rep-sig">
-          <button type="button" class="btn" data-ir="general">General (planta): cuánto y dónde</button>
+          <button type="button" class="btn" data-ir="general">Planta: cuánto y dónde</button>
           <button type="button" class="btn" data-ir-vista="view-carga-base">Carga base: días parados y avisos</button>
           <button type="button" class="btn" data-ir="industriales">Servicios industriales: sistema por sistema</button>
           <button type="button" class="btn" data-ir="guia">Guía de uso</button>
@@ -452,20 +453,20 @@
       <h4>1. Cargar los datos (una vez por actualización)</h4>
       <ol>
         <li><b>Datos de entrada:</b> plan de envasado (producto en proceso) e instructivo; si hay, programa de cocinas y plan de filtración.</li>
-        <li><b>Consumos de servicios → Actualizar con otro Excel:</b> el Excel «Indicadores de servicios». Los modelos se entrenan en el navegador (1 a 2 minutos) y quedan guardados en este equipo hasta cargar otro Excel o pulsar «Limpiar datos».</li>
+        <li><b>Datos de entrada → Indicadores de servicios:</b> el Excel «Indicadores de servicios». Los modelos se entrenan en el navegador (unos segundos) y quedan guardados en este equipo hasta cargar otro Excel o pulsar «Limpiar datos» (en «Exportar y más»).</li>
       </ol>
       <h4>2. Orden de lectura</h4>
       <ol>
         <li><b>Reporte:</b> % de arranques y paradas bien, foco del T-minus (arranques o paradas), área foco y área de aprendizaje, servicio foco y servicio mejor controlado. Elija la semana o el mes.</li>
         <li><b>Pareto del Reporte:</b> en qué línea y en qué tipo de evento se va el consumo de más, servicio por servicio.</li>
-        <li><b>General (planta):</b> cuánto consume la planta, cómo se reparte entre envasado, elaboración y el resto, y la proyección del plan.</li>
+        <li><b>Planta:</b> cuánto consume la planta, cómo se reparte entre envasado, elaboración y el resto, y la proyección del plan.</li>
         <li><b>Detalle:</b> Plan de envasado (línea por línea y día por día), Carga base (días parados y avisos), Elaboración, Servicios industriales (sistema por sistema), Histórico.</li>
       </ol>
       <h4>3. Qué responde cada pestaña</h4>
       <dl>
         <dt>Reporte</dt><dd>¿Cómo está el T-minus? Arranques y paradas, focos y pareto del periodo.</dd>
-        <dt>General (planta)</dt><dd>Vapor, agua y electricidad de toda la planta: últimos 30 días, reparto por área, proyección del plan y mensual.</dd>
-        <dt>Plan de envasado</dt><dd>Consumo esperado por línea y día para el plan cargado, con su margen.</dd>
+        <dt>Planta</dt><dd>Vapor, agua y electricidad de toda la planta: últimos 30 días, reparto por área, proyección del plan y mensual.</dd>
+        <dt>Envasado</dt><dd>Consumo esperado por línea y día para el plan cargado, con su margen.</dd>
         <dt>Elaboración</dt><dd>Cocinas, cavas y filtración según lo que se va a cocinar y filtrar.</dd>
         <dt>Servicios industriales</dt><dd>Refrigeración, aire, CO2, calderas, sistema de agua: peso, proyección, indicadores por hL, precisión, fijo y variable, calidad de datos.</dd>
         <dt>Simulador y Planificación manual</dt><dd>Qué pasa si una línea envasa X hL, o un plan escrito a mano.</dd>
@@ -618,14 +619,15 @@
       </div>
       <div class="srv-card"><div class="srv-card-t">Consumo de la planta <small class="muted">· datos reales del Excel, ${esc(I.desde)} a ${esc(I.hasta)}</small></div>
         <div class="srv-kpis">${kpis}</div>
+        <details class="srv-det"><summary class="srv-card-t">Consumo diario real (últimos 180 días) y de dónde sale cada dato</summary>
         <div class="srv-grid3">${G_SERV.filter((s) => G[s]).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} diario <small class="muted">· ${uG(s)}/día · línea = promedio de 7 días</small></div><div class="chart" id="gHist-${s}"></div><p class="muted" style="margin:2px 0 0">Gráfica: últimos ${Math.min(180, G[s].P.h.length)} días. ${G[s].P.h.length} días con dato en total${G[s].P.excluidos ? `, ${G[s].P.excluidos} excluidos por calidad (ver «Servicios industriales → Histórico»)` : ""}.</p></div>`).join("")}</div>
         <p class="muted">Agua de la planta = entrada EEPPMM menos lo que va fuera de planta (columna T de DATOS SEMANA). Vapor = gran total de «Contadores vapor». Electricidad = ISAGEN 44 kV menos perímetros. ${v === "contador" ? "Versión contador: sin los números sumados a mano en las fórmulas; en agua, con los contadores de elaboración, envase y perímetros en vez de la «lectura» EEPPMM." : "Versión oficial: la celda del Excel tal cual, con sus ajustes a mano. En agua, la «lectura» EEPPMM lleva un número escrito a mano casi todos los días (de mayo a octubre, 7 a 10 % del agua de planta): use «Contador sin ajustes» para ver lo medido."}</p>
+        </details>
       </div>
       ${planHtml}
       <div class="srv-card"><div class="srv-card-t">Cómo se reparte <small class="muted">· días con dato de planta, envasado y elaboración a la vez</small></div>
-        <div class="srv-grid3">${G_SERV.filter((s) => G[s] && G[s].meses.size).map((s) => `<div><div class="srv-card-t" style="margin-top:6px">${PLANTA[s].nombre} por mes <small class="muted">· promedio diario, ${uG(s)}/día</small></div><div class="chart" id="gRep-${s}"></div>${gLeyenda(s)}</div>`).join("")}</div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Servicio</th><th class="n">Días</th><th class="n">Planta (promedio)</th><th class="n">Envasado</th><th class="n">Elaboración</th><th class="n">Resto</th><th class="n">Días con envasado + elaboración &gt; planta</th></tr></thead><tbody>${repTabla}</tbody></table></div>
-        <p class="muted">Envasado = suma de las líneas (vapor: columnas de MAESTRA; electricidad: medidores de línea más auxiliares; agua: DATOS SEMANA). Elaboración = cocinas + cavas + filtración (vapor y agua) o cocinas + filtración (electricidad). El resto incluye refrigeración, aire comprimido, CO2, calderas, periféricos y lo que no tiene medidor propio; en agua (versión oficial) es sobre todo el número escrito a mano en la «lectura» EEPPMM. Cada parte viene de contadores distintos, así que algunos días no cuadran con el total; en el mes se compensan.</p>
+        <details class="srv-det"><summary class="srv-card-t">Cómo se arma el reparto</summary><p class="muted">Envasado = suma de las líneas (vapor: columnas de MAESTRA; electricidad: medidores de línea más auxiliares; agua: DATOS SEMANA). Elaboración = cocinas + cavas + filtración (vapor y agua) o cocinas + filtración (electricidad). El resto incluye refrigeración, aire comprimido, CO2, calderas, periféricos y lo que no tiene medidor propio; en agua (versión oficial) es sobre todo el número escrito a mano en la «lectura» EEPPMM. Cada parte viene de contadores distintos, así que algunos días no cuadran con el total; en el mes se compensan.</p></details>
       </div>
       <div class="srv-card"><div class="srv-card-t">Histórico mensual <small class="muted">· promedio diario de los días con dato y consumo por hL envasado</small></div>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Mes</th><th class="n">hL envasados/día</th>${G_SERV.map((s) => (G[s] ? `<th class="n">${PLANTA[s].nombre} (${uG(s)}/día)</th><th class="n">${espU[s]}</th>` : "")).join("")}</tr></thead><tbody>${mesTabla}</tbody></table></div>
@@ -646,14 +648,6 @@
           { color: PLANTA[s].color, ancho: 2.2, puntos: media7.filter((p) => p.x >= f0) },
         ],
       });
-      if (x.meses.size) {
-        const ms = [...x.meses.keys()].sort();
-        const val = (k) => ms.map((m) => { const q = x.meses.get(m); return g(s, Math.max(0, k === "resto" ? q.planta - q.env - q.elab : q[k]) / q.n); });
-        SrvCharts.apiladas(document.getElementById("gRep-" + s), {
-          W: 420, H: 230, maxEtiquetas: 12, cats: ms.map((m) => (new Set(ms.map((q) => q.slice(0, 4))).size > 1 ? etqMes(m) : MES[Number(m.slice(5, 7)) - 1])), yLab: `${uG(s)}/día`, aria: `Reparto mensual del ${PLANTA[s].nombre.toLowerCase()}`,
-          series: [["env", "envasado"], ["elab", "elaboración"], ["resto", "resto"]].map(([k, t]) => ({ color: G_COL[k](s), valores: val(k), tips: ms.map((m) => { const q = x.meses.get(m), vv = k === "resto" ? q.planta - q.env - q.elab : q[k]; return `${etqMes(m)} · ${t}: ${nf(g(s, vv / q.n), dG(s))} ${uG(s)}/día (${pct(vv / q.planta, 0)} de la planta, ${q.n} días)`; }) })),
-        });
-      }
       if (dias) {
         SrvCharts.apiladas(document.getElementById("gPlan-" + s), {
           W: 420, H: 230, maxEtiquetas: 7, cats: dias.map((d) => d.fecha.slice(8, 10) + "/" + d.fecha.slice(5, 7)), yLab: `${uG(s)}/día`, aria: `${PLANTA[s].nombre} de la planta por día del plan`,
@@ -969,7 +963,8 @@
       ? "No hay plan de cocinas cargado."
       : `El plan de cocinas de T-minus tiene ${n0(c.n_cocimientos)} cocimientos: ${n0(c.mosto_hl)} hL de mosto, que son ${n0(c.cerveza_hl)} hL de cerveza con el factor de dilución de cada mosto (así cuenta el Excel los hL cocinados). Eso es ${pctR(c.r_plan)} de lo que envasa el plan (${sem}).` + (c.rel ? ` En el histórico la planta cocinó ${pctR(c.rel.r)} de lo que envasó (${n0(c.rel.coc_dia)} hL/día, ${esc(c.rel.desde)} a ${esc(c.rel.hasta)}).` : "") + (c.lejos ? " El plan de cocinas solo trae los cocimientos que necesita el plan de envasado cargado: los de las semanas siguientes todavía no están, por eso la cocción planeada cae hacia el final y la elaboración saldría baja." : "") + (c.sin_factor ? ` ${c.sin_factor} cocimiento(s) sin mosto reconocido no se cuentan.` : "") + (c.fuera_plan ? ` ${c.fuera_plan} cocimiento(s) terminan fuera de los días del plan de envasado y no se cuentan.` : "") + (c.sin_relacion ? " No hay relación histórica cocinado/envasado (vuelve a cargar el Excel): se usa el plan de cocinas." : "");
     const usada = c.modo === "habitual" ? `Se usa la <b>cocción habitual</b>: lo envasado en el plan × ${c.rel ? SrvDatos.numEs(c.rel.r, 2) : "—"}, parejo por día (${n0(c.coc_ritmo)} hL/día).` : "Se usa el <b>plan de cocinas</b> (en hL de cerveza).";
-    return `<div class="srv-aviso ${c.lejos && c.modo === "plan" ? "warn" : "info"} srv-coccion"><div>${txt} ${usada}</div>
+    // Una línea con la cocción usada; el porqué queda plegado.
+    return `<div class="srv-aviso ${c.lejos && c.modo === "plan" ? "warn" : "info"} srv-coccion"><div>${usada}<details class="srv-det srv-det-in"><summary>Por qué</summary><p>${txt}</p></details></div>
       <div class="srv-campo"><label>Cocción para proyectar</label><div class="srv-seg">${[["auto", "Automática"], ["plan", "Plan de cocinas"], ["habitual", "Habitual (según envasado)"]].map(([k, t]) => `<button type="button" data-coccion="${k}" class="${S.coccion === k ? "on" : ""}">${t}</button>`).join("")}</div></div></div>`;
   }
   function avisoFiltracion(pp) {
@@ -1061,7 +1056,7 @@
         <div class="srv-campo"><label>Día de producción</label><div class="srv-seg">${[[22, "22:00 a 22:00"], [6, "06:00 a 06:00"], [0, "00:00 a 24:00"]].map(([x, t]) => `<button type="button" data-corte="${x}" class="${S.corte === x ? "on" : ""}">${t}</button>`).join("")}</div></div>
       </div>
       ${planHtml}
-      <div class="srv-card"><div class="srv-card-t">Calculadora de un día</div>
+      <details class="srv-card srv-det"${ev.coc || ev.fil || ev.env ? " open" : ""}><summary class="srv-card-t">Calculadora de un día</summary>
         <form class="srv-form" id="srvFElab">
           <div class="srv-campo"><label for="srvEcoc">hL cocinados</label><input type="number" id="srvEcoc" min="0" step="any" value="${esc(P.coc)}"></div>
           <div class="srv-campo"><label for="srvEfil">hL filtrados</label><input type="number" id="srvEfil" min="0" step="any" value="${esc(P.fil)}"></div>
@@ -1070,22 +1065,15 @@
         </form>
         <p class="muted srv-tipicos">Por defecto, el promedio diario de ${esc(E.desde)} a ${esc(E.hasta)}. Por debajo del 5 % de la media del área se usa su carga base medida.</p>
         <div class="srv-elab-res">${P_SERV.map(tabla).join("")}</div><div class="srv-elab-planta">${tablaPlanta()}</div>
-      </div>
-      <div class="srv-card"><div class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${prec[0] ? prec[0].n_test : "—"} días, que no se usaron para elegir</small></div>
+      </details>
+      <details class="srv-card srv-det"><summary class="srv-card-t">Qué tan certera es la proyección <small class="muted">· prueba final: últimos ${prec[0] ? prec[0].n_test : "—"} días, que no se usaron para elegir</small></summary>
         <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Área</th><th>Servicio</th><th>Variable que mejor lo explica</th><th>Modelo</th><th class="n">Error diario</th><th class="n">Error semanal</th><th class="n">Cobertura 90 %</th><th>Calidad</th></tr></thead><tbody>${prec
           .map((m) => `<tr><td>${esc(m.area)}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}${m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
           .join("")}${precP
           .map((m) => `<tr class="srv-total"><td>Planta completa</td><td>${esc(PLANTA[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td>${m.familia === "media" ? "ninguna (consumo fijo)" : esc(SrvElab.NOMBRE_DRIVER[m.drivers])}</td><td title="${esc(m.formula || m.modelo)}">${esc(NOMBRE_MODELO[m.familia] || m.familia)}${m.cols && m.cols.length > 1 ? " múltiple" : ""}${m.politica === "reciente" ? ' <small class="muted" title="Entrenado solo con los últimos 120 días: mejoró el error de validación al menos 3 %">· últimos 120 días</small>' : ""}</td><td class="n">${pct(m.test.WAPE)}</td><td class="n">${pct(m.test_semanal.WAPE)}</td><td class="n">${pct(m.cobertura, 0)}</td><td><span class="srv-chip ${/Alta|Media/.test(m.calidad) ? "ok" : /Sin relación/.test(m.calidad) ? "warn" : "bad"}">${esc(m.calidad)}</span></td></tr>`)
           .join("")}</tbody></table></div>
         <p class="muted">Error = WAPE (suma de errores sobre consumo real). Se compararon hL cocinados, filtrados y envasados, solos y combinados, con siete tipos de modelo y validación temporal; queda el más simple dentro del 3 % del mejor. En electricidad casi todo es carga fija: el error es bajo porque el consumo cambia poco.</p>
-      </div>
-      <div class="srv-card"><div class="srv-card-t">Carga base <small class="muted">· consumo con la producción del área por debajo del 5 % de su media</small></div>
-        <div class="srv-tabla-wrap"><table class="srv-tabla"><thead><tr><th>Área</th><th>Servicio</th><th class="n">Días</th><th class="n">Carga base (mediana)</th><th class="n">Rango</th><th class="n">Fijo con el área operando</th><th class="n">Promedio con producción</th><th class="n">Base / promedio</th></tr></thead><tbody>${Object.values(E.modelos)
-          .filter((m) => m.carga_base && m.carga_base.n && m.serie !== "vapor_cyf_medido")
-          .map((m) => `<tr><td>${esc(m.area)}${m.naturales[0] === "coc" && m.area !== "Cocinas" ? ' <small class="muted">(días sin cocinar)</small>' : ""}</td><td>${esc(SERV[m.servicio].nombre)}${m.variante ? ` <small class="muted">(${esc(m.variante)})</small>` : ""}</td><td class="n">${m.carga_base.n}</td><td class="n">${nf(m.carga_base.mediana)} ${m.unidad}</td><td class="n">${nf(m.carga_base.min)} a ${nf(m.carga_base.max)}</td><td class="n">${m.fijo_operando != null && m.area !== "Elaboración" && m.area !== "Cavas" ? nf(m.fijo_operando) + " " + m.unidad : "—"}</td><td class="n">${nf(m.media_valida)} ${m.unidad}</td><td class="n">${m.media_valida ? pct(m.carga_base.mediana / m.media_valida, 0) : "—"}</td></tr>`)
-          .join("")}</tbody></table></div>
-        <p class="muted">«Fijo con el área operando» es el corte de la recta con producción cero: lo que se gasta por estar en marcha. La carga base es lo que queda con el área parada. Con 2 días o menos, la cifra es orientativa.</p>
-      </div>
+      </details>
       ${auditoriaElab(E)}`;
     el.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => { ev.variante = b.dataset.ev; vElab(); SrvCharts.conectarTips(el); }));
     el.querySelectorAll("[data-corte]").forEach((b) => (b.onclick = () => { S.corte = Number(b.dataset.corte); guardarCfg(); vElab(); SrvCharts.conectarTips(el); }));

@@ -351,15 +351,9 @@ function pfRenderCuerpo() {
       <div class="acu-card"><div class="acu-card-tit">Días de cargue a envasado <small class="pc-sub">· por mosto, rango elegido</small></div><div id="pfDias"></div></div>
     </div>
     ${D.escenario === "atras" ? `<div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Plan pasado vs. lo que pasó <small class="pc-sub">· cocimientos antes del I0 actual: lo que pedía el instructivo vs. el Programa de Cocinas real y el Producto en proceso</small></div><div id="pfPasado"></div></div>` : ""}
-    <div class="acu-card" style="margin-top:14px;">
-      <div class="acu-card-tit">Todos los cocimientos y eventos del rango (${vis.length.toLocaleString("es-CO")})</div>
-      <div id="pcTabla"></div>
-    </div>
-    <div class="vol-grid3">
-      <div class="acu-card pc-span2"><div class="acu-card-tit">Tiempos entre cargues al cambiar de marca <small class="pc-sub">· mediana del plan T-minus en el rango${typeof PC !== "undefined" && PC ? " vs. el Programa de Cocinas real (mismo rango)" : ""}</small></div><div id="pfMatriz"></div></div>
-      <div class="acu-card"><div class="acu-card-tit">Tiempos por mosto <small class="pc-sub">· catálogo de T-minus</small></div><div id="pfCiclo"></div></div>
-    </div>
-    <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Cuadre del plan <small class="pc-sub">· envasado del instructivo desde el I0${D.escenario === "atras" ? " del escenario" : ""} = inventario + cocimientos + no alcanzable</small></div><div id="pfCuadre"></div></div>`;
+    ${pliegue("pf-filas", `Todos los cocimientos y eventos del rango (${vis.length.toLocaleString("es-CO")})`, '<div id="pcTabla"></div>')}
+    ${pliegue("pf-tiempos", "Tiempos entre cargues al cambiar de marca", '<div id="pfMatriz"></div>', `mediana del plan T-minus en el rango${typeof PC !== "undefined" && PC ? " vs. el Programa de Cocinas real" : ""} · los tiempos por mosto están en Parámetros de planta`)}
+    ${pliegue("pf-cuadre", "Cuadre del plan", '<div id="pfCuadre"></div>', `envasado del instructivo desde el I0${D.escenario === "atras" ? " del escenario" : ""} = inventario + cocimientos + no alcanzable`)}`;
 
   pcConectarFiltros();
   pcDibujarSemanas();

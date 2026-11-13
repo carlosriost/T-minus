@@ -351,20 +351,12 @@ function renderTrazabilidad() {
           </div>
           <div class="acu-card" id="trzDetalle">${trzHtmlDetalle(d)}</div>
         </div>
-        <div class="vol-grid3 pvr-grid2">
-          <div class="acu-card">
-            <div class="acu-card-tit">¿Cuándo sube la demanda de frío? <small class="pc-sub">· para prender compresores a tiempo · estimado desde el plan de cocinas y la asignación de tanques</small></div>
-            ${trzHtmlSubidas(d, t)}
-          </div>
-          <div class="acu-card">
-            <div class="acu-card-tit">Pesos del índice de frío <small class="pc-sub">· ajustables por Utilities · se guardan en este navegador</small></div>
-            ${trzHtmlPesos(cfg)}
-          </div>
-        </div>
         <div class="acu-card" style="margin-top:14px;">
-          <div class="acu-card-tit">Cada cocimiento y su destino (${d.cocs.length})</div>
-          ${trzHtmlTabla(d, t)}
+          <div class="acu-card-tit">¿Cuándo sube la demanda de frío? <small class="pc-sub">· para prender compresores a tiempo · estimado desde el plan de cocinas y la asignación de tanques</small></div>
+          ${trzHtmlSubidas(d, t)}
+          ${pliegue("trz-pesos", "Pesos del índice de frío", trzHtmlPesos(cfg), "ajustables por Utilities · se guardan en este navegador")}
         </div>
+        ${pliegue("trz-tabla", `Cada cocimiento y su destino (${d.cocs.length})`, trzHtmlTabla(d, t))}
       </div>
     </div>`;
   trzDibujarLinea(d, t);

@@ -413,7 +413,7 @@
     const mo = new Map(o.historico.map((h) => [h.f, h])), mes = new Map();
     for (const h of m.historico) { const x = mo.get(h.f); if (!x || x.c == null || h.c == null) continue; const k = h.f.slice(0, 7), v = mes.get(k) || [0, 0]; v[0] += x.c - h.c; v[1] += x.c; mes.set(k, v); }
     const tx = [...mes].sort().map(([k, v]) => `${MES[Number(k.slice(5, 7)) - 1]} ${pct(v[0] / v[1], 1, true)}`).join(", ");
-    return `<li><b>Agua de planta:</b> la «lectura EEPPMM» (AGUA SERV-PERI CL) no es un contador: es la del día anterior más los contadores de elaboración (CH), envase (CK) y perímetros (AN) más un número escrito a mano casi todos los días (+100 a +600 m³), y 48 días la lectura está escrita entera; desde el 02/10 la fórmula deja de sumar los perímetros. Lo que eso pone por encima de los contadores, como parte del agua de planta: ${tx}. Ese agua escrita a mano es casi todo el «resto» del agua en la pestaña General. La versión «Contador sin ajustes» usa los tres contadores.</li>`;
+    return `<li><b>Agua de planta:</b> la «lectura EEPPMM» (AGUA SERV-PERI CL) no es un contador: es la del día anterior más los contadores de elaboración (CH), envase (CK) y perímetros (AN) más un número escrito a mano casi todos los días (+100 a +600 m³), y 48 días la lectura está escrita entera; desde el 02/10 la fórmula deja de sumar los perímetros. Lo que eso pone por encima de los contadores, como parte del agua de planta: ${tx}. Ese agua escrita a mano es casi todo el «resto» del agua en la pestaña Planta. La versión «Contador sin ajustes» usa los tres contadores.</li>`;
   }
 
   /* ------------------------------------------------------------ calidad de datos */

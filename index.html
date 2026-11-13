@@ -6,7 +6,7 @@
     <title>T-minus</title>
     <meta name="description" content="T-minus · planeación de envasado, cocinas y servicios" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=20261111a">
+    <link rel="stylesheet" href="style.css?v=20261113a">
   </head>
   <body>
     <header>
@@ -62,7 +62,6 @@
               <button class="sb-item" data-view="view-gantt-cocina"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 22h11.6a2 2 0 0 0 1.7-3.5L14 9V3"/><path d="M7 15h10"/></svg></span><span class="sb-txt">Gantt de cocina</span></button>
               <button class="sb-item" data-view="view-tanques"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4.42 0 8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5c0-1.66 3.58-3 8-3z"/><path d="M20 5c0 1.66-3.58 3-8 3s-8-1.34-8-3"/></svg></span><span class="sb-txt">Asignación de tanques</span></button>
               <button class="sb-item" data-view="view-conflictos"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><span class="sb-txt">Conflictos de capacidad</span></button>
-              <button class="sb-item" data-view="view-reglas"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><path d="m9 11 3 3L22 4"/></svg></span><span class="sb-txt">Reglas y recomendaciones</span></button>
               <button class="sb-item" data-view="view-sin-homologar"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="sb-txt">Sin homologar</span></button>
             </div>
           </div>
@@ -188,7 +187,7 @@
                     <tr class="gt-grupo"><td colspan="2">Envasado</td></tr>
                     <tr><td>Gantt de envasado</td><td>La línea de tiempo de L5, L7, L8 y L9: qué se envasa, los cambios de formato y las paradas. Abajo, la filtración y cuándo parar o arrancar lavadora, agua y paster (modulación).</td></tr>
                     <tr><td>T-minus por línea</td><td>La cuenta regresiva de cada línea: qué está haciendo, cuánto le falta para terminar la corrida, para el próximo cambio y para la próxima parada.</td></tr>
-                    <tr><td>Acuerdos de servicio</td><td>La calificación, semana a semana, de los acuerdos del SLA de planta y de logística (por ejemplo, no arrancar las cocinas con malta o no pasar el tope de Pony por semana).</td></tr>
+                    <tr><td>Acuerdos de servicio</td><td>La calificación, semana a semana, de los acuerdos del SLA de planta, de logística y de elaboración (por ejemplo, no arrancar las cocinas con malta o no pasar el tope de Pony por semana).</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Cocinas</td></tr>
                     <tr><td>Plan de cocinas</td><td>Los cocimientos que propone T-minus, con las mismas gráficas del Excel de Elaboración.</td></tr>
                     <tr><td>Programa real (Excel)</td><td>Lo que Elaboración cocinó de verdad (sale del «Programa_Cocinas»).</td></tr>
@@ -196,7 +195,7 @@
                     <tr><td>Del cocimiento al envasado</td><td>A qué línea y a qué producto va cada cocimiento, y en qué momentos sube la demanda de frío.</td></tr>
                     <tr><td>Detalle de programación</td><td>Las tablas de trabajo: orden de cocimientos y aseos, Gantt de cocina, tanque asignado a cada cocimiento, falta de tanques y marcas del instructivo que T-minus no reconoce.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Servicios</td></tr>
-                    <tr><td>Consumos de servicios</td><td>Vapor, agua y electricidad: si las líneas arrancan y paran bien, cuánto va a gastar la planta con el plan y las fórmulas para otros tableros.</td></tr>
+                    <tr><td>Consumos de servicios</td><td>Vapor, agua y electricidad: si las líneas arrancan y paran bien (Reporte) y cuánto va a gastar el plan en la planta, el envasado, la elaboración y los servicios industriales. En «Más» quedan las pestañas técnicas: modelos, calidad de datos, fórmulas y simulador.</td></tr>
                     <tr><td>Carga base</td><td>Cuánto se gasta con las áreas paradas, y si los kWh de cada línea cuadran con las fórmulas de la planta.</td></tr>
                     <tr><td>CIP A/B/C</td><td>Qué tanques gastan menos agua en cada aseo. T-minus llena primero los que gastan menos.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Configuración</td></tr>
@@ -593,45 +592,45 @@
 
     <!-- script.js dividido en módulos por área. Se cargan en este orden
          exacto (equivale byte a byte al script.js original concatenado). -->
-    <script src="js/utils.js?v=20261111a"></script>
-    <script src="js/parse.js?v=20261111a"></script>
-    <script src="js/catalog.js?v=20261111a"></script>
-    <script src="js/engine.js?v=20261111a"></script>
-    <script src="js/acuerdos.js?v=20261111a"></script>
-    <script src="js/render-core.js?v=20261111a"></script>
-    <script src="js/gantt.js?v=20261111a"></script>
-    <script src="js/utilidades.js?v=20261111a"></script>
-    <script src="js/render-tables.js?v=20261111a"></script>
-    <script src="js/modulos-comun.js?v=20261111a"></script>
-    <script src="js/volumen.js?v=20261111a"></script>
-    <script src="js/tminus.js?v=20261111a"></script>
-    <script src="js/logistica.js?v=20261111a"></script>
-    <script src="js/sla.js?v=20261111a"></script>
-    <script src="js/cip.js?v=20261111a"></script>
-    <script src="js/recomendaciones.js?v=20261111a"></script>
-    <script src="js/programa-cocinas.js?v=20261111a"></script>
-    <script src="js/programa-feria.js?v=20261111a"></script>
-    <script src="js/programa-debio.js?v=20261111a"></script>
-    <script src="js/setpoints.js?v=20261111a"></script>
-    <script src="js/modulacion.js?v=20261111a"></script>
-    <script src="js/plan-vs-real.js?v=20261111a"></script>
-    <script src="js/trazabilidad.js?v=20261111a"></script>
-    <script src="js/almacen.js?v=20261111a"></script>
-    <script src="js/servicios-datos.js?v=20261111a"></script>
-    <script src="js/servicios-modelos.js?v=20261111a"></script>
-    <script src="js/servicios-prediccion.js?v=20261111a"></script>
-    <script src="js/servicios-reporte.js?v=20261111a"></script>
-    <script src="js/servicios-elaboracion.js?v=20261111a"></script>
-    <script src="js/servicios-industriales.js?v=20261111a"></script>
-    <script src="js/servicios-graficas.js?v=20261111a"></script>
-    <script src="js/servicios.js?v=20261111a"></script>
-    <script src="js/servicios-industriales-ui.js?v=20261111a"></script>
-    <script src="js/servicios-carga-base.js?v=20261111a"></script>
-    <script src="js/inicio.js?v=20261111a"></script>
-    <script src="js/asistente-datos.js?v=20261111a"></script>
-    <script src="js/asistente.js?v=20261111a"></script>
-    <script src="js/ui.js?v=20261111a"></script>
-    <script src="js/datos-entrada.js?v=20261111a"></script>
+    <script src="js/utils.js?v=20261113a"></script>
+    <script src="js/parse.js?v=20261113a"></script>
+    <script src="js/catalog.js?v=20261113a"></script>
+    <script src="js/engine.js?v=20261113a"></script>
+    <script src="js/acuerdos.js?v=20261113a"></script>
+    <script src="js/render-core.js?v=20261113a"></script>
+    <script src="js/gantt.js?v=20261113a"></script>
+    <script src="js/utilidades.js?v=20261113a"></script>
+    <script src="js/render-tables.js?v=20261113a"></script>
+    <script src="js/modulos-comun.js?v=20261113a"></script>
+    <script src="js/volumen.js?v=20261113a"></script>
+    <script src="js/tminus.js?v=20261113a"></script>
+    <script src="js/logistica.js?v=20261113a"></script>
+    <script src="js/sla.js?v=20261113a"></script>
+    <script src="js/cip.js?v=20261113a"></script>
+    <script src="js/recomendaciones.js?v=20261113a"></script>
+    <script src="js/programa-cocinas.js?v=20261113a"></script>
+    <script src="js/programa-feria.js?v=20261113a"></script>
+    <script src="js/programa-debio.js?v=20261113a"></script>
+    <script src="js/setpoints.js?v=20261113a"></script>
+    <script src="js/modulacion.js?v=20261113a"></script>
+    <script src="js/plan-vs-real.js?v=20261113a"></script>
+    <script src="js/trazabilidad.js?v=20261113a"></script>
+    <script src="js/almacen.js?v=20261113a"></script>
+    <script src="js/servicios-datos.js?v=20261113a"></script>
+    <script src="js/servicios-modelos.js?v=20261113a"></script>
+    <script src="js/servicios-prediccion.js?v=20261113a"></script>
+    <script src="js/servicios-reporte.js?v=20261113a"></script>
+    <script src="js/servicios-elaboracion.js?v=20261113a"></script>
+    <script src="js/servicios-industriales.js?v=20261113a"></script>
+    <script src="js/servicios-graficas.js?v=20261113a"></script>
+    <script src="js/servicios.js?v=20261113a"></script>
+    <script src="js/servicios-industriales-ui.js?v=20261113a"></script>
+    <script src="js/servicios-carga-base.js?v=20261113a"></script>
+    <script src="js/inicio.js?v=20261113a"></script>
+    <script src="js/asistente-datos.js?v=20261113a"></script>
+    <script src="js/asistente.js?v=20261113a"></script>
+    <script src="js/ui.js?v=20261113a"></script>
+    <script src="js/datos-entrada.js?v=20261113a"></script>
     <script>
       /* =====================================================================
          Navegación por menú lateral con íconos.
@@ -833,7 +832,11 @@
         // --- Botones "ir a" dentro del contenido (p. ej. aviso sin datos) ---
         document.addEventListener("click", function (e) {
           var t = e.target.closest("[data-goto]");
-          if (t) go(t.getAttribute("data-goto"));
+          if (!t) return;
+          // «vista#pestaña»: abre los acuerdos de servicio en la pestaña indicada.
+          var g = t.getAttribute("data-goto").split("#");
+          if (g[1] && window.setAcuerdosTab) window.setAcuerdosTab(g[1]);
+          go(g[0]);
         });
 
         // --- Colapsar / expandir barra (escritorio) ---

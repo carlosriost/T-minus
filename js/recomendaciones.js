@@ -90,18 +90,18 @@ function recomendacionesPlan() {
   const acuerdos = [];
   if (typeof evaluarAcuerdos === "function" && plan) {
     const ev = evaluarAcuerdos(plan, seq);
-    ev.medibles.forEach((f) => acuerdos.push({ ...f, set: "Elaboración", ir: "view-reglas", nombre: acuerdoTitulo(f.texto) }));
+    ev.medibles.forEach((f) => acuerdos.push({ ...f, set: "Elaboración", ir: "view-logistica#ela", nombre: acuerdoTitulo(f.texto) }));
   }
   if (typeof evaluarAcuerdosLogistica === "function") {
     const ev = evaluarAcuerdosLogistica();
-    ev.medibles.forEach((f) => acuerdos.push({ ...f, set: "Logística", ir: "view-logistica", nombre: f.texto }));
+    ev.medibles.forEach((f) => acuerdos.push({ ...f, set: "Logística", ir: "view-logistica#log", nombre: f.texto }));
   }
   if (typeof evaluarSLA === "function") {
     // Los SLA que repiten un acuerdo de Elaboración no se duplican.
     evaluarSLA()
       .medibles.filter((f) => !(typeof SLA_A_REGLA !== "undefined" && SLA_A_REGLA[f.n]))
       .forEach((f) =>
-        acuerdos.push({ ...f, set: "SLA Planta", ir: "view-logistica", nombre: `SLA ${f.n}: ${f.texto}`, ponderacion: 100, puntaje: f.cumplimiento }),
+        acuerdos.push({ ...f, set: "SLA Planta", ir: "view-logistica#sla", nombre: `SLA ${f.n}: ${f.texto}`, ponderacion: 100, puntaje: f.cumplimiento }),
       );
   }
   acuerdos
@@ -435,6 +435,7 @@ function renderRecomendacionesPlan() {
           </div>
           <div>
             <div class="acu-card"><div class="acu-card-tit">Hallazgos por área</div>${areas.length ? modBarras(areas, "") : '<p class="empty-note">Sin hallazgos.</p>'}</div>
+            ${pliegue("rec-cal", "Calificaciones y cómo se generan", `
             <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Calificaciones <small class="pc-sub">· ${nCal} en total${promCal != null ? ` · promedio ${MOD_NF(promCal, 1)} ★` : ""} · ${calificadasAhora} de ${recs.length} de este plan</small></div>
               ${htmlReglas}
               <label class="rec-orden"><input type="checkbox" data-rec-orden ${REC_ORDENAR_CON_CAL ? "checked" : ""}> Dentro de cada prioridad, mostrar primero los tipos mejor calificados en planes anteriores</label>
@@ -449,6 +450,7 @@ function renderRecomendacionesPlan() {
             <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Cómo se generan</div>
               <p class="acu-nota" style="margin-top:0;">Cada recomendación sale de una regla sobre los datos cargados (secuencia de cocina, asignación de tanques, acuerdos de Elaboración y Logística, CIP A/B/C y Utilidades) y dice de dónde viene. No cambian el plan: «Revisar» lleva a la pantalla donde se ve el detalle. El score del plan es el promedio de los scores de Elaboración y Logística.</p>
             </div>
+            `, `${nCal} calificación(es)`)}
           </div>
         </div>
       </div>

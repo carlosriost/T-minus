@@ -295,10 +295,13 @@ function acuerdoTitulo(texto) {
   return t.length > 78 ? t.slice(0, 76) + "…" : t;
 }
 
-function renderReglas(seq) {
-  const cont = document.getElementById("acuerdosDash");
+// contArg: la pestaña «Elaboración» de Acuerdos de servicio.
+function renderReglas(seq, contArg) {
+  const cont = contArg || document.getElementById("acuerdosDash");
   if (!cont) return;
-  const ev = evaluarAcuerdos(STATE && STATE.plan, seq);
+  const evTodas = evaluarAcuerdos(STATE && STATE.plan, seq);
+  const selSem = typeof semanaAcuerdosElegida === "function" ? semanaAcuerdosElegida(evTodas.porSemana) : null;
+  const ev = selSem ? selSem.ev : evTodas;
   const nf = (x, d) =>
     Number(x).toLocaleString("es-CO", {
       minimumFractionDigits: d || 0,
@@ -487,11 +490,28 @@ function renderReglas(seq) {
     })
     .join("");
 
+  const cabSemanas =
+    evTodas.porSemana && typeof selectorSemanasAcuerdos === "function"
+      ? selectorSemanasAcuerdos(evTodas.porSemana)
+      : "";
+  const matriz =
+    evTodas.porSemana && typeof matrizSemanalAcuerdos === "function"
+      ? matrizSemanalAcuerdos(
+          evTodas.filas.map((f) => ({ id: f.id, rotulo: f.id, corto: acuerdoTitulo(f.texto), texto: f.texto })),
+          evTodas.porSemana,
+        )
+      : "";
   cont.innerHTML =
+    cabSemanas +
     '<div class="acu-kpis">' +
     kpis +
+    "</div>" +
+    matriz +
+    "<div>" +
     '</div><div class="acu-grid"><div class="acu-card">' +
-    '<div class="acu-card-tit">Detalle de acuerdos de servicio</div>' +
+    '<div class="acu-card-tit">Detalle de acuerdos de Elaboración <small style="color:var(--muted);font-weight:400;">· ' +
+    (selSem ? selSem.semana.label : evTodas.porSemana ? "promedio de las semanas" : "plan cargado") +
+    "</small></div>" +
     '<div class="table-scroll"><table class="acu-tabla"><thead><tr>' +
     '<th>Acuerdo</th><th class="acu-c">Ponderación</th>' +
     '<th class="acu-c">Cumplimiento</th><th class="acu-c">Puntaje</th>' +
@@ -508,20 +528,16 @@ function renderReglas(seq) {
     ';">' +
     (score == null ? "—" : score + " / 100") +
     "</b></td></tr></tfoot></table></div></div><div>" +
-    '<div class="acu-card"><div class="acu-card-tit">Score global</div>' +
-    '<div class="acu-donut-wrap">' +
-    anillo +
-    '<div class="acu-legs">' +
-    reparto +
-    '</div></div><div class="acu-nota">El score se calcula sobre la ponderación de los ' +
+    '<div class="acu-card">' +
+    '<div class="acu-card-tit">Hallazgos clave</div>' +
+    (hallazgos || '<p class="empty-note">Sin acuerdos medibles todavía.</p>') +
+    '<div class="acu-nota">El score se calcula sobre la ponderación de los ' +
     nMed +
     " acuerdos que sí se pueden medir con los archivos cargados. Los " +
     ev.sinDatos.length +
-    " restantes no lo penalizan.</div></div>" +
-    '<div class="acu-card" style="margin-top:14px;">' +
-    '<div class="acu-card-tit">Hallazgos clave</div>' +
-    (hallazgos || '<p class="empty-note">Sin acuerdos medibles todavía.</p>') +
+    " restantes no lo penalizan.</div>" +
     "</div></div></div>";
+  if (typeof conectarSelectorSemanas === "function") conectarSelectorSemanas(cont, () => renderReglas(seq, contArg));
 
   // Ponderación editable: recalcula el score y la guarda.
   cont.querySelectorAll(".acu-pond").forEach((inp) => {
@@ -531,7 +547,7 @@ function renderReglas(seq) {
       const v = Number(inp.value);
       p[inp.dataset.acu] = isFinite(v) && v >= 0 ? v : 0;
       guardarPonderacionAcuerdos(p);
-      renderReglas(seq);
+      renderReglas(seq, contArg);
     });
   });
 }

@@ -75,6 +75,27 @@ function semanaIdxDe(ms, semanas) {
   return semanas.length - 1;
 }
 
+/* ---- Pliegues: secciones de consulta cerradas por defecto ----
+   Una tabla larga o una configuración va en <details data-pliegue="id">; si el
+   usuario la abre, sigue abierta cuando la pantalla se vuelve a pintar. */
+window.TM_ABIERTOS = window.TM_ABIERTOS || {};
+document.addEventListener(
+  "toggle",
+  (e) => {
+    const d = e.target;
+    if (d && d.dataset && d.dataset.pliegue) TM_ABIERTOS[d.dataset.pliegue] = d.open;
+  },
+  true,
+);
+// Detalles largos en tablas: se ven en dos líneas y se abren con un clic.
+document.addEventListener("click", (e) => {
+  const d = e.target.closest && e.target.closest(".acu-tabla td div.acu-det");
+  if (d) d.classList.toggle("acu-det-abierto");
+});
+function pliegue(id, titulo, cuerpo, extra) {
+  return `<details class="tm-pliegue" data-pliegue="${id}"${TM_ABIERTOS[id] ? " open" : ""}><summary>${titulo}${extra ? ` <small>${extra}</small>` : ""}</summary><div class="tm-pliegue-cuerpo">${cuerpo}</div></details>`;
+}
+
 /* ---- Semanas de los acuerdos de servicio ----
    Los acuerdos se califican por semana, como en el registro OK/NOK del SLA
    Planta: lunes a domingo, con el día de planeación que arranca a las 22:00
@@ -192,6 +213,10 @@ function matrizSemanalAcuerdos(filas, porSemana) {
   const cab = porSemana
     .map((p) => `<th class="acu-c${on(p)}"><button class="acu-sem-th" data-acu-sem="${p.semana.start}" title="${escapeHtml(p.semana.label)}">${p.semana.corto}</button></th>`)
     .join("");
+  // Los acuerdos que no se pueden medir en ninguna semana no ocupan filas.
+  const todas = filas.length;
+  filas = filas.filter((f) => porSemana.some((p) => (p.ev.filas.find((y) => y.id === f.id) || {}).medible));
+  const ocultos = todas - filas.length;
   const cuerpo = filas
     .map((f) => {
       const celdas = porSemana
@@ -214,7 +239,7 @@ function matrizSemanalAcuerdos(filas, porSemana) {
   return `<div class="acu-card"><div class="acu-card-tit">Semana a semana <small style="color:var(--muted);font-weight:400;">· % de cumplimiento de cada acuerdo en cada semana; pase el mouse por una celda para ver el detalle o haga clic en una semana para abrirla</small></div>
     <div class="table-scroll mod-noclip"><table class="acu-tabla acu-matriz"><thead><tr><th>Acuerdo</th>${cab}</tr></thead><tbody>${cuerpo}</tbody>
     <tfoot><tr><td><b>Score de la semana</b></td>${pie}</tr></tfoot></table></div>
-    <div class="acu-nota">Semanas de lunes a domingo; el día arranca a las 22:00, como en el instructivo. Cada cocimiento, corrida, parada, maduración o ciclo de filtración cuenta entero en la semana en que empieza. «—»: ese acuerdo no tiene qué medir esa semana y no pesa en su score.</div></div>`;
+    <div class="acu-nota">Semanas de lunes a domingo; el día arranca a las 22:00, como en el instructivo. Cada cocimiento, corrida, parada, maduración o ciclo de filtración cuenta entero en la semana en que empieza. «—»: ese acuerdo no tiene qué medir esa semana y no pesa en su score.${ocultos ? ` ${ocultos} acuerdo(s) sin datos para medir en ninguna semana no se muestran aquí; están en el detalle.` : ""}</div></div>`;
 }
 // Tramos del Gantt de filtración (filtrado, cambios de ciclo y CIP) de todos
 // los filtros, en orden de tiempo. Vacío si no se llenó el Gantt.

@@ -353,7 +353,7 @@ function htmlPanelSetpoints(mergedByTrain) {
         </span>
         ${sp.coc.aviso ? `<span class="sp-aviso">⚠ ${escapeHtml(sp.coc.aviso)}</span>` : `<span class="util-note">Usando: ${escapeHtml(sp.coc.nombre)}</span>`}
       </div>
-      <div class="sp-grid">
+      ${pliegue("sp-tabla", `Cambios de setpoint (${lista.length}) y valores definidos por Utilities`, `<div class="sp-grid">
         <div class="acu-card">
           <div class="acu-card-tit">Cambios de setpoint (${lista.length})
             <span class="sp-filtros">
@@ -372,7 +372,7 @@ function htmlPanelSetpoints(mergedByTrain) {
           <p class="acu-nota">DPA y NST no cuentan como línea envasando. Los aseos de cocina cuentan como cocina parada. PET = algún tren envasando un SKU PET. Los valores se guardan en este navegador.</p>
           <button type="button" class="btn small" data-sp-reset>Restaurar valores</button>
         </div>
-      </div>
+      </div>`, "lista por turno, CSV e impresión")}
     </div>`;
 }
 

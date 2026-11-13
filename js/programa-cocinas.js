@@ -609,7 +609,7 @@ function pcRenderCuerpo() {
       <div id="pcSemanas" class="pc-chart"></div>
       ${pcLeyenda()}
     </div>
-    ${typeof pdHtmlCard === "function" ? pdHtmlCard() : ""}
+    ${typeof pdHtmlCard === "function" ? pliegue("pc-debio", "Programa que debió darse para envasar estas semanas", pdHtmlCard(), "plan T-minus hacia atrás desde lo envasado") : ""}
     <div class="pc-layout">
       <div class="acu-card">
         <div class="acu-card-tit">Mapa de cargues <small class="pc-sub">· una fila por día, de 00:00 a 24:00 · cada punto es un cargue · lo rayado es un aseo o paro · clic para ver todo el detalle${PCX.F.verDebio ? ' · <span class="pd-ley pd-ley-rombo"></span> rombo = cargue que debió darse (plan T-minus hacia atrás)' : ""}</small></div>
@@ -624,18 +624,17 @@ function pcRenderCuerpo() {
       <div class="acu-card"><div class="acu-card-tit">Equipos destino <small class="pc-sub">· clic para filtrar</small></div><div id="pcEquipos"></div></div>
       <div class="acu-card"><div class="acu-card-tit">Eficiencia por semana <small class="pc-sub">· promedio SAP e INSQL, rango elegido</small></div><div id="pcEf" class="pc-chart"></div></div>
     </div>
-    <div class="acu-card" style="margin-top:14px;">
-      <div class="acu-card-tit">Todas las filas del rango (${vis.length.toLocaleString("es-CO")}) <small class="pc-sub">· con cada anotación del Excel</small></div>
-      <div id="pcTabla"></div>
-    </div>
-    <div class="vol-grid3">
+    ${pliegue("pc-filas", `Todas las filas del rango (${vis.length.toLocaleString("es-CO")})`, '<div id="pcTabla"></div>', "con cada anotación del Excel")}
+    ${pliegue(
+      "pc-tiempos",
+      "Tiempos del Excel: cambios de marca, ciclo por mosto y liberación de equipos",
+      `<div class="vol-grid3">
       <div class="acu-card pc-span2"><div class="acu-card-tit">Tiempos entre cargues al cambiar de marca <small class="pc-sub">· hoja TIEMPOS (estándar) vs. lo real en el rango (mediana)</small></div><div id="pcMatriz"></div></div>
       <div class="acu-card"><div class="acu-card-tit">Tiempos de ciclo por mosto <small class="pc-sub">· hoja TIEMPOS</small></div><div id="pcTiempos"></div></div>
     </div>
-    <div class="vol-grid3">
-      <div class="acu-card pc-span2"><div class="acu-card-tit">Liberación de equipos en aseos de cocina <small class="pc-sub">· hoja LIBERACION EQUIPOS</small></div><div id="pcLiberacion"></div></div>
-      <div class="acu-card"><div class="acu-card-tit">Hojas del archivo</div><div id="pcHojas"></div></div>
-    </div>`;
+    <div class="acu-card"><div class="acu-card-tit">Liberación de equipos en aseos de cocina <small class="pc-sub">· hoja LIBERACION EQUIPOS</small></div><div id="pcLiberacion"></div></div>`,
+      "hojas TIEMPOS y LIBERACION EQUIPOS",
+    )}`;
 
   pcConectarFiltros();
   pcDibujarSemanas();

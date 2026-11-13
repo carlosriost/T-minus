@@ -527,18 +527,15 @@ function renderPlanVsReal() {
           <div class="acu-card-tit">Discrepancias (${res.discrepancias.length}) <small class="pc-sub">· de la más grave a la menos grave</small></div>
           ${pvrHtmlDiscrepancias(res)}
         </div>
-        <div class="vol-grid3 pvr-grid2">
+        ${pliegue("pvr-sec", "Secuencia de bloques y reglas de negocio lado a lado", `<div class="vol-grid3 pvr-grid2">
           <div class="acu-card"><div class="acu-card-tit">Secuencia de bloques <small class="pc-sub">· todas las marcas de la ventana</small></div>${pvrHtmlSecuencia(res)}</div>
           <div class="acu-card"><div class="acu-card-tit">Reglas de negocio lado a lado <small class="pc-sub">· medidas igual en los dos planes</small></div>${pvrHtmlReglas(res)}</div>
-        </div>
+        </div>`)}
         <div class="acu-card" style="margin-top:14px;">
           <div class="acu-card-tit">Cobertura del envasado <small class="pc-sub">· ¿cada bloque de envasado tiene su cerveza lista a tiempo? cargue a más tardar = primer envasado − maduración − fermentación − cocina (catálogo)</small></div>
           ${pvrHtmlCobertura(res)}
         </div>
-        <div class="acu-card" style="margin-top:14px;">
-          <div class="acu-card-tit">Todas las parejas (${res.parejas.length}) <small class="pc-sub">· n-ésimo cocimiento de cada mosto en el plan contra el n-ésimo en el real</small></div>
-          ${pvrHtmlParejas(res)}
-        </div>
+        ${pliegue("pvr-parejas", `Todas las parejas (${res.parejas.length})`, pvrHtmlParejas(res), "n-ésimo cocimiento de cada mosto en el plan contra el n-ésimo en el real")}
       </div>
     </div>`;
   pvrDibujarLinea(res);

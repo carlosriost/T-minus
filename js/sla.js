@@ -435,20 +435,10 @@ function renderSLAPlanta(cont) {
       <div class="acu-card-tit">Acuerdos SLA Planta en verde (${ev.filas.length}) <small style="color:var(--muted);font-weight:400;">· ${escapeHtml(periodo)} · histórico tal como viene en el Excel</small></div>
       <div class="table-scroll mod-noclip"><table class="acu-tabla sla-tabla"><thead><tr><th class="acu-c">#</th><th>Acuerdo</th><th>Área</th><th class="acu-c">Indicador</th><th class="acu-c">Peso</th><th class="acu-c">Cumplimiento</th><th class="acu-c">Estado</th><th>Histórico S1→S${SLA_PLANTA_VERDES.reduce((m, a) => Math.max(m, a.historico.length), 0)}</th></tr></thead><tbody>${filas}</tbody></table></div>
     </div>
-    <div class="vol-grid3">
-      <div class="acu-card"><div class="acu-card-tit">${selSem ? escapeHtml(selSem.semana.label) : "Promedio de las semanas"}</div>${modAnillo(
-        [
-          { label: "Cumple", valor: ev.cumplidos, color: "var(--ok)" },
-          { label: "Parcial", valor: ev.parciales, color: "var(--warn)" },
-          { label: "Crítico", valor: ev.criticos, color: "var(--danger)" },
-          { label: "Sin datos", valor: ev.sinDatos.length, color: "var(--muted)" },
-        ].filter((p) => p.valor > 0),
-        score == null ? "—" : String(score),
-        "/ 100",
-      )}</div>
+    ${pliegue("sla-mas", "Histórico del Excel por indicador y cómo se mide", `<div class="vol-grid3">
       <div class="acu-card"><div class="acu-card-tit">Histórico del Excel por indicador</div>${barrasInd}</div>
       <div class="acu-card"><div class="acu-card-tit">Cómo se mide</div><p class="acu-nota" style="margin-top:0;">Solo entran los acuerdos con la celda en verde en «SLA Planta». Los acuerdos 9, 10, 11, 12, 13 y 19 son los mismos de Elaboración y reutilizan esa medición. Cada acuerdo se califica por semana (lunes a domingo, día desde las 22:00), como en el registro OK/NOK del Excel. Score de una semana = promedio ponderado por «Peso» de los acuerdos que se pudieron medir esa semana; el del periodo es el promedio de los scores semanales. Un acuerdo sin datos no castiga el score.</p></div>
-    </div>`;
+    </div>`)}`;
   conectarSelectorSemanas(cont, renderAcuerdosLogistica);
   cont.querySelectorAll("[data-sla-peso]").forEach((inp) =>
     inp.addEventListener("change", () => {

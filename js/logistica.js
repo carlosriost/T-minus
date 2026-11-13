@@ -339,6 +339,14 @@ let ACUERDOS_TAB = (() => {
 
 // Vista «Acuerdos de servicio»: dos pestañas —los acuerdos en verde del SLA
 // Planta y los de logística de envasado— cada una con su propio score.
+window.setAcuerdosTab = (t) => {
+  if (!["sla", "log", "ela"].includes(t)) return;
+  ACUERDOS_TAB = t;
+  try {
+    localStorage.setItem("planAcuerdosTab", t);
+  } catch (_) {}
+};
+
 function renderAcuerdosLogistica() {
   const raiz = document.getElementById("logisticaPanel");
   if (!raiz) return;
@@ -350,6 +358,7 @@ function renderAcuerdosLogistica() {
         <div class="filtro-equipos" style="margin:0;">
           <button data-acu-tab="sla" class="${ACUERDOS_TAB === "sla" ? "active" : ""}">SLA Planta (${nSla})</button>
           <button data-acu-tab="log" class="${ACUERDOS_TAB === "log" ? "active" : ""}">Logística de envasado (5)</button>
+          <button data-acu-tab="ela" class="${ACUERDOS_TAB === "ela" ? "active" : ""}">Elaboración (${typeof REGLAS_OPERATIVAS !== "undefined" ? REGLAS_OPERATIVAS.length : ""})</button>
         </div>
       </div>
       <div class="panel-body" id="acuerdosTabBody"></div>
@@ -365,6 +374,7 @@ function renderAcuerdosLogistica() {
   );
   const body = document.getElementById("acuerdosTabBody");
   if (ACUERDOS_TAB === "sla" && typeof renderSLAPlanta === "function") return renderSLAPlanta(body);
+  if (ACUERDOS_TAB === "ela" && typeof renderReglas === "function") return renderReglas(STATE.seq, body);
   renderLogisticaEnvasado(body);
 }
 
@@ -438,9 +448,8 @@ function renderLogisticaEnvasado(cont) {
             </div>
           </div>
           <div>
-            <div class="acu-card"><div class="acu-card-tit">Score global de logística</div>${reparto}
+            <div class="acu-card"><div class="acu-card-tit">Hallazgos clave</div>${hall || '<p class="empty-note">Sin acuerdos medibles todavía.</p>'}
               <div class="acu-nota">El score se normaliza sobre los acuerdos que sí se pueden medir. Formato de un SKU = envase + tamaño leídos del nombre (p. ej. «Vidrio 330 cc», «PET 1,5 L»).</div></div>
-            <div class="acu-card" style="margin-top:14px;"><div class="acu-card-tit">Hallazgos clave</div>${hall || '<p class="empty-note">Sin acuerdos medibles todavía.</p>'}</div>
           </div>
         </div>`;
 

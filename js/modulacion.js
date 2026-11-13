@@ -355,7 +355,7 @@ function htmlPanelModulacion(mergedByTrain) {
       </div>
       <div class="modl-cards-tit">${enHorizonte ? `Lo siguiente en cada línea desde ahora (${escapeHtml(fmtDateTime(new Date(ahora)))})` : `Primer evento de cada línea (hoy está fuera del instructivo cargado)`}</div>
       <div class="modl-cards">${tarjetas}</div>
-      <div class="sp-grid">
+      ${pliegue("modl-tabla", `Arranques y paradas por equipo (${lista.length}) y reglas de modulación`, `<div class="sp-grid">
         <div class="acu-card">
           <div class="acu-card-tit">Arranques y paradas por equipo (${lista.length})
             <span class="sp-filtros">
@@ -374,7 +374,7 @@ function htmlPanelModulacion(mergedByTrain) {
           <p class="acu-nota">Horas respecto a la llenadora: negativo = antes, positivo = después. Parada = DPA de mantenimiento o sin programación (NST u horas sin filas) de esa duración o más; los demás DPA (cambio de líquido, CIP, empaque, arranque) no son parada. Se guardan en este navegador.</p>
           <button type="button" class="btn small" data-modl-reset>Restaurar reglas</button>
         </div>
-      </div>
+      </div>`, "lista para el operador, CSV e impresión")}
       ${revisarHtml}
     </div>`;
 }
