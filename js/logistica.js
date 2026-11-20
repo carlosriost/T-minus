@@ -11,7 +11,8 @@
      L5. Corridas en filtro de más de N hL entre CIP (por defecto 1.200.000 hL).
    Ponderaciones y umbrales son criterio de negocio: se editan en la página y
    quedan guardados en este navegador. Mismo cálculo de score que acuerdos.js:
-   puntaje = ponderación × cumplimiento, normalizado sobre lo medible.
+   cada acuerdo se cumple (100 %) o no (0 %); puntaje = ponderación ×
+   cumplimiento, normalizado sobre lo medible.
    ========================================================================= */
 
 const LOG_LS_KEY = "planAcuerdosLogistica";
@@ -151,14 +152,14 @@ function evaluarAcuerdosLogistica(w) {
     const conLight = ls.filter((x) => esFamiliaLight(x.bloques[0].familiaId));
     const conPony = ls.filter((x) => esFamiliaPony(x.bloques[0].familiaId));
     medido.L1 = {
-      cumplimiento: Math.round(((ls.length - conLight.length) / ls.length) * 100),
+      cumplimiento: conLight.length ? 0 : 100,
       medida: `${conLight.length} de ${ls.length} línea-semanas`,
       detalle: conLight.length
         ? `Arrancan con Light: ${conLight.map((x) => `TREN-${x.tren} (${x.semanaLabel})`).join(", ")}.`
         : "Ninguna línea arranca la semana con Light.",
     };
     medido.L2 = {
-      cumplimiento: Math.round(((ls.length - conPony.length) / ls.length) * 100),
+      cumplimiento: conPony.length ? 0 : 100,
       medida: `${conPony.length} de ${ls.length} línea-semanas`,
       detalle: conPony.length
         ? `Arrancan con malta: ${conPony.map((x) => `TREN-${x.tren} (${x.semanaLabel})`).join(", ")}.`
@@ -193,7 +194,7 @@ function evaluarAcuerdosLogistica(w) {
     });
     if (tot > 0)
       medido.L3 = {
-        cumplimiento: Math.round((largo / tot) * 100),
+        cumplimiento: largo >= tot ? 100 : 0,
         medida: `${MOD_NF((largo / tot) * 100)} % del volumen de la semana`,
         detalle: `${MOD_NF(largo)} de ${MOD_NF(tot)} hL envasados en la semana van en corridas de ${MOD_NF(cfg.umbralLineaHL)} hL o más.${cortas.length ? ` Corridas más cortas: ${cortas.slice(0, 6).join("; ")}${cortas.length > 6 ? ` y ${cortas.length - 6} más` : ""}.` : ""}`,
       };
@@ -205,7 +206,7 @@ function evaluarAcuerdosLogistica(w) {
     const hlLargas = largas.reduce((a, c) => a + c.hl, 0);
     const mayor = corridas.reduce((m, c) => (c.hl > m.hl ? c : m), corridas[0]);
     medido.L3 = {
-      cumplimiento: Math.round((hlLargas / totalHL) * 100),
+      cumplimiento: hlLargas >= totalHL ? 100 : 0,
       medida: `${largas.length} de ${corridas.length} corridas`,
       detalle: `${MOD_NF((hlLargas / totalHL) * 100)}% del volumen va en corridas de ${MOD_NF(cfg.umbralLineaHL)} hL o más. La más larga: ${mayor.familia} en TREN-${mayor.tren}, ${MOD_NF(mayor.hl)} hL.`,
     };
@@ -213,20 +214,18 @@ function evaluarAcuerdosLogistica(w) {
 
   // L4: cambios de formato por línea-semana.
   if (ls.length) {
-    let suma = 0;
     const exceden = [];
     ls.forEach((x) => {
       let cambios = 0;
       for (let i = 1; i < x.bloques.length; i++) if (x.bloques[i].formato !== x.bloques[i - 1].formato) cambios++;
       const exceso = Math.max(0, cambios - cfg.maxCambiosFormato);
-      suma += Math.max(0, 100 - exceso * 25);
       if (exceso) exceden.push(`TREN-${x.tren} ${x.semanaLabel}: ${cambios}`);
     });
     medido.L4 = {
-      cumplimiento: Math.round(suma / ls.length),
+      cumplimiento: exceden.length ? 0 : 100,
       medida: `${exceden.length} de ${ls.length} línea-semanas exceden`,
       detalle: exceden.length
-        ? `Más de ${cfg.maxCambiosFormato} cambios de formato — ${exceden.join("; ")}. Cada cambio de más resta 25 puntos a esa línea-semana.`
+        ? `Más de ${cfg.maxCambiosFormato} cambios de formato — ${exceden.join("; ")}.`
         : `Todas las líneas quedan en ${cfg.maxCambiosFormato} cambios de formato o menos por semana.`,
     };
   }
@@ -243,7 +242,7 @@ function evaluarAcuerdosLogistica(w) {
     const ok = cuentan.filter((c) => c.hl >= cfg.umbralFiltroHL).reduce((a, c) => a + c.hl, 0);
     medido.L5 = cuentan.length
       ? {
-          cumplimiento: Math.round((ok / totalCuentan) * 100),
+          cumplimiento: ok >= totalCuentan ? 100 : 0,
           medida: `${cuentan.filter((c) => c.hl >= cfg.umbralFiltroHL).length} de ${cuentan.length} corridas`,
           detalle: `Corridas cerradas por CIP: ${cuentan.map((c) => `${c.filtro} ${MOD_NF(c.hl)} hL`).join("; ")}.`,
         }
@@ -265,7 +264,7 @@ function evaluarAcuerdosLogistica(w) {
     const e = medido[d.id];
     const medible = !!e && e.cumplimiento != null;
     const ponderacion = medible ? Number(cfg.pond[d.id]) || 0 : 0;
-    const cumplimiento = medible ? e.cumplimiento : null;
+    const cumplimiento = medible ? cumplimientoBinario(e.cumplimiento) : null;
     return {
       id: d.id,
       texto: d.texto,
@@ -274,7 +273,7 @@ function evaluarAcuerdosLogistica(w) {
       pondConfig: Number(cfg.pond[d.id]) || 0,
       cumplimiento,
       puntaje: medible ? (ponderacion * cumplimiento) / 100 : 0,
-      estado: !medible ? "sin-datos" : cumplimiento >= 90 ? "cumple" : cumplimiento >= 60 ? "parcial" : "critico",
+      estado: estadoBinario(cumplimiento),
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle
@@ -391,7 +390,7 @@ function renderLogisticaEnvasado(cont) {
   const kpis =
     modKpi("◎", "Score de logística", score == null ? "—" : `${score} <small>/ 100</small>`, `Envasado y filtración · ${periodo}`, col) +
     modKpi("✓", "Acuerdos cumplidos", `${ev.cumplidos} <small>de ${nMed}</small>`, nMed ? `${Math.round((ev.cumplidos / nMed) * 100)}% de los medibles` : "—", "var(--ok)") +
-    modKpi("⚠", "Críticos", String(ev.criticos), nMed ? `${Math.round((ev.criticos / nMed) * 100)}% de los medibles` : "—", ev.criticos ? "var(--danger)" : "var(--muted)") +
+    modKpi("✗", "No cumplen", String(ev.criticos), nMed ? `${Math.round((ev.criticos / nMed) * 100)}% de los medibles` : "—", ev.criticos ? "var(--danger)" : "var(--muted)") +
     modKpi("▤", "Sin datos para medir", String(ev.sinDatos.length), `de ${ev.filas.length} acuerdos`, "var(--muted)");
 
   const filasHtml = ev.filas
@@ -409,7 +408,7 @@ function renderLogisticaEnvasado(cont) {
     [
       { label: "Cumple", valor: ev.cumplidos, color: "var(--ok)" },
       { label: "Parcial", valor: ev.parciales, color: "var(--warn)" },
-      { label: "Crítico", valor: ev.criticos, color: "var(--danger)" },
+      { label: "No cumple", valor: ev.criticos, color: "var(--danger)" },
       { label: "Sin datos", valor: ev.sinDatos.length, color: "var(--muted)" },
     ].filter((p) => p.valor > 0),
     score == null ? "—" : String(score),

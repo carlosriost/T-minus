@@ -1,8 +1,8 @@
 /* =========================================================================
    ACUERDOS DE SERVICIO — calificación semanal
 
-   Cada acuerdo se mide contra el plan de la SEMANA evaluada y da un
-   cumplimiento de 0 a 100 %. El puntaje es ponderación × cumplimiento, y el
+   Cada acuerdo se mide contra el plan de la SEMANA evaluada y se cumple
+   (100 %) o no se cumple (0 %). El puntaje es ponderación × cumplimiento, y el
    score total es la suma de los puntajes sobre la ponderación de los acuerdos
    que SÍ se pudieron medir: los que dependen de datos que no vienen en los
    archivos cargados se listan aparte y no arrastran el score hacia abajo.
@@ -43,12 +43,10 @@ function guardarPonderacionAcuerdos(p) {
   } catch (_) {}
 }
 
-// Cumplimiento lineal: 100 % hasta el tope, y de ahí bajando hasta 0 % cuando
-// se dobla. Así pasarse un poco no cuesta lo mismo que pasarse el doble.
+// Tope: 100 % si no se pasa, 0 % si se pasa (aunque sea poco).
 function cumplimientoPorTope(valor, tope) {
   if (!(tope > 0)) return 100;
-  if (valor <= tope) return 100;
-  return Math.max(0, Math.round((1 - (valor - tope) / tope) * 100));
+  return valor <= tope ? 100 : 0;
 }
 
 // Sin semana (w sin pasar) se califica cada semana del plan y se promedia: los
@@ -171,7 +169,7 @@ function evaluarAcuerdos(plan, seq, w) {
     add(
       4,
       corridas.length
-        ? Math.round(((corridas.length - cortas) / corridas.length) * 100)
+        ? (cortas ? 0 : 100)
         : null,
       corridas.length ? `${corridas.length} bloque(s)` : "—",
       corridas.length
@@ -205,7 +203,7 @@ function evaluarAcuerdos(plan, seq, w) {
     add(
       5,
       total
-        ? Math.round(((total - paradas) / total) * 100)
+        ? (paradas ? 0 : 100)
         : !w || (typeof bloquesProduccion === "function" && bloquesProduccion().some((b) => en(b.start)))
           ? 100
           : null,
@@ -240,7 +238,7 @@ function evaluarAcuerdos(plan, seq, w) {
     add(
       7,
       bandas.length
-        ? Math.round(((bandas.length - excedidas) / bandas.length) * 100)
+        ? (excedidas ? 0 : 100)
         : null,
       bandas.length ? `máx. ${mayor.toFixed(1)} d` : "—",
       bandas.length
@@ -283,7 +281,7 @@ function evaluarAcuerdos(plan, seq, w) {
         ? null
         : bloques === 1
           ? 100
-          : Math.max(0, 100 - (bloques - 1) * 50),
+          : 0,
       bloques ? `${bloques} bloque(s)` : "—",
       bloques === 0
         ? w
@@ -302,7 +300,7 @@ function evaluarAcuerdos(plan, seq, w) {
     const e = medido[r.id];
     const medible = !!e && e.cumplimiento != null;
     const ponderacion = medible ? Number(pond[r.id]) || 0 : 0;
-    const cumplimiento = medible ? e.cumplimiento : null;
+    const cumplimiento = medible ? cumplimientoBinario(e.cumplimiento) : null;
     return {
       id: r.id,
       texto: r.texto,
@@ -311,13 +309,7 @@ function evaluarAcuerdos(plan, seq, w) {
       ponderacion,
       cumplimiento,
       puntaje: medible ? (ponderacion * cumplimiento) / 100 : 0,
-      estado: !medible
-        ? "sin-datos"
-        : cumplimiento >= 90
-          ? "cumple"
-          : cumplimiento >= 60
-            ? "parcial"
-            : "critico",
+      estado: estadoBinario(cumplimiento),
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle

@@ -284,7 +284,7 @@ function renderRecomendaciones(seq) {
 const ACUERDOS_ESTADO = {
   cumple: { txt: "Cumple", color: "var(--ok)", icono: "✓" },
   parcial: { txt: "Parcial", color: "var(--warn)", icono: "–" },
-  critico: { txt: "Crítico", color: "var(--danger)", icono: "!" },
+  critico: { txt: "No cumple", color: "var(--danger)", icono: "✗" },
   "sin-datos": { txt: "Sin datos", color: "var(--muted)", icono: "?" },
 };
 
@@ -349,8 +349,8 @@ function renderReglas(seq, contArg) {
       "var(--ok)",
     ) +
     kpi(
-      "⚠",
-      "Críticos",
+      "✗",
+      "No cumplen",
       String(ev.criticos),
       nMed ? Math.round((ev.criticos / nMed) * 100) + "% de los medibles" : "—",
       ev.criticos ? "var(--danger)" : "var(--muted)",
@@ -442,7 +442,6 @@ function renderReglas(seq, contArg) {
 
   const reparto = [
     ["cumple", ev.cumplidos],
-    ["parcial", ev.parciales],
     ["critico", ev.criticos],
     ["sin-datos", ev.sinDatos.length],
   ]

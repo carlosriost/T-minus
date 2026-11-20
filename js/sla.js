@@ -114,7 +114,7 @@ function evaluarSLA(w) {
     const conMalta = delPeriodo.filter((r) => esMostoPony(r.mostoId));
     if (delPeriodo.length) add(
       1,
-      Math.round(((delPeriodo.length - conMalta.length) / delPeriodo.length) * 100),
+      conMalta.length ? 0 : 100,
       `${conMalta.length} de ${delPeriodo.length} arranques con malta`,
       conMalta.length
         ? `Arrancan con malta: ${conMalta.map((r) => fmtDateTime(r.start)).join(", ")}.`
@@ -128,7 +128,7 @@ function evaluarSLA(w) {
     for (let i = 1; i < coc.length; i++)
       if (en(coc[i].start) && esMostoPony(coc[i].mostoId) !== esMostoPony(coc[i - 1].mostoId)) n++;
     if (coc.some((r) => en(r.start)))
-      add(3, Math.max(0, 100 - Math.max(0, n - 4) * 25), `${n} cambios`, `${n} cambios Pony ↔ cerveza en la semana (máximo 4). Cada cambio de más resta 25 puntos.`);
+      add(3, n <= 4 ? 100 : 0, `${n} cambios`, `${n} cambios Pony ↔ cerveza en la semana (máximo 4).`);
   } else if (coc.length) {
     const porSemana = {};
     for (let i = 1; i < coc.length; i++) {
@@ -139,13 +139,13 @@ function evaluarSLA(w) {
     }
     const semanas = [...new Set(coc.map((r) => semanaCalendario(r.start.getTime())))];
     const notas = semanas.map((s) => ({ s, n: porSemana[s] || 0 }));
-    const cumpl = notas.reduce((a, x) => a + Math.max(0, 100 - Math.max(0, x.n - 4) * 25), 0) / notas.length;
+    const cumpl = notas.every((x) => x.n <= 4) ? 100 : 0;
     const peor = notas.reduce((m, x) => (x.n > m.n ? x : m), notas[0]);
     add(
       3,
-      Math.round(cumpl),
+      cumpl,
       `máx. ${peor.n} cambios en una semana`,
-      notas.map((x) => `semana del ${fmtDate(new Date(x.s))}: ${x.n}`).join(" · ") + ". Cada cambio de más de 4 resta 25 puntos a esa semana.",
+      notas.map((x) => `semana del ${fmtDate(new Date(x.s))}: ${x.n}`).join(" · ") + ". Máximo 4 por semana.",
     );
   }
 
@@ -187,7 +187,7 @@ function evaluarSLA(w) {
       const ok = cuentan.filter((c) => c.hl >= 5000);
       add(
         26,
-        Math.round((ok.length / cuentan.length) * 100),
+        ok.length === cuentan.length ? 100 : 0,
         `${ok.length} de ${cuentan.length} ciclos`,
         `Ciclos de filtración programados: ${cuentan.map((c) => `${c.filtro} ${nf(c.hl)} hL`).join("; ")}.`,
       );
@@ -219,7 +219,7 @@ function evaluarSLA(w) {
       const ok = evaluables.filter((c) => c.hl >= cfg.minimos[c.ml]);
       add(
         Number(n),
-        Math.round((ok.length / evaluables.length) * 100),
+        ok.length === evaluables.length ? 100 : 0,
         `${ok.length} de ${evaluables.length} corridas`,
         `TREN-${cfg.tren}: ` + evaluables.map((c) => `${c.nombre} ${nf(c.hl)} hL (mín. ${nf(cfg.minimos[c.ml])})${c.hl >= cfg.minimos[c.ml] ? " ✓" : " ✗"}`).join("; ") + ".",
       );
@@ -255,9 +255,9 @@ function evaluarSLA(w) {
       const pct = (pony / env) * 100;
       add(
         40,
-        pct <= 20 ? 100 : Math.max(0, Math.round(100 - (pct - 20) * 5)),
+        pct <= 20 ? 100 : 0,
         `Pony ${nf(pct, 1)} % del total`,
-        `Pony ${nf(pony)} hL de ${nf(env)} hL envasados en la semana. Interpretación: la Pony no debe pasar del 20 % del volumen (confirmar con Logística). Cada punto por encima resta 5.`,
+        `Pony ${nf(pony)} hL de ${nf(env)} hL envasados en la semana. Interpretación: la Pony no debe pasar del 20 % del volumen (confirmar con Logística).`,
       );
     }
   } else if (plan && plan.results && plan.results.length) {
@@ -272,9 +272,9 @@ function evaluarSLA(w) {
       const desv = (Math.abs(prodHL - env) / env) * 100;
       add(
         39,
-        desv <= 5 ? 100 : Math.max(0, Math.round(100 - (desv - 5) * 10)),
+        desv <= 5 ? 100 : 0,
         `${nf(desv, 1)} % de diferencia`,
-        `Cocinado (diluido) + inventario: ${nf(prodHL)} hL · a envasar: ${nf(env)} hL. La diferencia viene de redondear a cocimientos completos. Cada punto por encima de 5 % resta 10.`,
+        `Cocinado (diluido) + inventario: ${nf(prodHL)} hL · a envasar: ${nf(env)} hL. La diferencia viene de redondear a cocimientos completos. Se cumple con 5 % o menos.`,
       );
     }
 
@@ -285,9 +285,9 @@ function evaluarSLA(w) {
       const pct = (pony / env) * 100;
       add(
         40,
-        pct <= 20 ? 100 : Math.max(0, Math.round(100 - (pct - 20) * 5)),
+        pct <= 20 ? 100 : 0,
         `Pony ${nf(pct, 1)} % del total`,
-        `Pony ${nf(pony)} hL de ${nf(env)} hL a envasar. Interpretación: la Pony no debe pasar del 20 % del volumen (confirmar con Logística). Cada punto por encima resta 5.`,
+        `Pony ${nf(pony)} hL de ${nf(env)} hL a envasar. Interpretación: la Pony no debe pasar del 20 % del volumen (confirmar con Logística).`,
       );
     }
   }
@@ -305,8 +305,8 @@ function evaluarSLA(w) {
       medible,
       peso,
       pesoConfig: pesos[a.n],
-      cumplimiento: medible ? e.cumplimiento : null,
-      estado: !medible ? "sin-datos" : e.cumplimiento >= 90 ? "cumple" : e.cumplimiento >= 60 ? "parcial" : "critico",
+      cumplimiento: medible ? cumplimientoBinario(e.cumplimiento) : null,
+      estado: medible ? estadoBinario(e.cumplimiento) : "sin-datos",
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle
@@ -382,8 +382,8 @@ function renderSLAPlanta(cont) {
   const histOk = ev.filas.reduce((a, f) => a + f.histOk, 0);
   const kpis =
     modKpi("◎", selSem ? `Score SLA · ${selSem.semana.corto}` : "Score SLA (promedio semanal)", score == null ? "—" : `${score} <small>/ 100</small>`, `${nMed} de ${ev.filas.length} acuerdos medibles ${selSem ? "en la semana" : "en alguna semana"}`, col) +
-    modKpi("✓", "Cumplen", `${ev.cumplidos} <small>de ${nMed}</small>`, "≥ 90 % de cumplimiento", "var(--ok)") +
-    modKpi("⚠", "Críticos", String(ev.criticos), "< 60 % de cumplimiento", ev.criticos ? "var(--danger)" : "var(--muted)") +
+    modKpi("✓", "Cumplen", `${ev.cumplidos} <small>de ${nMed}</small>`, "100 % cada uno", "var(--ok)") +
+    modKpi("✗", "No cumplen", String(ev.criticos), "0 % cada uno", ev.criticos ? "var(--danger)" : "var(--muted)") +
     modKpi("▤", "Histórico del Excel", histTot ? `${Math.round((histOk / histTot) * 100)}%` : "—", `OK en ${histOk} de ${histTot} registros semanales (meta 85 %)`, histTot && histOk / histTot >= 0.85 ? "var(--ok)" : "var(--warn)");
 
   const ordenEst = { critico: 0, parcial: 1, cumple: 2, "sin-datos": 3 };

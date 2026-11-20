@@ -145,6 +145,15 @@ function semanasAcuerdos() {
 // Junta la calificación de cada semana en una fila por acuerdo: el
 // cumplimiento del periodo es el promedio de las semanas en que se pudo medir,
 // y la fila guarda sus semanas para la tabla semana a semana.
+// Acuerdos de servicio: cada acuerdo se cumple o no se cumple. Vale 100 % si
+// se cumple del todo y 0 % si no; la «medida» y el detalle dicen por cuánto.
+function cumplimientoBinario(c) {
+  return c == null ? null : c >= 100 ? 100 : 0;
+}
+function estadoBinario(c) {
+  return c == null ? "sin-datos" : c >= 100 ? "cumple" : "critico";
+}
+
 function resumirFilaSemanal(id, porSemana, detalleVacio) {
   const semanas = porSemana.map(({ semana, ev }) => {
     const f = ev.filas.find((x) => x.id === id) || {};
@@ -152,18 +161,20 @@ function resumirFilaSemanal(id, porSemana, detalleVacio) {
   });
   const med = semanas.filter((s) => s.medible);
   if (!med.length) return { medible: false, cumplimiento: null, estado: "sin-datos", medida: "—", detalle: detalleVacio, semanas };
-  const cumplimiento = Math.round(med.reduce((a, s) => a + s.cumplimiento, 0) / med.length);
-  const ok = med.filter((s) => s.cumplimiento >= 90);
+  // Todas las semanas: el acuerdo se cumple solo si se cumple en cada semana
+  // medida (100 % o 0 %, igual que cada semana).
+  const ok = med.filter((s) => s.cumplimiento >= 100);
+  const cumplimiento = ok.length === med.length ? 100 : 0;
   const peor = med.reduce((m, s) => (s.cumplimiento < m.cumplimiento ? s : m), med[0]);
   return {
     medible: true,
     cumplimiento,
-    estado: cumplimiento >= 90 ? "cumple" : cumplimiento >= 60 ? "parcial" : "critico",
+    estado: estadoBinario(cumplimiento),
     medida: `${ok.length} de ${med.length} semana${med.length === 1 ? "" : "s"} cumple${ok.length === 1 ? "" : "n"}`,
     detalle:
       ok.length === med.length
         ? `Cumple en todas las semanas medidas (${med.map((s) => s.semana.corto).join(", ")}).`
-        : `Peor semana: ${peor.semana.corto} con ${peor.cumplimiento} % (${peor.medida}). ${peor.detalle}`,
+        : `No cumple en ${med.filter((s) => s.cumplimiento < 100).map((s) => s.semana.corto).join(", ")}. ${peor.semana.corto}: ${peor.medida}. ${peor.detalle}`,
     semanas,
   };
 }
@@ -236,7 +247,7 @@ function matrizSemanalAcuerdos(filas, porSemana) {
       return `<td class="acu-c${on(p)}"><b style="color:${colorScore(s)};">${s == null ? "—" : s}</b></td>`;
     })
     .join("");
-  return `<div class="acu-card"><div class="acu-card-tit">Semana a semana <small style="color:var(--muted);font-weight:400;">· % de cumplimiento de cada acuerdo en cada semana; pase el mouse por una celda para ver el detalle o haga clic en una semana para abrirla</small></div>
+  return `<div class="acu-card"><div class="acu-card-tit">Semana a semana <small style="color:var(--muted);font-weight:400;">· 100 = el acuerdo se cumple esa semana, 0 = no se cumple; pase el mouse por una celda para ver el detalle o haga clic en una semana para abrirla</small></div>
     <div class="table-scroll mod-noclip"><table class="acu-tabla acu-matriz"><thead><tr><th>Acuerdo</th>${cab}</tr></thead><tbody>${cuerpo}</tbody>
     <tfoot><tr><td><b>Score de la semana</b></td>${pie}</tr></tfoot></table></div>
     <div class="acu-nota">Semanas de lunes a domingo; el día arranca a las 22:00, como en el instructivo. Cada cocimiento, corrida, parada, maduración o ciclo de filtración cuenta entero en la semana en que empieza. «—»: ese acuerdo no tiene qué medir esa semana y no pesa en su score.${ocultos ? ` ${ocultos} acuerdo(s) sin datos para medir en ninguna semana no se muestran aquí; están en el detalle.` : ""}</div></div>`;
