@@ -292,11 +292,11 @@ function evaluarSLA(w) {
     }
   }
 
-  const filas = SLA_PLANTA_VERDES.map((a) => {
+  const filas = listaAcuerdos("sla", SLA_PLANTA_VERDES, "n").map((a) => {
     const e = medido[a.n];
     const medible = !!e && e.cumplimiento != null;
     const peso = medible ? pesos[a.n] : 0;
-    const hist = a.historico.split("");
+    const hist = String(a.historico || "").split("");
     const ok = hist.filter((c) => c === "o").length;
     const nok = hist.filter((c) => c === "x").length;
     return {
@@ -310,7 +310,9 @@ function evaluarSLA(w) {
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle
-        : a.n === 19
+        : a.nuevo
+          ? DETALLE_ACUERDO_NUEVO
+          : a.n === 19
           ? "Pide el inventario de BBT por marca justo antes de cada filtración; T-minus todavía no lo calcula. Se sigue en el histórico del Excel."
           : a.n === 26
             ? "No hay plan de filtración para medirlo."

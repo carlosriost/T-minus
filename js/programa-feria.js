@@ -254,7 +254,7 @@ function renderProgramaFeria() {
   const i0d = typeof getI0Date === "function" ? getI0Date() : null;
   const cab = `
     <div class="panel">
-      <div class="panel-head"><h3>Plan de cocinas</h3>
+      <div class="panel-head"><h3>Plan de cocinas (proyección)</h3>
         <span class="sub">El plan que T-minus genera desde el instructivo de envasado${i0d ? ` · I0 ${escapeHtml(fmtDateTime(i0d))}` : ""}</span>
       </div>
       <div class="panel-body">

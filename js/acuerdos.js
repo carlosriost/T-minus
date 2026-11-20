@@ -293,10 +293,7 @@ function evaluarAcuerdos(plan, seq, w) {
     );
   }
 
-  const filas = (typeof REGLAS_OPERATIVAS !== "undefined"
-    ? REGLAS_OPERATIVAS
-    : []
-  ).map((r) => {
+  const filas = listaAcuerdos("ela", typeof REGLAS_OPERATIVAS !== "undefined" ? REGLAS_OPERATIVAS : [], "id").map((r) => {
     const e = medido[r.id];
     const medible = !!e && e.cumplimiento != null;
     const ponderacion = medible ? Number(pond[r.id]) || 0 : 0;
@@ -313,6 +310,8 @@ function evaluarAcuerdos(plan, seq, w) {
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle
+        : r.nuevo
+          ? DETALLE_ACUERDO_NUEVO
         : "Depende de datos de líneas, mantenimiento o SUITE360 que no vienen en los archivos cargados.",
     };
   });

@@ -260,7 +260,7 @@ function evaluarAcuerdosLogistica(w) {
     { id: "L4", texto: `Máximo ${cfg.maxCambiosFormato} cambios de formato por línea y semana` },
     { id: "L5", texto: `Corridas en filtro de más de ${MOD_NF(cfg.umbralFiltroHL)} hL` },
   ];
-  const filas = DEF.map((d) => {
+  const filas = listaAcuerdos("log", DEF, "id").map((d) => {
     const e = medido[d.id];
     const medible = !!e && e.cumplimiento != null;
     const ponderacion = medible ? Number(cfg.pond[d.id]) || 0 : 0;
@@ -277,7 +277,9 @@ function evaluarAcuerdosLogistica(w) {
       medida: e ? e.medida : "—",
       detalle: e
         ? e.detalle
-        : d.id === "L5"
+        : d.nuevo
+          ? DETALLE_ACUERDO_NUEVO
+          : d.id === "L5"
           ? "No hay plan de filtración para medir este acuerdo."
           : "Carga el plan de envasado para medir este acuerdo.",
     };
@@ -350,14 +352,16 @@ function renderAcuerdosLogistica() {
   const raiz = document.getElementById("logisticaPanel");
   if (!raiz) return;
   if (!STATE || !STATE.mergedByTrain) return modSinDatos(raiz, "los acuerdos de servicio");
-  const nSla = typeof SLA_PLANTA_VERDES !== "undefined" ? SLA_PLANTA_VERDES.length : 0;
+  const nSla = typeof SLA_PLANTA_VERDES !== "undefined" ? listaAcuerdos("sla", SLA_PLANTA_VERDES, "n").length : 0;
+  const nLog = listaAcuerdos("log", [{ id: "L1" }, { id: "L2" }, { id: "L3" }, { id: "L4" }, { id: "L5" }], "id").length;
+  const nEla = typeof REGLAS_OPERATIVAS !== "undefined" ? listaAcuerdos("ela", REGLAS_OPERATIVAS, "id").length : "";
   raiz.innerHTML = `
     <div class="panel">
       <div class="panel-head"><h3>Acuerdos de servicio</h3>
         <div class="filtro-equipos" style="margin:0;">
           <button data-acu-tab="sla" class="${ACUERDOS_TAB === "sla" ? "active" : ""}">SLA Planta (${nSla})</button>
-          <button data-acu-tab="log" class="${ACUERDOS_TAB === "log" ? "active" : ""}">Logística de envasado (5)</button>
-          <button data-acu-tab="ela" class="${ACUERDOS_TAB === "ela" ? "active" : ""}">Elaboración (${typeof REGLAS_OPERATIVAS !== "undefined" ? REGLAS_OPERATIVAS.length : ""})</button>
+          <button data-acu-tab="log" class="${ACUERDOS_TAB === "log" ? "active" : ""}">Logística de envasado (${nLog})</button>
+          <button data-acu-tab="ela" class="${ACUERDOS_TAB === "ela" ? "active" : ""}">Elaboración (${nEla})</button>
         </div>
       </div>
       <div class="panel-body" id="acuerdosTabBody"></div>
@@ -368,7 +372,10 @@ function renderAcuerdosLogistica() {
       try {
         localStorage.setItem("planAcuerdosTab", ACUERDOS_TAB);
       } catch (_) {}
-      renderAcuerdosLogistica();
+      // Cada pestaña es también una entrada del menú: se abre por ahí para
+      // que el menú marque la pestaña elegida.
+      if (window.FerIANav) window.FerIANav.go("view-acu-" + ACUERDOS_TAB);
+      else renderAcuerdosLogistica();
     }),
   );
   const body = document.getElementById("acuerdosTabBody");

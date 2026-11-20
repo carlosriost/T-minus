@@ -509,7 +509,7 @@ function renderProgramaCocinas() {
   if (!PC) pcRecuperar();
   const carga = `
     <div class="panel">
-      <div class="panel-head"><h3>Programa de cocinas (Excel de Elaboración)</h3>
+      <div class="panel-head"><h3>Programa real de cocinas (Excel de Elaboración)</h3>
         <span class="sub">${PC ? `${escapeHtml(PC.archivo)} · ${PCX.D.filas.length.toLocaleString("es-CO")} filas · cargado ${escapeHtml(new Date(PC.cargado).toLocaleString("es-CO"))}` : "Carga «Programa_Cocinas.xlsx»"}</span>
       </div>
       <div class="panel-body">

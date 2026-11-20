@@ -171,7 +171,7 @@ function recomendacionesPlan() {
       add({
         p: "baja",
         area: "Utilities",
-        ir: "view-gantt-plan",
+        ir: "view-t-utilidades",
         titulo: "Evitar arranques cortos de la caldera alterna.",
         detalle: `${cortos.length} tramo(s) de menos de 4 h con 2 o más líneas obligan a prender la caldera alterna por poco tiempo. Juntar esas líneas en el mismo horario, o separarlas, ahorra arranques.`,
         impacto: `${cortos.length} arranque(s) corto(s)`,
@@ -579,10 +579,15 @@ function alAbrirVista(view) {
     "view-cip": renderCipABC,
     "view-programa-cocinas": typeof renderProgramaCocinas === "function" ? renderProgramaCocinas : null,
     "view-programa-feria": typeof renderProgramaFeria === "function" ? renderProgramaFeria : null,
-    // Setpoints: si cambió el plan de cocinas desde el último dibujo, se redibuja el Gantt.
-    "view-gantt-plan": () => {
-      if (typeof spNecesitaRedibujar === "function" && typeof redibujarGanttEnvasado === "function" && spNecesitaRedibujar()) redibujarGanttEnvasado();
-    },
+    // Sección «T-»: el mismo Gantt con otras filas debajo de los trenes.
+    "view-gantt-plan": () => typeof ganttCambiarModo === "function" && ganttCambiarModo("plan"),
+    "view-t-modulacion": () => typeof ganttCambiarModo === "function" && ganttCambiarModo("modulacion"),
+    "view-t-utilidades": () => typeof ganttCambiarModo === "function" && ganttCambiarModo("utilidades"),
+    "view-envasado-kpi": typeof renderIndicadoresEnvasado === "function" ? renderIndicadoresEnvasado : null,
+    "view-acu-sla": () => (window.setAcuerdosTab && window.setAcuerdosTab("sla"), renderAcuerdosLogistica()),
+    "view-acu-log": () => (window.setAcuerdosTab && window.setAcuerdosTab("log"), renderAcuerdosLogistica()),
+    "view-acu-ela": () => (window.setAcuerdosTab && window.setAcuerdosTab("ela"), renderAcuerdosLogistica()),
+    "view-acu-excel": typeof renderAcuerdosExcel === "function" ? renderAcuerdosExcel : null,
     "view-plan-vs-real": typeof renderPlanVsReal === "function" ? renderPlanVsReal : null,
     "view-trazabilidad": typeof renderTrazabilidad === "function" ? renderTrazabilidad : null,
     "view-servicios": typeof renderServicios === "function" ? renderServicios : null,

@@ -160,6 +160,82 @@ function medianochePlanta(ms) {
   );
 }
 
+/* Sección «T-» del menú: un solo Gantt de envasado y, debajo de los trenes,
+   distintas filas según la entrada elegida:
+     plan        → fila de Cocinas (Gantt de envasado y cocinas)
+     modulacion  → paradas y arranques de lavadora, agua y paster
+     utilidades  → calderas, aire comprimido y setpoints de vapor y aire
+   Solo cambia lo que se dibuja; los cálculos son los mismos. */
+let GANTT_MODO = "plan";
+function ganttCambiarModo(m) {
+  if (!["plan", "modulacion", "utilidades"].includes(m)) return;
+  const cambio = GANTT_MODO !== m;
+  GANTT_MODO = m;
+  pintarIntroGantt();
+  const spViejo = m === "utilidades" && typeof spNecesitaRedibujar === "function" && spNecesitaRedibujar();
+  if (cambio || spViejo) {
+    const sc = document.getElementById("ganttScroll");
+    const x = sc ? sc.scrollLeft : 0;
+    redibujarGanttEnvasado();
+    const sc2 = document.getElementById("ganttScroll");
+    if (sc2) sc2.scrollLeft = x;
+  }
+}
+
+// Texto corto, en palabras de planta, arriba de cada versión del Gantt.
+function pintarIntroGantt() {
+  const tit = document.getElementById("ganttTitulo");
+  const cont = document.getElementById("ganttIntro");
+  if (!cont) return;
+  const m = GANTT_MODO;
+  const hora = (min) => {
+    const h = Math.abs(min) / 60;
+    const t = Number.isInteger(h) ? `${h} h` : `${Math.round(Math.abs(min))} min`;
+    return min === 0 ? "a la misma hora" : min < 0 ? `${t} antes` : `${t} después`;
+  };
+  if (m === "plan") {
+    if (tit) tit.textContent = "Gantt de envasado y cocinas";
+    cont.innerHTML = `<div class="gantt-intro">
+      <p><b>Cómo leerlo.</b> El tiempo corre de izquierda a derecha, un día por columna. Cada fila <b>TREN</b> es una línea de envasado.</p>
+      <ul>
+        <li><b>Bloques de color:</b> lo que se envasa (un color por marca), con los hL y la duración.</li>
+        <li><b>Rayado gris:</b> un cambio (DPA): de líquido, de empaque, esterilización o mantenimiento programado.</li>
+        <li><b>Azul oscuro:</b> la línea parada sin programación (NST).</li>
+        <li><b>Fila COCINAS:</b> la línea dorada es el tiempo en que la cocina está cocinando según el plan de cocinas de T-minus; los espacios en blanco son paradas de cocina de ${GANTT_COC_PARADA_H} h o más.</li>
+      </ul>
+      <p class="gantt-intro-pie">Pase el mouse por cualquier bloque para ver fechas, hL y cocimientos. <button class="ini-link" data-goto="view-gantt-cocina">Ver cada cocimiento en el Gantt de cocina <span aria-hidden="true">→</span></button></p>
+    </div>`;
+  } else if (m === "modulacion") {
+    const c = typeof modlConfig === "function" ? modlConfig() : { umbralMin: 120, arranque: { lavadora: -180, agua: 0, paster: 60 }, parada: { lavadora: -60, agua: 0, paster: 60 } };
+    if (tit) tit.textContent = "Eventos de modulación";
+    cont.innerHTML = `<div class="gantt-intro">
+      <p><b>Qué es.</b> Cuando una línea de envasado va a estar detenida <b>${Math.round(c.umbralMin / 60 * 10) / 10} h o más</b> (mantenimiento programado o sin programación), Utilities puede apagar la <span class="modl-c-lav">lavadora</span>, el <span class="modl-c-agua">agua</span> y el <span class="modl-c-paster">paster</span> de esa línea para ahorrar energía, y prenderlos a tiempo para que la línea arranque sin esperar.</p>
+      <ul>
+        <li><b>Cómo leerlo:</b> debajo de los trenes hay una fila por línea. El bloque rosado rayado es la parada; <b>▼</b> marca cuándo apagar cada equipo y <b>▲</b> cuándo prenderlo, con el color del equipo.</li>
+        <li><b>Para parar</b> (P = hora en que para la llenadora): lavadora ${hora(c.parada.lavadora)}, agua ${hora(c.parada.agua)}, paster ${hora(c.parada.paster)}.</li>
+        <li><b>Para arrancar</b> (A = hora en que arranca la llenadora): lavadora ${hora(c.arranque.lavadora)}, agua ${hora(c.arranque.agua)}, paster ${hora(c.arranque.paster)}.</li>
+        <li>Los cambios de líquido, de empaque y las esterilizaciones <b>no</b> son parada: la línea sigue trabajando.</li>
+      </ul>
+      <p class="gantt-intro-pie">Debajo del Gantt está la lista de eventos para el operador, con fecha, línea y duración; ahí también se ajustan los tiempos.</p>
+    </div>`;
+  } else {
+    const op = typeof utilLeerOpciones === "function" ? utilLeerOpciones() : { calderaAlterna: "Caldera 2", elliot: "Elliot 1" };
+    const ps = (typeof spConfig === "function" ? spConfig().psi : null) || {};
+    const p = (v) => (v == null ? "sin requerimiento" : `${v} PSI`);
+    if (tit) tit.textContent = "Utilidades: equipos y setpoints";
+    cont.innerHTML = `<div class="gantt-intro">
+      <p><b>Qué es.</b> Según cuántas líneas estén envasando al mismo tiempo y si la cocina está trabajando, Utilities debe tener prendidos ciertos <b>equipos</b> (calderas y compresores) y dejar el vapor y el aire a cierta <b>presión (setpoint)</b>. Debajo de los trenes se ve qué toca en cada momento.</p>
+      <div class="gantt-intro-cols">
+        <div><b>Calderas (vapor)</b><ul><li>Ninguna línea: sin caldera para envasado</li><li>1 línea: Caldera 5</li><li>2 o más: Caldera 5 + ${escapeHtml(op.calderaAlterna)}</li></ul></div>
+        <div><b>Aire comprimido</b><ul><li>Ninguna línea: Aire + Compresor E110</li><li>1 línea: Sierra</li><li>2 líneas: ${escapeHtml(op.elliot)} + Centac</li><li>3 o 4 líneas: ${escapeHtml(op.elliot)} + Sierra</li></ul></div>
+        <div><b>Setpoint de vapor</b><ul><li>Línea 8 envasando: ${p(ps.vaporL8)}</li><li>Otra línea, sin la 8: ${p(ps.vaporOtras)}</li><li>Solo la cocina trabajando: ${p(ps.vaporSoloCocinas)}</li><li>Nada trabajando: ${p(ps.vaporNada)}</li></ul></div>
+        <div><b>Setpoint de aire</b><ul><li>Con cocina trabajando: ${p(ps.aireCocinas)}</li><li>Sin cocina, con PET envasando: ${p(ps.aireSinCocinasPet)}</li><li>Sin cocina y sin PET: ${p(ps.aireSinCocinasSinPet)}</li></ul></div>
+      </div>
+      <p class="gantt-intro-pie">«Envasando» = bloque de producción; los cambios (DPA) y los paros (NST) no cuentan. La caldera alterna y el Elliot se eligen debajo del Gantt; los PSI se ajustan en la tabla de setpoints.</p>
+    </div>`;
+  }
+}
+
 // Últimos argumentos con que se pintó el Gantt de envasado: permiten volver a
 // pintarlo sin recalcular el plan (p. ej. al cargar el Excel de Cocinas, que
 // cambia los setpoints de aire si se eligió el plan real).
@@ -177,6 +253,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   const container = document.getElementById("ganttContainer");
   if (!container) return;
   GANTT_ENV_ARGS = [mergedByTrain, weekStartRaw, weeks];
+  pintarIntroGantt();
   const allBlocks = TRAINS.flatMap((t) =>
     (mergedByTrain[t] || []).map((b) => ({ ...b, train: t })),
   );
@@ -321,7 +398,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
 
   // Fila de COCINAS debajo de los trenes: línea continua mientras el plan de
   // cocinas de T-minus tiene cocimientos y espacio en blanco en sus paradas.
-  const cocRowHtml = htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml);
+  const cocRowHtml = GANTT_MODO === "plan" ? htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) : "";
 
   // hL a envasar por marca (según los bloques de producción del instructivo).
   const envasarPorMarca = {};
@@ -362,17 +439,17 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
   // Filas de modulación (paradas y arranques de lavadora, agua y paster),
   // justo debajo de los trenes (js/modulacion.js).
   const modlRowsHtml =
-    typeof htmlFilasModulacion === "function"
+    GANTT_MODO === "modulacion" && typeof htmlFilasModulacion === "function"
       ? htmlFilasModulacion(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
       : "";
   // Filas de Utilidades (calderas y aire) según las líneas funcionando.
   const utilRowsHtml =
-    typeof htmlFilasUtilidades === "function"
+    GANTT_MODO === "utilidades" && typeof htmlFilasUtilidades === "function"
       ? htmlFilasUtilidades(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
       : "";
   // Filas de setpoints de vapor y aire (js/setpoints.js), debajo de Utilidades.
   const spRowsHtml =
-    typeof htmlFilasSetpoints === "function"
+    GANTT_MODO === "utilidades" && typeof htmlFilasSetpoints === "function"
       ? htmlFilasSetpoints(mergedByTrain, rangeStart, totalWidth, dayLinesHtml)
       : "";
 

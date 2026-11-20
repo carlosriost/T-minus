@@ -145,6 +145,40 @@ function semanasAcuerdos() {
 // Junta la calificación de cada semana en una fila por acuerdo: el
 // cumplimiento del periodo es el promedio de las semanas en que se pudo medir,
 // y la fila guarda sus semanas para la tabla semana a semana.
+// Acuerdos de servicio cargados desde Excel (js/acuerdos-excel.js): permiten
+// cambiar el texto, quitar (Activo = No o fila borrada) y agregar acuerdos.
+// Cada motor de acuerdos recorre listaAcuerdos(...) en vez de su lista fija.
+// Un acuerdo nuevo queda en la lista sin calificar (no hay regla para medirlo).
+const ACU_EXCEL_KEY = "planAcuerdosExcel";
+function acuerdosExcelGuardados() {
+  try {
+    const g = JSON.parse(localStorage.getItem(ACU_EXCEL_KEY) || "null");
+    return g && Array.isArray(g.filas) ? g : null;
+  } catch (_) {
+    return null;
+  }
+}
+function listaAcuerdos(area, base, idKey) {
+  const g = acuerdosExcelGuardados();
+  const filas = g ? g.filas.filter((f) => f.area === area) : [];
+  if (!filas.length) return base;
+  const porId = new Map(filas.map((f) => [String(f.id), f]));
+  const out = [];
+  base.forEach((a) => {
+    const f = porId.get(String(a[idKey]));
+    if (!f || f.activo === false) return;
+    out.push(f.texto ? { ...a, texto: f.texto } : a);
+  });
+  const numerico = base.length && typeof base[0][idKey] === "number";
+  filas.forEach((f) => {
+    if (f.activo === false || base.some((a) => String(a[idKey]) === String(f.id))) return;
+    const id = numerico && isFinite(Number(f.id)) ? Number(f.id) : String(f.id);
+    out.push({ [idKey]: id, texto: f.texto || `Acuerdo ${f.id}`, nuevo: true, historico: "", impacto: "" });
+  });
+  return out;
+}
+const DETALLE_ACUERDO_NUEVO = "Acuerdo nuevo cargado desde Excel: T-minus todavía no tiene la regla para medirlo, así que queda en la lista sin calificar.";
+
 // Acuerdos de servicio: cada acuerdo se cumple o no se cumple. Vale 100 % si
 // se cumple del todo y 0 % si no; la «medida» y el detalle dicen por cuánto.
 function cumplimientoBinario(c) {

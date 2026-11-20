@@ -231,7 +231,7 @@
       .map((e) => `<tr><td>${esc(fmtDateTime(new Date(e.ms)))}${e.desde ? ' <small>(viene de antes del I0)</small>' : ""}</td><td><span class="ini-area ${e.area === "Cocinas" ? "coc" : ""}">${esc(e.area)}</span></td><td class="num">${e.dur == null ? "hasta el fin del plan" : esc(durTxt(e.dur))}</td><td>${esc(e.que)}${e.det ? `<small>${esc(e.det)}</small>` : ""}</td></tr>`)
       .join("");
     return `<section class="ini-sec">
-      <div class="ini-sec-h"><h2>Eventos de modulación</h2><span>Paradas de líneas de 2 h o más y cocinas sin cocimientos 12 h o más, desde el I0.</span><button class="ini-link" data-goto="view-gantt-plan">Ver en el Gantt <span aria-hidden="true">→</span></button></div>
+      <div class="ini-sec-h"><h2>Eventos de modulación</h2><span>Paradas de líneas de 2 h o más y cocinas sin cocimientos 12 h o más, desde el I0.</span><button class="ini-link" data-goto="view-t-modulacion">Ver en el Gantt <span aria-hidden="true">→</span></button></div>
       ${ev.length
         ? `<div class="table-scroll ini-tabla-wrap"><table class="ini-tabla ini-eventos"><thead><tr><th>Desde</th><th>Línea / área</th><th class="num">Duración</th><th>Motivo</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : `<p class="ini-vacio">No hay paradas de líneas ni de cocinas en lo que queda del plan.</p>`}
