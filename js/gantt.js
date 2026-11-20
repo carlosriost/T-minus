@@ -319,6 +319,10 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
         </div>`;
   }).join("");
 
+  // Fila de COCINAS debajo de los trenes: línea continua mientras el plan de
+  // cocinas de T-minus tiene cocimientos y espacio en blanco en sus paradas.
+  const cocRowHtml = htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml);
+
   // hL a envasar por marca (según los bloques de producción del instructivo).
   const envasarPorMarca = {};
   allBlocks.forEach((b) => {
@@ -352,7 +356,8 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     ].map(([label, bg]) => `<div class="item"><span class="sw" style="background:${bg}"></span>${label}</div>`).join("") +
     `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);"></span>Cambio (DPA)</div>` +
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.idle};"></span>Paro (NST)</div>` +
-    `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.other};"></span>Otro</div>`;
+    `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.other};"></span>Otro</div>` +
+    (cocRowHtml ? `<div class="item"><span class="sw gantt-coc-sw"></span>Cocinas cocinando (plan T-minus)</div><div class="item"><span class="sw" style="background:transparent;border:1px dashed var(--line);"></span>Cocinas paradas (${GANTT_COC_PARADA_H} h o más sin cocimientos)</div>` : "");
 
   // Filas de modulación (paradas y arranques de lavadora, agua y paster),
   // justo debajo de los trenes (js/modulacion.js).
@@ -377,6 +382,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
         ${weekHeaderHtml}
         <div class="day-header" style="top:${weekHeaderHtml ? "24px" : "0"};">${dayHeaderHtml}</div>
         ${laneRowsHtml}
+        ${cocRowHtml}
         ${modlRowsHtml}
         ${utilRowsHtml}
         ${spRowsHtml}
@@ -421,6 +427,62 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
       if (infoEl) infoEl.textContent = "";
     });
   }
+}
+
+// Fila «Cocinas» del Gantt de envasado. Toma los cocimientos del plan de
+// T-minus (STATE.seq) y los une en tramos: mientras el siguiente cocimiento
+// arranca antes de GANTT_COC_PARADA_H horas, la cocina sigue «cocinando» (los
+// aseos y esperas cortas quedan dentro de la línea). Un hueco de esas horas o
+// más es una parada y queda en blanco. Es el mismo criterio de «Eventos de
+// modulación» en Inicio. Solo dibuja; no cambia ningún dato.
+const GANTT_COC_PARADA_H = 12;
+function tramosCocinasPlan() {
+  const seq = typeof STATE !== "undefined" && STATE ? STATE.seq : null;
+  const coc = ((seq && seq.rows) || [])
+    .filter((r) => r.tipo === "cocimiento" && r.start && r.end)
+    .sort((a, b) => a.start - b.start);
+  const lim = GANTT_COC_PARADA_H * 3600000;
+  const tramos = [];
+  coc.forEach((r) => {
+    const a = r.start.getTime(), z = r.end.getTime();
+    const ult = tramos[tramos.length - 1];
+    if (ult && a - ult.fin < lim) {
+      ult.fin = Math.max(ult.fin, z);
+      ult.n++;
+      ult.hl += Number(r.cocVolumenHL) || 0;
+    } else tramos.push({ ini: a, fin: z, n: 1, hl: Number(r.cocVolumenHL) || 0 });
+  });
+  return tramos;
+}
+
+function htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) {
+  const tramos = tramosCocinasPlan();
+  if (!tramos.length) return "";
+  const rs = rangeStart.getTime();
+  const px = (ms) => ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR;
+  const nf = (v) => Math.round(v).toLocaleString("es-CO");
+  let html = "";
+  tramos.forEach((t, i) => {
+    const left = px(t.ini);
+    const width = Math.max(3, px(t.fin) - left);
+    const tit = `Cocinas cocinando · ${fmtDateTime(new Date(t.ini))} → ${fmtDateTime(new Date(t.fin))} (${fmtDuration(t.fin - t.ini)}) · ${t.n} cocimiento(s)${t.hl > 0 ? ` · ${nf(t.hl)} hL` : ""}`;
+    html += `<div class="gantt-coc-linea" style="left:${left}px;width:${width}px;" title="${escapeHtml(tit)}"></div>`;
+    const sig = tramos[i + 1];
+    if (sig) {
+      const gl = px(t.fin);
+      const gw = px(sig.ini) - gl;
+      const titP = `Cocinas paradas · ${fmtDateTime(new Date(t.fin))} → ${fmtDateTime(new Date(sig.ini))} (${fmtDuration(sig.ini - t.fin)}) sin cocimientos`;
+      html += `<div class="gantt-coc-parada" style="left:${gl}px;width:${gw}px;" title="${escapeHtml(titP)}">${gw >= 80 ? `<span>Parada ${escapeHtml(fmtDuration(sig.ini - t.fin))}</span>` : ""}</div>`;
+    }
+  });
+  return `
+        <div class="gantt-row gantt-coc-row">
+          <div class="lane-label">COCINAS<small>plan T-minus</small></div>
+          <div class="lane-track" style="width:${totalWidth}px;">
+            <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLinesHtml}</div>
+            ${html}
+          </div>
+        </div>`;
 }
 
 /* =========================================================================

@@ -3546,3 +3546,11 @@ details.srv-card.srv-det > summary.srv-card-t { margin: 0; }
 .tm-aviso-fechas ul { margin: 0 0 8px; padding-left: 18px; }
 .tm-aviso-fechas li { margin: 4px 0; }
 .tm-aviso-fechas small { display: block; opacity: .8; }
+
+/* Gantt de envasado: fila de Cocinas (plan T-minus) debajo de los trenes */
+.gantt-coc-row { border-top: 2px solid var(--line); }
+.gantt-coc-row .lane-track { height: 40px; }
+.gantt-coc-linea { position: absolute; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; background: var(--accent); cursor: default; }
+.gantt-coc-parada { position: absolute; top: 4px; bottom: 4px; display: flex; align-items: center; justify-content: center; }
+.gantt-coc-parada span { font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+.legend .sw.gantt-coc-sw { background: var(--accent); height: 6px; border-radius: 3px; }
