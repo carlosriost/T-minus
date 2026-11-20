@@ -457,7 +457,6 @@ function renderLogisticaEnvasado(cont) {
   const rerender = () => {
     renderAcuerdosLogistica();
     if (typeof renderRecomendacionesPlan === "function") renderRecomendacionesPlan();
-    if (typeof renderTminus === "function") renderTminus();
   };
   cont.querySelectorAll("[data-log-pond]").forEach((inp) =>
     inp.addEventListener("change", () => {

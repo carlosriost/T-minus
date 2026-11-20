@@ -128,7 +128,7 @@ function recomendacionesPlan() {
         add({
           p: h.grave ? "alta" : "media",
           area: "Líneas de envasado",
-          ir: "view-tminus",
+          ir: "view-logistica#log",
           titulo: `Agrupar formatos en TREN-${h.tren} (${semanas[h.semana] ? semanas[h.semana].label : ""}).`,
           detalle: h.texto + " Cada cambio de formato es un DPA más: menos tiempo envasando y más CIP en línea.",
           impacto: "Menos cambios de formato",
@@ -561,7 +561,6 @@ function renderModulosSeguimiento() {
     }
   };
   seguro(renderVolumen);
-  seguro(renderTminus);
   seguro(renderAcuerdosLogistica);
   seguro(renderCipABC);
   seguro(renderRecomendacionesPlan);
@@ -575,7 +574,6 @@ function renderModulosSeguimiento() {
 // hechos en otras pantallas (p. ej. el plan de filtración o el catálogo).
 function alAbrirVista(view) {
   const m = {
-    "view-tminus": renderTminus,
     "view-logistica": renderAcuerdosLogistica,
     "view-recomendaciones": renderRecomendacionesPlan,
     "view-cip": renderCipABC,
