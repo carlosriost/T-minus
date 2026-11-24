@@ -23,7 +23,7 @@
   // pantalla de cada quien (pestañas, semana elegida, historial) no viajan.
   const VIAJAN = [
     "planCocinasI0", "planCocinasInventario", "planCocinasFactoresPP", "planCocinasLevadura", "planProgramaCocinasExcel",
-    "planFiltracion", "planArchivosMeta", "planAcuerdosPonderacion", "planAcuerdosExcel", "planAcuerdosLogistica", "planSlaPlanta",
+    "planFiltracion", "planArchivosMeta", "planAcuerdosPonderacion", "planAcuerdosExcel", "planVelocidadesEnvasado", "planAcuerdosLogistica", "planSlaPlanta",
     "planUtilidades", "planSetpoints", "planModulacion", "planVsRealCocinas", "planTrazabilidad",
     "planRecCalificaciones", "planRecOrdenarConCal", "planAsistente", "tminus.servicios.cfg", "tminus.cargabase.formulas",
   ];

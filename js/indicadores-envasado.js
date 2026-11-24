@@ -19,9 +19,14 @@
      OSE = EPT ÷ TT         (eficiencia sobre todo el tiempo)
    Con el plan, EC = 0 y las pérdidas por paros no planeados no existen: son
    los indicadores PROGRAMADOS. Los reales salen del reporte de la línea.
-   Si un SKU no trae velocidad nominal en la hoja «Velocidad Eficiencia», su
-   EPT se estima con la eficiencia del SKU (horas × eficiencia); si tampoco
-   la trae, no se puede calcular y se dice.
+   Velocidad nominal (botellas por hora, dadas por la planta y editables en
+   la página): L5 65.000, L7 19.000, L8 72.000; L9 según el formato:
+   200 y 330 cc 42.000, 1000 cc 24.000, 1500 cc 18.000, 2000 cc 14.000.
+   hL/h = botellas/h × mL de la botella ÷ 100.000.
+   Si no se puede (formato sin velocidad o tamaño que no se lee del nombre),
+   se usa la velocidad de la hoja «Velocidad Eficiencia» del instructivo, y
+   si tampoco está, la eficiencia del SKU (horas × eficiencia); si no hay
+   nada, no se puede calcular y se dice.
    Solo lee el plan; no cambia ningún dato.
    ========================================================================= */
 (function () {
@@ -30,10 +35,47 @@
   const DESFASE = 2 * H; // el día de producción arranca a las 22:00
   let SEMANA = "todas";
 
+  const VEL_KEY = "planVelocidadesEnvasado";
+  const VEL_DEFECTO = {
+    linea: { 5: 65000, 7: 19000, 8: 72000 },
+    l9: { 200: 42000, 330: 42000, 1000: 24000, 1500: 18000, 2000: 14000 },
+  };
+  function velConfig() {
+    const c = JSON.parse(JSON.stringify(VEL_DEFECTO));
+    try {
+      const g = JSON.parse(localStorage.getItem(VEL_KEY) || "null");
+      if (g && typeof g === "object")
+        ["linea", "l9"].forEach((k) =>
+          Object.keys(c[k]).forEach((x) => {
+            const v = Number(g[k] && g[k][x]);
+            if (isFinite(v) && v > 0) c[k][x] = v;
+          }),
+        );
+    } catch (_) {}
+    return c;
+  }
+  // mL de la botella a partir del nombre del SKU ("330cc", "200ccX30", "1.5L").
+  function mlDe(nombre) {
+    const n = String(nombre || "").toLowerCase();
+    let m = n.match(/(\d+(?:[.,]\d+)?)\s*(?:cc|ml)/);
+    if (m) return Math.round(Number(m[1].replace(",", ".")));
+    m = n.match(/(\d+(?:[.,]\d+)?)\s*(?:l|lt|lts|litros?)\b/);
+    if (m) return Math.round(Number(m[1].replace(",", ".")) * 1000);
+    return null;
+  }
+  // Velocidad nominal en hL/h según la planta, o null si no aplica.
+  function velPlanta(t, nombre, cfg) {
+    const ml = mlDe(nombre);
+    if (!ml) return null;
+    const bph = String(t) === "9" ? cfg.l9[ml] : cfg.linea[t];
+    return bph > 0 ? (bph * ml) / 100000 : null;
+  }
+
   function tiemposLinea(t, desde, hasta) {
     const bloques = ((STATE.mergedByTrain || {})[t] || []).filter((b) => b.start && b.end);
-    const r = { tt: 0, nst: 0, dpa: 0, prod: 0, ept: 0, eptFalta: 0, hl: 0, estimadoEf: 0 };
+    const r = { tt: 0, nst: 0, dpa: 0, prod: 0, ept: 0, eptFalta: 0, hl: 0, estimadoEf: 0, velInstr: 0 };
     if (!(hasta > desde)) return r;
+    const cfg = velConfig();
     r.tt = (hasta - desde) / H;
     let cubierto = 0;
     bloques.forEach((b) => {
@@ -45,12 +87,15 @@
       if (b.type === "production") {
         const frac = (z - a) / (b.end.getTime() - b.start.getTime());
         const hl = (Number(b.hectolitros) || 0) * frac;
-        const vel = Number(b.velocidad) || 0;
+        const vp = velPlanta(t, b.name, cfg);
+        const vel = vp || Number(b.velocidad) || 0;
         const ef = Number(b.eficiencia) || 0;
         r.prod += h;
         r.hl += hl;
-        if (vel > 0) r.ept += hl / vel;
-        else if (ef > 0) {
+        if (vel > 0) {
+          r.ept += hl / vel;
+          if (!vp) r.velInstr += h;
+        } else if (ef > 0) {
           r.ept += h * Math.min(1, ef);
           r.estimadoEf += h;
         } else r.eptFalta += h;
@@ -77,7 +122,7 @@
   }
 
   function sumar(lista) {
-    const s = { tt: 0, nst: 0, dpa: 0, prod: 0, ept: 0, eptFalta: 0, hl: 0, estimadoEf: 0 };
+    const s = { tt: 0, nst: 0, dpa: 0, prod: 0, ept: 0, eptFalta: 0, hl: 0, estimadoEf: 0, velInstr: 0 };
     lista.forEach((r) => Object.keys(s).forEach((k) => (s[k] += r[k] || 0)));
     return s;
   }
@@ -139,6 +184,19 @@
     if (!res) return modSinDatos(cont, "los indicadores de envasado");
     const faltan = res.lineas.filter((l) => l.eptFalta > 0).map((l) => `TREN-${l.t}`);
     const estimadas = res.lineas.filter((l) => l.estimadoEf > 0 && !l.eptFalta).map((l) => `TREN-${l.t}`);
+    const conInstr = res.lineas.filter((l) => l.velInstr > 0).map((l) => `TREN-${l.t}`);
+    const vc = velConfig();
+    const inV = (k, x) => `<input type="number" class="acu-pond ie-vel" data-ie-vel="${k}.${x}" min="1" step="500" value="${vc[k][x]}">`;
+    const tablaVel = `<div class="ie-vel-grid">
+        <table class="acu-tabla"><thead><tr><th>Línea</th><th class="acu-c">Botellas / hora</th></tr></thead><tbody>${Object.keys(vc.linea)
+          .map((x) => `<tr><td>L${x}</td><td class="acu-c">${inV("linea", x)}</td></tr>`)
+          .join("")}</tbody></table>
+        <table class="acu-tabla"><thead><tr><th>L9 · formato</th><th class="acu-c">Botellas / hora</th></tr></thead><tbody>${Object.keys(vc.l9)
+          .map((x) => `<tr><td>${x} cc</td><td class="acu-c">${inV("l9", x)}</td></tr>`)
+          .join("")}</tbody></table>
+      </div>
+      <p class="acu-nota">hL/h = botellas por hora × mL de la botella ÷ 100.000 (el tamaño sale del nombre del SKU). Se guardan en este navegador y viajan en el paquete de la semana.${conInstr.length ? ` En ${escapeHtml(conInstr.join(", "))} algún formato no tiene velocidad aquí: se usó la del instructivo.` : ""}</p>
+      <button type="button" class="btn small" data-ie-vel-reset>Restaurar velocidades de la planta</button>`;
     const chips = [`<button class="pc-chip ${SEMANA === "todas" ? "on" : ""}" data-ie-sem="todas">Todo el plan</button>`]
       .concat(semanas.map((s) => `<button class="pc-chip ${String(s.start) === SEMANA ? "on" : ""}" data-ie-sem="${s.start}" title="${escapeHtml(s.label)}">${escapeHtml(s.corto)}</button>`))
       .join("");
@@ -147,7 +205,7 @@
         <div class="panel-head"><h3>Indicadores de envasado por línea</h3><span class="sub">Programados con el plan de envasado · ${escapeHtml(fmtDateTime(new Date(res.desde)))} → ${escapeHtml(fmtDateTime(new Date(res.hasta)))}</span></div>
         <div class="panel-body">
           <div class="gantt-intro">
-            <p><b>Qué miden.</b> Los tres comparan el <b>tiempo efectivo (EPT)</b> —las horas que tomaría envasar los hL del plan a la velocidad nominal de la línea— contra un tiempo distinto:</p>
+            <p><b>Qué miden.</b> Los tres comparan el <b>tiempo efectivo (EPT)</b> —las horas que tomaría envasar los hL del plan a la velocidad nominal de la línea (botellas por hora de la planta, abajo)— contra un tiempo distinto:</p>
             <div class="gantt-intro-cols">
               <div><b>GLY</b> = EPT ÷ tiempo programado<br><small>Cuánto del tiempo en que la línea tiene programa se convierte en producción a velocidad nominal. Los cambios y mantenimientos programados le bajan.</small></div>
               <div><b>LEF</b> = EPT ÷ (tiempo de carga − causas externas)<br><small>La eficiencia de la línea mientras debería estar envasando: ya descuenta cambios y mantenimientos programados.</small></div>
@@ -162,9 +220,30 @@
             <tbody>${res.lineas.map((l) => fila(`TREN-${l.t}`, l)).join("")}${fila("Planta", res.planta, true)}</tbody>
           </table></div>
           <div class="legend ie-ley"><div class="item"><span class="sw ie-ept"></span>Tiempo efectivo (EPT)</div><div class="item"><span class="sw ie-perd"></span>Producción por debajo de la velocidad nominal</div><div class="item"><span class="sw ie-dpa"></span>Paradas planeadas (DPA)</div><div class="item"><span class="sw ie-nst"></span>No programado (NST)</div></div>
+          ${pliegue("ie-vel", "Velocidades nominales usadas", tablaVel, `L5 ${MOD_NF(vc.linea[5])} · L7 ${MOD_NF(vc.linea[7])} · L8 ${MOD_NF(vc.linea[8])} bot/h · L9 según formato`)}
           <p class="acu-nota">El día de producción va de las 22:00 a las 22:00 y la semana de lunes a domingo. Planta suma las horas de las cuatro líneas.${estimadas.length ? ` En ${escapeHtml(estimadas.join(", "))} algunos SKU no traen velocidad nominal: su tiempo efectivo se estimó con la eficiencia del SKU.` : ""}</p>
         </div>
       </div>`;
+    cont.querySelectorAll("[data-ie-vel]").forEach((inp) =>
+      inp.addEventListener("change", () => {
+        const c = velConfig();
+        const [k, x] = inp.dataset.ieVel.split(".");
+        const v = Number(inp.value);
+        if (isFinite(v) && v > 0) c[k][x] = v;
+        try {
+          localStorage.setItem(VEL_KEY, JSON.stringify(c));
+        } catch (_) {}
+        renderIndicadoresEnvasado();
+      }),
+    );
+    const rst = cont.querySelector("[data-ie-vel-reset]");
+    if (rst)
+      rst.addEventListener("click", () => {
+        try {
+          localStorage.removeItem(VEL_KEY);
+        } catch (_) {}
+        renderIndicadoresEnvasado();
+      });
     cont.querySelectorAll("[data-ie-sem]").forEach((b) =>
       b.addEventListener("click", () => {
         SEMANA = b.dataset.ieSem;

@@ -215,6 +215,7 @@ function pintarIntroGantt() {
         <li><b>Para parar</b> (P = hora en que para la llenadora): lavadora ${hora(c.parada.lavadora)}, agua ${hora(c.parada.agua)}, paster ${hora(c.parada.paster)}.</li>
         <li><b>Para arrancar</b> (A = hora en que arranca la llenadora): lavadora ${hora(c.arranque.lavadora)}, agua ${hora(c.arranque.agua)}, paster ${hora(c.arranque.paster)}.</li>
         <li>Los cambios de líquido, de empaque y las esterilizaciones <b>no</b> son parada: la línea sigue trabajando.</li>
+        <li><b>Cocinas:</b> la fila COCINAS muestra cuándo cocina el plan; los huecos en blanco son paradas de cocina de ${GANTT_COC_PARADA_H} h o más, listadas al final de la página.</li>
       </ul>
       <p class="gantt-intro-pie">Debajo del Gantt está la lista de eventos para el operador, con fecha, línea y duración; ahí también se ajustan los tiempos.</p>
     </div>`;
@@ -231,7 +232,7 @@ function pintarIntroGantt() {
         <div><b>Setpoint de vapor</b><ul><li>Línea 8 envasando: ${p(ps.vaporL8)}</li><li>Otra línea, sin la 8: ${p(ps.vaporOtras)}</li><li>Solo la cocina trabajando: ${p(ps.vaporSoloCocinas)}</li><li>Nada trabajando: ${p(ps.vaporNada)}</li></ul></div>
         <div><b>Setpoint de aire</b><ul><li>Con cocina trabajando: ${p(ps.aireCocinas)}</li><li>Sin cocina, con PET envasando: ${p(ps.aireSinCocinasPet)}</li><li>Sin cocina y sin PET: ${p(ps.aireSinCocinasSinPet)}</li></ul></div>
       </div>
-      <p class="gantt-intro-pie">«Envasando» = bloque de producción; los cambios (DPA) y los paros (NST) no cuentan. La caldera alterna y el Elliot se eligen debajo del Gantt; los PSI se ajustan en la tabla de setpoints.</p>
+      <p class="gantt-intro-pie">La fila COCINAS muestra cuándo cocina el plan y sus paradas (listadas al final de la página). «Envasando» = bloque de producción; los cambios (DPA) y los paros (NST) no cuentan. La caldera alterna y el Elliot se eligen debajo del Gantt; los PSI se ajustan en la tabla de setpoints.</p>
     </div>`;
   }
 }
@@ -398,7 +399,9 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
 
   // Fila de COCINAS debajo de los trenes: línea continua mientras el plan de
   // cocinas de T-minus tiene cocimientos y espacio en blanco en sus paradas.
-  const cocRowHtml = GANTT_MODO === "plan" ? htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) : "";
+  // Va en las tres vistas: en modulación y setpoints las paradas de cocinas
+  // también cuentan (Utilities baja vapor y aire cuando la cocina para).
+  const cocRowHtml = htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml);
 
   // hL a envasar por marca (según los bloques de producción del instructivo).
   const envasarPorMarca = {};
@@ -470,6 +473,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     <div class="legend">${legendItems}${utilRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaUtilidades() : ""}${spRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaSetpoints() : ""}${modlRowsHtml ? '<div class="legend-break"></div>' + htmlLeyendaModulacion() : ""}</div>
     ${modlRowsHtml ? htmlPanelModulacion(mergedByTrain) : ""}
     ${spRowsHtml ? htmlPanelSetpoints(mergedByTrain) : ""}
+    ${GANTT_MODO !== "plan" ? htmlParadasCocinas(GANTT_MODO) : ""}
   `;
 
   // Apartado Utilidades: al cambiar la caldera alterna o el Elliot se vuelve a
@@ -530,6 +534,36 @@ function tramosCocinasPlan() {
     } else tramos.push({ ini: a, fin: z, n: 1, hl: Number(r.cocVolumenHL) || 0 });
   });
   return tramos;
+}
+
+// Lista de paradas de cocinas (mismo criterio de la fila COCINAS), para las
+// vistas de modulación y de equipos y setpoints.
+function htmlParadasCocinas(modo) {
+  const tramos = tramosCocinasPlan();
+  if (!tramos.length) return "";
+  const paradas = [];
+  for (let i = 0; i + 1 < tramos.length; i++) paradas.push({ para: tramos[i].fin, arranca: tramos[i + 1].ini, ult: tramos[i].n });
+  const fin = tramos[tramos.length - 1].fin;
+  const ahora = typeof ahoraPlanta === "function" ? ahoraPlanta().getTime() : Date.now();
+  const filas = paradas
+    .map(
+      (p) => `<tr class="${p.arranca < ahora ? "modl-pasado" : ""}"><td>${escapeHtml(fmtDateTime(new Date(p.para)))}</td><td><span class="sp-turno">${typeof spTurno === "function" ? spTurno(p.para) : ""}</span></td><td>${escapeHtml(fmtDateTime(new Date(p.arranca)))}</td><td><b>${escapeHtml(fmtDuration(p.arranca - p.para))}</b></td></tr>`,
+    )
+    .join("");
+  const nota =
+    modo === "utilidades"
+      ? (() => {
+          const ps = (typeof spConfig === "function" ? spConfig().psi : null) || {};
+          return `Mientras la cocina no está trabajando, el setpoint de aire baja (${ps.aireSinCocinasPet ?? 70} PSI con PET envasando, ${ps.aireSinCocinasSinPet ?? 60} PSI sin PET) y, si tampoco hay líneas envasando, el vapor queda sin requerimiento. La fila COCINAS del Gantt muestra estos huecos.`;
+        })()
+      : "Con la cocina parada se pueden bajar o apagar los servicios de elaboración (vapor de cocción, agua caliente, aire de cocinas). La fila COCINAS del Gantt muestra estos huecos.";
+  return `<div class="sp-panel">
+      <div class="sp-head"><b class="util-title">Paradas de cocinas</b><span class="util-note">Plan de cocinas de T-minus · huecos de ${GANTT_COC_PARADA_H} h o más sin cocimientos</span></div>
+      ${paradas.length
+        ? `<div class="table-scroll" style="max-height:320px;"><table class="acu-tabla sp-tabla"><thead><tr><th>La cocina para</th><th>Turno</th><th>Vuelve a arrancar</th><th>Duración</th></tr></thead><tbody>${filas}</tbody></table></div>`
+        : `<p class="empty-note">El plan de cocinas no tiene paradas de ${GANTT_COC_PARADA_H} h o más entre cocimientos.</p>`}
+      <p class="acu-nota">Último cocimiento del plan: termina el ${escapeHtml(fmtDateTime(new Date(fin)))}; después de eso el plan no dice cuándo vuelve a cocinar. ${nota}</p>
+    </div>`;
 }
 
 function htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) {

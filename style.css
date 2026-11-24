@@ -3596,3 +3596,6 @@ details.srv-card.srv-det > summary.srv-card-t { margin: 0; }
 .acx-nuevo { color: var(--accent); }
 .acx-cambia { color: var(--warn); }
 .acx-quita { color: var(--danger); }
+.ie-vel-grid { display: flex; flex-wrap: wrap; gap: 16px; }
+.ie-vel-grid table { width: auto; min-width: 240px; }
+.ie-vel { width: 90px; }
