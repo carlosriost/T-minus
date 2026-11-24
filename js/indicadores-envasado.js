@@ -71,8 +71,8 @@
     return bph > 0 ? (bph * ml) / 100000 : null;
   }
 
-  function tiemposLinea(t, desde, hasta) {
-    const bloques = ((STATE.mergedByTrain || {})[t] || []).filter((b) => b.start && b.end);
+  function tiemposLinea(t, desde, hasta, lista) {
+    const bloques = (lista || (STATE.mergedByTrain || {})[t] || []).filter((b) => b.start && b.end);
     const r = { tt: 0, nst: 0, dpa: 0, prod: 0, ept: 0, eptFalta: 0, hl: 0, estimadoEf: 0, velInstr: 0 };
     if (!(hasta > desde)) return r;
     const cfg = velConfig();
@@ -127,6 +127,25 @@
     return s;
   }
 
+  // Acumulado del mes con lo planificado: para cada día de producción, el
+  // último plan cargado que lo cubre (historial de planes).
+  function calcularMes(clave) {
+    const HP = window.HistorialPlanes;
+    if (!HP) return null;
+    const dias = HP.planCosido(clave);
+    const con = dias.filter((d) => d.snap && d.z > d.a);
+    if (!con.length) return null;
+    const lineas = TRAINS.map((t) => ({ t, ...indicadores(sumar(con.map((d) => tiemposLinea(t, d.a, d.z, HP.merged(d.snap)[t])))) }));
+    const planta = indicadores(sumar(lineas));
+    const usados = [];
+    con.forEach((d) => {
+      const u = usados[usados.length - 1];
+      if (u && u.snap === d.snap) u.hasta = d.dia;
+      else usados.push({ snap: d.snap, desde: d.dia, hasta: d.dia });
+    });
+    return { desde: con[0].a, hasta: con[con.length - 1].z, lineas, planta, mes: clave, sinPlan: dias.length - con.length, usados };
+  }
+
   function calcular(w) {
     const todos = TRAINS.flatMap((t) => (STATE.mergedByTrain[t] || []).filter((b) => b.start && b.end));
     if (!todos.length) return null;
@@ -178,9 +197,16 @@
     if (!cont) return;
     if (typeof STATE === "undefined" || !STATE || !STATE.mergedByTrain) return modSinDatos(cont, "los indicadores de envasado");
     const semanas = typeof semanasAcuerdos === "function" ? semanasAcuerdos() : [];
+    const HP = window.HistorialPlanes;
+    if (HP && !renderIndicadoresEnvasado.__hist) {
+      renderIndicadoresEnvasado.__hist = true;
+      HP.cargar().then(() => renderIndicadoresEnvasado());
+    }
+    const meses = HP ? HP.mesesConPlan() : [];
+    const esMes = SEMANA.startsWith("mes:") && meses.includes(SEMANA.slice(4));
     const w = semanas.find((s) => String(s.start) === SEMANA) || null;
-    if (!w) SEMANA = "todas";
-    const res = calcular(w);
+    if (!w && !esMes) SEMANA = "todas";
+    const res = esMes ? calcularMes(SEMANA.slice(4)) : calcular(w);
     if (!res) return modSinDatos(cont, "los indicadores de envasado");
     const faltan = res.lineas.filter((l) => l.eptFalta > 0).map((l) => `TREN-${l.t}`);
     const estimadas = res.lineas.filter((l) => l.estimadoEf > 0 && !l.eptFalta).map((l) => `TREN-${l.t}`);
@@ -200,6 +226,12 @@
     const chips = [`<button class="pc-chip ${SEMANA === "todas" ? "on" : ""}" data-ie-sem="todas">Todo el plan</button>`]
       .concat(semanas.map((s) => `<button class="pc-chip ${String(s.start) === SEMANA ? "on" : ""}" data-ie-sem="${s.start}" title="${escapeHtml(s.label)}">${escapeHtml(s.corto)}</button>`))
       .join("");
+    const chipsMes = meses.map((m) => `<button class="pc-chip ${SEMANA === "mes:" + m ? "on" : ""}" data-ie-sem="mes:${m}">Acumulado ${escapeHtml(HP.nombreMes(m))}</button>`).join("");
+    const notaMes = res.mes
+      ? `<div class="gantt-intro ie-mes"><b>Acumulado de ${escapeHtml(HP.nombreMes(res.mes))} con lo planificado.</b> Para cada día se usa el último plan cargado que lo cubre:<ul>${res.usados
+          .map((u) => `<li>${escapeHtml(fmtDate(new Date(u.desde)))} → ${escapeHtml(fmtDate(new Date(u.hasta)))}: «${escapeHtml(u.snap.archivo)}»</li>`)
+          .join("")}</ul>${res.sinPlan ? `<span class="gantt-intro-pie">${res.sinPlan} día(s) del mes no tienen ningún plan guardado y no cuentan.</span>` : ""}</div>`
+      : "";
     cont.innerHTML = `
       <div class="panel">
         <div class="panel-head"><h3>Indicadores de envasado por línea</h3><span class="sub">Programados con el plan de envasado · ${escapeHtml(fmtDateTime(new Date(res.desde)))} → ${escapeHtml(fmtDateTime(new Date(res.hasta)))}</span></div>
@@ -213,7 +245,8 @@
             </div>
             <p class="gantt-intro-pie">Tiempo programado = total − no programado (NST). Tiempo de carga = programado − paradas planeadas (DPA). Con el plan no hay causas externas ni paros no planeados, así que estos son los valores <b>programados</b>; los reales salen del reporte de la línea.</p>
           </div>
-          <div class="pc-filtros"><div class="pc-fgrupo"><span class="pc-flab">Periodo</span>${chips}</div></div>
+          <div class="pc-filtros"><div class="pc-fgrupo"><span class="pc-flab">Periodo</span>${chips}</div>${chipsMes ? `<div class="pc-fgrupo"><span class="pc-flab">Mes</span>${chipsMes}</div>` : ""}</div>
+          ${notaMes}
           ${faltan.length ? `<div class="pvr-falta"><b>Sin velocidad nominal en ${escapeHtml(faltan.join(", "))}.</b> Algunos SKU no traen velocidad ni eficiencia en la hoja «Velocidad Eficiencia» del instructivo, así que no se puede calcular el tiempo efectivo de esa línea.</div>` : ""}
           <div class="table-scroll"><table class="ie-tabla">
             <thead><tr><th>Línea</th><th class="num">GLY</th><th class="num">LEF</th><th class="num">OSE</th><th>Uso del tiempo</th><th class="num">Total (h)</th><th class="num">NST (h)</th><th class="num">Programado (h)</th><th class="num">DPA (h)</th><th class="num">De carga (h)</th><th class="num">Efectivo EPT (h)</th><th class="num">hL</th></tr></thead>
@@ -254,4 +287,5 @@
 
   window.renderIndicadoresEnvasado = renderIndicadoresEnvasado;
   window.indicadoresEnvasado = calcular;
+  window.IndicadoresEnvasado = { tiempos: tiemposLinea, indicadores, sumar };
 })();

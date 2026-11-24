@@ -6,7 +6,7 @@
     <title>T-minus</title>
     <meta name="description" content="T-minus · planeación de envasado, cocinas y servicios" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=20261124a">
+    <link rel="stylesheet" href="style.css?v=20261124b">
   </head>
   <body>
     <header>
@@ -51,6 +51,7 @@
           <button class="sb-item" data-view="view-t-utilidades"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span><span class="sb-txt">Equipos y setpoints (Utilities)</span></button>
           <div class="sb-label">Envasado</div>
           <button class="sb-item" data-view="view-envasado-kpi"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span><span class="sb-txt">GLY · LEF · OSE por línea</span></button>
+          <button class="sb-item" data-view="view-comparacion-plan"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v18M16 3v18"/><path d="M3 8h5M16 8h5M3 16h5M16 16h5"/></svg></span><span class="sb-txt">Comparación de plan</span></button>
           <div class="sb-label">Cocinas</div>
           <button class="sb-item" data-view="view-programa-feria"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 15l2.5 2.5L16 12"/></svg></span><span class="sb-txt">Plan de cocinas (proyección)</span></button>
           <button class="sb-item" data-view="view-programa-cocinas"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="16" cy="14" r="1"/><circle cx="8" cy="18" r="1"/><circle cx="12" cy="18" r="1"/></svg></span><span class="sb-txt">Programa real (Excel)</span></button>
@@ -196,7 +197,8 @@
                     <tr><td>Eventos de modulación</td><td>Cuándo apagar y prender lavadora, agua y paster de cada línea cuando va a estar detenida 2 h o más.</td></tr>
                     <tr><td>Equipos y setpoints (Utilities)</td><td>Qué calderas y compresores deben estar prendidos y a qué presión dejar el vapor y el aire en cada momento del plan.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Envasado</td></tr>
-                    <tr><td>GLY · LEF · OSE por línea</td><td>Los indicadores de eficiencia de cada línea, calculados con el plan de envasado (valores programados), por semana o para todo el plan.</td></tr>
+                    <tr><td>GLY · LEF · OSE por línea</td><td>Los indicadores de eficiencia de cada línea, calculados con el plan de envasado (valores programados), por semana, para todo el plan o acumulados del mes con los planes guardados.</td></tr>
+                    <tr><td>Comparación de plan</td><td>Cómo cambió el plan de principio de mes con cada actualización cargada: volumen, formatos, paradas y arranques de línea.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Cocinas</td></tr>
                     <tr><td>Plan de cocinas (proyección)</td><td>Los cocimientos que T-minus proyecta para cumplir el plan de envasado, con las mismas gráficas del Excel de Elaboración.</td></tr>
                     <tr><td>Programa real (Excel)</td><td>Lo que Elaboración cocinó de verdad (sale del «Programa_Cocinas»).</td></tr>
@@ -258,6 +260,7 @@
 
           <section class="view" id="view-gantt-filtracion" data-view-el></section>
           <section class="view" id="view-envasado-kpi" data-view-el><div id="envasadoKpiPanel"></div></section>
+          <section class="view" id="view-comparacion-plan" data-view-el><div id="comparacionPlanPanel"></div></section>
           <section class="view" id="view-acu-excel" data-view-el><div id="acuExcelPanel"></div></section>
 
           <section class="view" id="view-programa-cocinas" data-view-el><div id="programaCocinasPanel"></div></section>
@@ -605,46 +608,47 @@
 
     <!-- script.js dividido en módulos por área. Se cargan en este orden
          exacto (equivale byte a byte al script.js original concatenado). -->
-    <script src="js/utils.js?v=20261124a"></script>
-    <script src="js/parse.js?v=20261124a"></script>
-    <script src="js/catalog.js?v=20261124a"></script>
-    <script src="js/engine.js?v=20261124a"></script>
-    <script src="js/acuerdos.js?v=20261124a"></script>
-    <script src="js/render-core.js?v=20261124a"></script>
-    <script src="js/gantt.js?v=20261124a"></script>
-    <script src="js/utilidades.js?v=20261124a"></script>
-    <script src="js/render-tables.js?v=20261124a"></script>
-    <script src="js/modulos-comun.js?v=20261124a"></script>
-    <script src="js/volumen.js?v=20261124a"></script>
-    <script src="js/logistica.js?v=20261124a"></script>
-    <script src="js/indicadores-envasado.js?v=20261124a"></script>
-    <script src="js/acuerdos-excel.js?v=20261124a"></script>
-    <script src="js/sla.js?v=20261124a"></script>
-    <script src="js/cip.js?v=20261124a"></script>
-    <script src="js/recomendaciones.js?v=20261124a"></script>
-    <script src="js/programa-cocinas.js?v=20261124a"></script>
-    <script src="js/programa-feria.js?v=20261124a"></script>
-    <script src="js/programa-debio.js?v=20261124a"></script>
-    <script src="js/setpoints.js?v=20261124a"></script>
-    <script src="js/modulacion.js?v=20261124a"></script>
-    <script src="js/plan-vs-real.js?v=20261124a"></script>
-    <script src="js/trazabilidad.js?v=20261124a"></script>
-    <script src="js/almacen.js?v=20261124a"></script>
-    <script src="js/servicios-datos.js?v=20261124a"></script>
-    <script src="js/servicios-modelos.js?v=20261124a"></script>
-    <script src="js/servicios-prediccion.js?v=20261124a"></script>
-    <script src="js/servicios-reporte.js?v=20261124a"></script>
-    <script src="js/servicios-elaboracion.js?v=20261124a"></script>
-    <script src="js/servicios-industriales.js?v=20261124a"></script>
-    <script src="js/servicios-graficas.js?v=20261124a"></script>
-    <script src="js/servicios.js?v=20261124a"></script>
-    <script src="js/servicios-industriales-ui.js?v=20261124a"></script>
-    <script src="js/servicios-carga-base.js?v=20261124a"></script>
-    <script src="js/inicio.js?v=20261124a"></script>
-    <script src="js/asistente-datos.js?v=20261124a"></script>
-    <script src="js/asistente.js?v=20261124a"></script>
-    <script src="js/ui.js?v=20261124a"></script>
-    <script src="js/datos-entrada.js?v=20261124a"></script>
+    <script src="js/utils.js?v=20261124b"></script>
+    <script src="js/parse.js?v=20261124b"></script>
+    <script src="js/catalog.js?v=20261124b"></script>
+    <script src="js/engine.js?v=20261124b"></script>
+    <script src="js/acuerdos.js?v=20261124b"></script>
+    <script src="js/render-core.js?v=20261124b"></script>
+    <script src="js/gantt.js?v=20261124b"></script>
+    <script src="js/utilidades.js?v=20261124b"></script>
+    <script src="js/render-tables.js?v=20261124b"></script>
+    <script src="js/modulos-comun.js?v=20261124b"></script>
+    <script src="js/volumen.js?v=20261124b"></script>
+    <script src="js/logistica.js?v=20261124b"></script>
+    <script src="js/indicadores-envasado.js?v=20261124b"></script>
+    <script src="js/historial-planes.js?v=20261124b"></script>
+    <script src="js/acuerdos-excel.js?v=20261124b"></script>
+    <script src="js/sla.js?v=20261124b"></script>
+    <script src="js/cip.js?v=20261124b"></script>
+    <script src="js/recomendaciones.js?v=20261124b"></script>
+    <script src="js/programa-cocinas.js?v=20261124b"></script>
+    <script src="js/programa-feria.js?v=20261124b"></script>
+    <script src="js/programa-debio.js?v=20261124b"></script>
+    <script src="js/setpoints.js?v=20261124b"></script>
+    <script src="js/modulacion.js?v=20261124b"></script>
+    <script src="js/plan-vs-real.js?v=20261124b"></script>
+    <script src="js/trazabilidad.js?v=20261124b"></script>
+    <script src="js/almacen.js?v=20261124b"></script>
+    <script src="js/servicios-datos.js?v=20261124b"></script>
+    <script src="js/servicios-modelos.js?v=20261124b"></script>
+    <script src="js/servicios-prediccion.js?v=20261124b"></script>
+    <script src="js/servicios-reporte.js?v=20261124b"></script>
+    <script src="js/servicios-elaboracion.js?v=20261124b"></script>
+    <script src="js/servicios-industriales.js?v=20261124b"></script>
+    <script src="js/servicios-graficas.js?v=20261124b"></script>
+    <script src="js/servicios.js?v=20261124b"></script>
+    <script src="js/servicios-industriales-ui.js?v=20261124b"></script>
+    <script src="js/servicios-carga-base.js?v=20261124b"></script>
+    <script src="js/inicio.js?v=20261124b"></script>
+    <script src="js/asistente-datos.js?v=20261124b"></script>
+    <script src="js/asistente.js?v=20261124b"></script>
+    <script src="js/ui.js?v=20261124b"></script>
+    <script src="js/datos-entrada.js?v=20261124b"></script>
     <script>
       /* =====================================================================
          Navegación por menú lateral con íconos.
@@ -659,6 +663,7 @@
           "view-gantt-envasado",
           "view-gantt-filtracion",
           "view-envasado-kpi",
+          "view-comparacion-plan",
           "view-acu-excel",
           "configTabs",
           "results",
@@ -685,6 +690,7 @@
           "view-t-modulacion": { show: ["view-gantt-envasado"] },
           "view-t-utilidades": { show: ["view-gantt-envasado"] },
           "view-envasado-kpi": { show: ["view-envasado-kpi"] },
+          "view-comparacion-plan": { show: ["view-comparacion-plan"] },
           // Acuerdos de servicio: una entrada del menú por pestaña.
           "view-acu-sla": { show: ["view-logistica"] },
           "view-acu-log": { show: ["view-logistica"] },

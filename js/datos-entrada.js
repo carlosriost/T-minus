@@ -356,6 +356,7 @@
           instructivo: { nombre: f.nombre, cargado: f.cargado, base64: aBase64(f.bytes) },
           ajustes: ls,
           servicios: window.SrvApp ? SrvApp.paquete() || null : null,
+          historial: window.HistorialPlanes ? HistorialPlanes.lista() : [],
         };
         const hoy = new Date();
         const dia = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
@@ -454,6 +455,8 @@
       const B = conSrv ? Object.assign({}, p.servicios, { guardado_en: new Date().toISOString() }) : null;
       return (conSrv ? TMAlmacen.escribir(SrvApp.claveAlmacen, B) : Promise.resolve())
         .then(() => TMAlmacen.escribir(K_INSTR, { nombre: p.instructivo.nombre, cargado: p.instructivo.cargado, bytes }))
+        // El historial de planes se suma (nunca borra lo que ya hay aquí).
+        .then(() => (window.HistorialPlanes && Array.isArray(p.historial) ? HistorialPlanes.fusionar(p.historial).catch((e) => console.error(e)) : null))
         .then(
           () => {
             if (conSrv)

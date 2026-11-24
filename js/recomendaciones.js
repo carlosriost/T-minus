@@ -584,6 +584,7 @@ function alAbrirVista(view) {
     "view-t-modulacion": () => typeof ganttCambiarModo === "function" && ganttCambiarModo("modulacion"),
     "view-t-utilidades": () => typeof ganttCambiarModo === "function" && ganttCambiarModo("utilidades"),
     "view-envasado-kpi": typeof renderIndicadoresEnvasado === "function" ? renderIndicadoresEnvasado : null,
+    "view-comparacion-plan": typeof renderComparacionPlan === "function" ? renderComparacionPlan : null,
     "view-acu-sla": () => (window.setAcuerdosTab && window.setAcuerdosTab("sla"), renderAcuerdosLogistica()),
     "view-acu-log": () => (window.setAcuerdosTab && window.setAcuerdosTab("log"), renderAcuerdosLogistica()),
     "view-acu-ela": () => (window.setAcuerdosTab && window.setAcuerdosTab("ela"), renderAcuerdosLogistica()),

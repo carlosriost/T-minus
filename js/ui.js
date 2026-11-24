@@ -65,6 +65,8 @@ function procesarInstructivo(buffer, nombre, opts) {
   if (typeof VOL_ARCHIVO_ACTUAL !== "undefined") VOL_ARCHIVO_ACTUAL = nombre;
   render(parsed);
   if (window.DatosEntrada) DatosEntrada.instructivoCargado(buffer, nombre, opts);
+  // Historial de planes (comparación de plan y acumulado del mes).
+  if (window.HistorialPlanes) HistorialPlanes.registrar(nombre, opts).catch((e) => console.error(e));
   return parsed;
 }
 

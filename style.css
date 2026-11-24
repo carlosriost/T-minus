@@ -3599,3 +3599,22 @@ details.srv-card.srv-det > summary.srv-card-t { margin: 0; }
 .ie-vel-grid { display: flex; flex-wrap: wrap; gap: 16px; }
 .ie-vel-grid table { width: auto; min-width: 240px; }
 .ie-vel { width: 90px; }
+
+/* Comparación de plan */
+.cp-sel { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 4px 0 12px; }
+.cp-sel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.cp-sel select { min-width: 220px; max-width: 520px; }
+.cp-ventana { color: var(--muted); margin: 0 0 10px; }
+.cp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.cp-kpi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+.cp-kpi-t { font-size: 12px; color: var(--muted); font-weight: 600; }
+.cp-kpi-v { font-family: var(--mono); font-size: 14px; margin: 4px 0; }
+.cp-kpi-v b { font-size: 16px; }
+.cp-kpi-d { font-size: 12.5px; }
+.cp-mas { color: var(--ok); font-weight: 600; }
+.cp-menos { color: var(--danger); font-weight: 600; }
+.cp-igual { color: var(--muted); }
+.cp-tabla td { font-family: var(--sans); }
+.cp-tabla td.num, .cp-tabla td.ie-lin { font-family: var(--mono); }
+.cp-base td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.ie-mes ul { margin: 4px 0; }
