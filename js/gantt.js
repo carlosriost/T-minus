@@ -201,7 +201,7 @@ function pintarIntroGantt() {
         <li><b>Bloques de color:</b> lo que se envasa (un color por marca), con los hL y la duración.</li>
         <li><b>Rayado gris:</b> un cambio (DPA): de líquido, de empaque, esterilización o mantenimiento programado.</li>
         <li><b>Azul oscuro:</b> la línea parada sin programación (NST).</li>
-        <li><b>Fila COCINAS:</b> la línea dorada es el tiempo en que la cocina está cocinando según el plan de cocinas de T-minus; los espacios en blanco son paradas de cocina de ${GANTT_COC_PARADA_H} h o más.</li>
+        <li><b>Fila COCINAS:</b> la línea dorada es el tiempo en que la cocina está cocinando según ${fuenteCocinasGantt().tipo === "real" ? "el <b>Programa de cocinas</b> que se subió en Datos de entrada" : "el plan de cocinas que proyecta T-minus (todavía no se ha subido el Programa de cocinas)"}; los espacios en blanco son paradas de cocina de ${GANTT_COC_PARADA_H} h o más.</li>
       </ul>
       <p class="gantt-intro-pie">Pase el mouse por cualquier bloque para ver fechas, hL y cocimientos. <button class="ini-link" data-goto="view-gantt-cocina">Ver cada cocimiento en el Gantt de cocina <span aria-hidden="true">→</span></button></p>
     </div>`;
@@ -437,7 +437,7 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
     `<div class="item"><span class="sw" style="background:repeating-linear-gradient(45deg,var(--changeover-c1),var(--changeover-c1) 3px,var(--changeover-c2) 3px,var(--changeover-c2) 6px);"></span>Cambio (DPA)</div>` +
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.idle};"></span>Paro (NST)</div>` +
     `<div class="item"><span class="sw" style="background:${TRAIN_EVENT_COLORS.other};"></span>Otro</div>` +
-    (cocRowHtml ? `<div class="item"><span class="sw gantt-coc-sw"></span>Cocinas cocinando (plan T-minus)</div><div class="item"><span class="sw" style="background:transparent;border:1px dashed var(--line);"></span>Cocinas paradas (${GANTT_COC_PARADA_H} h o más sin cocimientos)</div>` : "");
+    (cocRowHtml ? `<div class="item"><span class="sw gantt-coc-sw"></span>Cocinas cocinando (${escapeHtml(fuenteCocinasGantt().corto)})</div><div class="item"><span class="sw" style="background:transparent;border:1px dashed var(--line);"></span>Cocinas paradas (${GANTT_COC_PARADA_H} h o más sin cocimientos)</div>` : "");
 
   // Filas de modulación (paradas y arranques de lavadora, agua y paster),
   // justo debajo de los trenes (js/modulacion.js).
@@ -517,21 +517,37 @@ function renderGanttEnvasado(mergedByTrain, weekStartRaw, weeks) {
 // más es una parada y queda en blanco. Es el mismo criterio de «Eventos de
 // modulación» en Inicio. Solo dibuja; no cambia ningún dato.
 const GANTT_COC_PARADA_H = 12;
-function tramosCocinasPlan() {
+// Fuente de la fila COCINAS: el Programa de cocinas que se sube (el Excel de
+// Elaboración, js/programa-cocinas.js). Solo si no se ha subido se usa el plan
+// de cocinas que proyecta T-minus.
+function fuenteCocinasGantt() {
+  const pc = typeof PC !== "undefined" && PC && Array.isArray(PC.filas) ? PC.filas : null;
+  const real = (pc || [])
+    .filter((x) => x.tipo === "coc" && x.inicio != null)
+    .map((x) => {
+      const fin = x.fin != null ? x.fin : x.inicio + (x.durMin || 0) * 60000;
+      const id = x.id === "ponyhg" || x.id === "ponygo" ? "pony" : x.id;
+      const hl = typeof pvrHlCoc === "function" ? pvrHlCoc(id) || 0 : 0;
+      return { a: x.inicio, z: Math.max(fin, x.inicio + 60000), hl };
+    });
+  if (real.length) return { tipo: "real", nombre: "Programa de cocinas", corto: "programa de cocinas", archivo: (PC && PC.archivo) || "", cocs: real };
   const seq = typeof STATE !== "undefined" && STATE ? STATE.seq : null;
-  const coc = ((seq && seq.rows) || [])
+  const plan = ((seq && seq.rows) || [])
     .filter((r) => r.tipo === "cocimiento" && r.start && r.end)
-    .sort((a, b) => a.start - b.start);
+    .map((r) => ({ a: r.start.getTime(), z: r.end.getTime(), hl: Number(r.cocVolumenHL) || 0 }));
+  return { tipo: "plan", nombre: "Plan de cocinas de T-minus (proyección)", corto: "plan T-minus", archivo: "", cocs: plan };
+}
+function tramosCocinasPlan() {
+  const coc = fuenteCocinasGantt().cocs.slice().sort((x, y) => x.a - y.a);
   const lim = GANTT_COC_PARADA_H * 3600000;
   const tramos = [];
   coc.forEach((r) => {
-    const a = r.start.getTime(), z = r.end.getTime();
     const ult = tramos[tramos.length - 1];
-    if (ult && a - ult.fin < lim) {
-      ult.fin = Math.max(ult.fin, z);
+    if (ult && r.a - ult.fin < lim) {
+      ult.fin = Math.max(ult.fin, r.z);
       ult.n++;
-      ult.hl += Number(r.cocVolumenHL) || 0;
-    } else tramos.push({ ini: a, fin: z, n: 1, hl: Number(r.cocVolumenHL) || 0 });
+      ult.hl += r.hl;
+    } else tramos.push({ ini: r.a, fin: r.z, n: 1, hl: r.hl });
   });
   return tramos;
 }
@@ -558,11 +574,11 @@ function htmlParadasCocinas(modo) {
         })()
       : "Con la cocina parada se pueden bajar o apagar los servicios de elaboración (vapor de cocción, agua caliente, aire de cocinas). La fila COCINAS del Gantt muestra estos huecos.";
   return `<div class="sp-panel">
-      <div class="sp-head"><b class="util-title">Paradas de cocinas</b><span class="util-note">Plan de cocinas de T-minus · huecos de ${GANTT_COC_PARADA_H} h o más sin cocimientos</span></div>
+      <div class="sp-head"><b class="util-title">Paradas de cocinas</b><span class="util-note">${escapeHtml(fuenteCocinasGantt().nombre)} · huecos de ${GANTT_COC_PARADA_H} h o más sin cocimientos</span></div>
       ${paradas.length
         ? `<div class="table-scroll" style="max-height:320px;"><table class="acu-tabla sp-tabla"><thead><tr><th>La cocina para</th><th>Turno</th><th>Vuelve a arrancar</th><th>Duración</th></tr></thead><tbody>${filas}</tbody></table></div>`
         : `<p class="empty-note">El plan de cocinas no tiene paradas de ${GANTT_COC_PARADA_H} h o más entre cocimientos.</p>`}
-      <p class="acu-nota">Último cocimiento del plan: termina el ${escapeHtml(fmtDateTime(new Date(fin)))}; después de eso el plan no dice cuándo vuelve a cocinar. ${nota}</p>
+      <p class="acu-nota">Último cocimiento ${fuenteCocinasGantt().tipo === "real" ? "del Programa de cocinas" : "del plan"}: termina el ${escapeHtml(fmtDateTime(new Date(fin)))}; después de eso no se sabe cuándo vuelve a cocinar. ${nota}</p>
     </div>`;
 }
 
@@ -570,10 +586,22 @@ function htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) {
   const tramos = tramosCocinasPlan();
   if (!tramos.length) return "";
   const rs = rangeStart.getTime();
-  const px = (ms) => ((ms - rs) / 3600000) * GANTT_PX_PER_HOUR;
+  // El Programa de cocinas puede traer meses de historia: solo lo que cae
+  // dentro del Gantt se dibuja, recortado a sus bordes.
+  const re = rs + (totalWidth / GANTT_PX_PER_HOUR) * 3600000;
+  const px = (ms) => ((Math.min(re, Math.max(rs, ms)) - rs) / 3600000) * GANTT_PX_PER_HOUR;
   const nf = (v) => Math.round(v).toLocaleString("es-CO");
   let html = "";
   tramos.forEach((t, i) => {
+    if (t.fin <= rs || t.ini >= re) {
+      const sig0 = tramos[i + 1];
+      // Hueco que sí entra al Gantt aunque el tramo quede afuera.
+      if (sig0 && sig0.ini > rs && t.fin < re) {
+        const gl = px(t.fin), gw = px(sig0.ini) - gl;
+        if (gw > 0) html += `<div class="gantt-coc-parada" style="left:${gl}px;width:${gw}px;" title="${escapeHtml(`Cocinas paradas · ${fmtDateTime(new Date(t.fin))} → ${fmtDateTime(new Date(sig0.ini))} (${fmtDuration(sig0.ini - t.fin)}) sin cocimientos`)}">${gw >= 80 ? `<span>Parada ${escapeHtml(fmtDuration(sig0.ini - t.fin))}</span>` : ""}</div>`;
+      }
+      return;
+    }
     const left = px(t.ini);
     const width = Math.max(3, px(t.fin) - left);
     const tit = `Cocinas cocinando · ${fmtDateTime(new Date(t.ini))} → ${fmtDateTime(new Date(t.fin))} (${fmtDuration(t.fin - t.ini)}) · ${t.n} cocimiento(s)${t.hl > 0 ? ` · ${nf(t.hl)} hL` : ""}`;
@@ -588,7 +616,7 @@ function htmlFilaCocinasEnvasado(rangeStart, totalWidth, dayLinesHtml) {
   });
   return `
         <div class="gantt-row gantt-coc-row">
-          <div class="lane-label">COCINAS<small>plan T-minus</small></div>
+          <div class="lane-label">COCINAS<small>${escapeHtml(fuenteCocinasGantt().corto)}</small></div>
           <div class="lane-track" style="width:${totalWidth}px;">
             <div class="day-lines" style="left:0; width:${totalWidth}px;">${dayLinesHtml}</div>
             ${html}
@@ -2774,3 +2802,19 @@ function renderTanquesProximosALiberar(lista) {
       <th title="Después del aseo de reutilización, que es cuando de verdad se puede volver a cargar.">Disponible</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
+
+// Al subir o cambiar el Programa de cocinas (u otro archivo), la fila COCINAS
+// del Gantt se vuelve a dibujar con los datos nuevos.
+let GANTT_COC_FIRMA = "";
+document.addEventListener("tminus:datos", () => {
+  const f = fuenteCocinasGantt();
+  const firma = f.tipo + "|" + f.cocs.length + "|" + (f.cocs.length ? f.cocs[0].a + "|" + f.cocs[f.cocs.length - 1].z : "");
+  if (firma === GANTT_COC_FIRMA) return;
+  GANTT_COC_FIRMA = firma;
+  if (typeof GANTT_ENV_ARGS !== "undefined" && GANTT_ENV_ARGS && typeof redibujarGanttEnvasado === "function")
+    try {
+      redibujarGanttEnvasado();
+    } catch (e) {
+      console.error(e);
+    }
+});
