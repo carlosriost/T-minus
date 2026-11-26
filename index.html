@@ -6,7 +6,7 @@
     <title>T-minus</title>
     <meta name="description" content="T-minus · planeación de envasado, cocinas y servicios" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=20261126b">
+    <link rel="stylesheet" href="style.css?v=20261126c">
   </head>
   <body>
     <header>
@@ -47,6 +47,7 @@
           <button class="sb-item" data-view="view-recomendaciones"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span><span class="sb-txt">Recomendaciones</span></button>
           <div class="sb-label">T-</div>
           <button class="sb-item" data-view="view-gantt-plan"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14M4 12h9M4 18h12"/></svg></span><span class="sb-txt">Gantt de envasado y cocinas</span></button>
+          <button class="sb-item" data-view="view-trazabilidad"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v3a3 3 0 0 0 3 3h5a3 3 0 0 1 3 3v-1"/></svg></span><span class="sb-txt">Cocinas ↔ envasado y frío</span></button>
           <button class="sb-item" data-view="view-t-modulacion"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="sb-txt">Eventos de modulación</span></button>
           <button class="sb-item" data-view="view-t-utilidades"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span><span class="sb-txt">Equipos y setpoints (Utilities)</span></button>
           <div class="sb-label">Envasado</div>
@@ -68,7 +69,6 @@
             <button class="sb-head" type="button"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="sb-txt">Más detalle (técnico)</span><span class="sb-caret">▾</span></button>
             <div class="sb-sub">
               <button class="sb-item" data-view="view-plan-vs-real"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 17h18"/><circle cx="7" cy="7" r="1.6"/><circle cx="14" cy="7" r="1.6"/><circle cx="9" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/><path d="M7 8.6l2 6.8M14 8.6l3 6.8"/></svg></span><span class="sb-txt">Plan vs. real</span></button>
-              <button class="sb-item" data-view="view-trazabilidad"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v3a3 3 0 0 0 3 3h5a3 3 0 0 1 3 3v-1"/></svg></span><span class="sb-txt">Del cocimiento al envasado</span></button>
               <button class="sb-item" data-view="view-programacion"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="sb-txt">Programación de cocinas</span></button>
               <button class="sb-item" data-view="view-secuencia"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></span><span class="sb-txt">Secuencia semanal</span></button>
               <button class="sb-item" data-view="view-gantt-cocina"><span class="sb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 22h11.6a2 2 0 0 0 1.7-3.5L14 9V3"/><path d="M7 15h10"/></svg></span><span class="sb-txt">Gantt de cocina</span></button>
@@ -194,6 +194,7 @@
                     <tr><td>Recomendaciones</td><td>Lo que T-minus encontró para mejorar el plan, con prioridad y a dónde ir para revisarlo. No cambia nada solo: decide el planeador.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">T-</td></tr>
                     <tr><td>Gantt de envasado y cocinas</td><td>La línea de tiempo de L5, L7, L8 y L9: qué se envasa, los cambios y los paros. Debajo, una fila de Cocinas: cuándo se cocina y cuándo para la cocina.</td></tr>
+                    <tr><td>Cocinas ↔ envasado y frío</td><td>Qué se está cocinando y cuándo se va a envasar, qué se envasa y cuándo se cocinó (lo que fue, hoy y lo que viene), y cuándo sube la carga de frío (amoníaco).</td></tr>
                     <tr><td>Eventos de modulación</td><td>Cuándo apagar y prender lavadora, agua y paster de cada línea cuando va a estar detenida 2 h o más.</td></tr>
                     <tr><td>Equipos y setpoints (Utilities)</td><td>Qué calderas y compresores deben estar prendidos y a qué presión dejar el vapor y el aire en cada momento del plan.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Envasado</td></tr>
@@ -210,7 +211,7 @@
                     <tr><td>Carga base</td><td>Cuánto se gasta con las áreas paradas, y si los kWh de cada línea cuadran con las fórmulas de la planta.</td></tr>
                     <tr><td>CIP A/B/C</td><td>Qué tanques gastan menos agua en cada aseo. T-minus llena primero los que gastan menos.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Más detalle (técnico)</td></tr>
-                    <tr><td>Plan vs. real, Del cocimiento al envasado y tablas de programación</td><td>Comparación del plan con lo cocinado, a qué línea va cada cocimiento, orden de cocimientos y aseos, Gantt de cocina, tanques y marcas que T-minus no reconoce.</td></tr>
+                    <tr><td>Plan vs. real y tablas de programación</td><td>Comparación del plan con lo cocinado, orden de cocimientos y aseos, Gantt de cocina, tanques y marcas que T-minus no reconoce.</td></tr>
                     <tr class="gt-grupo"><td colspan="2">Configuración</td></tr>
                     <tr><td>Parámetros de planta</td><td>Los datos fijos con los que calcula: marcas y sus tiempos, tanques, levadura y reglas de aseo. Solo se cambian si cambia la planta.</td></tr>
                   </tbody>
@@ -608,47 +609,47 @@
 
     <!-- script.js dividido en módulos por área. Se cargan en este orden
          exacto (equivale byte a byte al script.js original concatenado). -->
-    <script src="js/utils.js?v=20261126b"></script>
-    <script src="js/parse.js?v=20261126b"></script>
-    <script src="js/catalog.js?v=20261126b"></script>
-    <script src="js/engine.js?v=20261126b"></script>
-    <script src="js/acuerdos.js?v=20261126b"></script>
-    <script src="js/render-core.js?v=20261126b"></script>
-    <script src="js/gantt.js?v=20261126b"></script>
-    <script src="js/utilidades.js?v=20261126b"></script>
-    <script src="js/render-tables.js?v=20261126b"></script>
-    <script src="js/modulos-comun.js?v=20261126b"></script>
-    <script src="js/volumen.js?v=20261126b"></script>
-    <script src="js/logistica.js?v=20261126b"></script>
-    <script src="js/indicadores-envasado.js?v=20261126b"></script>
-    <script src="js/historial-planes.js?v=20261126b"></script>
-    <script src="js/acuerdos-excel.js?v=20261126b"></script>
-    <script src="js/sla.js?v=20261126b"></script>
-    <script src="js/cip.js?v=20261126b"></script>
-    <script src="js/recomendaciones.js?v=20261126b"></script>
-    <script src="js/programa-cocinas.js?v=20261126b"></script>
-    <script src="js/programa-feria.js?v=20261126b"></script>
-    <script src="js/programa-debio.js?v=20261126b"></script>
-    <script src="js/setpoints.js?v=20261126b"></script>
-    <script src="js/modulacion.js?v=20261126b"></script>
-    <script src="js/plan-vs-real.js?v=20261126b"></script>
-    <script src="js/trazabilidad.js?v=20261126b"></script>
-    <script src="js/almacen.js?v=20261126b"></script>
-    <script src="js/servicios-datos.js?v=20261126b"></script>
-    <script src="js/servicios-modelos.js?v=20261126b"></script>
-    <script src="js/servicios-prediccion.js?v=20261126b"></script>
-    <script src="js/servicios-reporte.js?v=20261126b"></script>
-    <script src="js/servicios-elaboracion.js?v=20261126b"></script>
-    <script src="js/servicios-industriales.js?v=20261126b"></script>
-    <script src="js/servicios-graficas.js?v=20261126b"></script>
-    <script src="js/servicios.js?v=20261126b"></script>
-    <script src="js/servicios-industriales-ui.js?v=20261126b"></script>
-    <script src="js/servicios-carga-base.js?v=20261126b"></script>
-    <script src="js/inicio.js?v=20261126b"></script>
-    <script src="js/asistente-datos.js?v=20261126b"></script>
-    <script src="js/asistente.js?v=20261126b"></script>
-    <script src="js/ui.js?v=20261126b"></script>
-    <script src="js/datos-entrada.js?v=20261126b"></script>
+    <script src="js/utils.js?v=20261126c"></script>
+    <script src="js/parse.js?v=20261126c"></script>
+    <script src="js/catalog.js?v=20261126c"></script>
+    <script src="js/engine.js?v=20261126c"></script>
+    <script src="js/acuerdos.js?v=20261126c"></script>
+    <script src="js/render-core.js?v=20261126c"></script>
+    <script src="js/gantt.js?v=20261126c"></script>
+    <script src="js/utilidades.js?v=20261126c"></script>
+    <script src="js/render-tables.js?v=20261126c"></script>
+    <script src="js/modulos-comun.js?v=20261126c"></script>
+    <script src="js/volumen.js?v=20261126c"></script>
+    <script src="js/logistica.js?v=20261126c"></script>
+    <script src="js/indicadores-envasado.js?v=20261126c"></script>
+    <script src="js/historial-planes.js?v=20261126c"></script>
+    <script src="js/acuerdos-excel.js?v=20261126c"></script>
+    <script src="js/sla.js?v=20261126c"></script>
+    <script src="js/cip.js?v=20261126c"></script>
+    <script src="js/recomendaciones.js?v=20261126c"></script>
+    <script src="js/programa-cocinas.js?v=20261126c"></script>
+    <script src="js/programa-feria.js?v=20261126c"></script>
+    <script src="js/programa-debio.js?v=20261126c"></script>
+    <script src="js/setpoints.js?v=20261126c"></script>
+    <script src="js/modulacion.js?v=20261126c"></script>
+    <script src="js/plan-vs-real.js?v=20261126c"></script>
+    <script src="js/trazabilidad.js?v=20261126c"></script>
+    <script src="js/almacen.js?v=20261126c"></script>
+    <script src="js/servicios-datos.js?v=20261126c"></script>
+    <script src="js/servicios-modelos.js?v=20261126c"></script>
+    <script src="js/servicios-prediccion.js?v=20261126c"></script>
+    <script src="js/servicios-reporte.js?v=20261126c"></script>
+    <script src="js/servicios-elaboracion.js?v=20261126c"></script>
+    <script src="js/servicios-industriales.js?v=20261126c"></script>
+    <script src="js/servicios-graficas.js?v=20261126c"></script>
+    <script src="js/servicios.js?v=20261126c"></script>
+    <script src="js/servicios-industriales-ui.js?v=20261126c"></script>
+    <script src="js/servicios-carga-base.js?v=20261126c"></script>
+    <script src="js/inicio.js?v=20261126c"></script>
+    <script src="js/asistente-datos.js?v=20261126c"></script>
+    <script src="js/asistente.js?v=20261126c"></script>
+    <script src="js/ui.js?v=20261126c"></script>
+    <script src="js/datos-entrada.js?v=20261126c"></script>
     <script>
       /* =====================================================================
          Navegación por menú lateral con íconos.

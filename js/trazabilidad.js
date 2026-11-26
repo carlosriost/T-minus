@@ -325,8 +325,17 @@ function renderTrazabilidad() {
 
   cont.innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h3>Del cocimiento al envasado</h3><span class="sub">Plan T-minus · qué se cocina, dónde fermenta y madura, y en qué línea se envasa</span></div>
+      <div class="panel-head"><h3>Cocinas ↔ envasado y frío</h3><span class="sub">Plan T-minus · qué se cocina, dónde fermenta y madura, en qué línea se envasa y cuánto frío pide</span></div>
       <div class="panel-body">
+        <div class="gantt-intro">
+          <p><b>Qué es.</b> La cerveza que se envasa hoy se cocinó hace unas semanas, y lo que se cocina hoy se va a envasar dentro de unas semanas. Esta página une las dos puntas:</p>
+          <ul>
+            <li><b>Se cocina → se envasa:</b> para cada día, qué cocimientos salen de la cocina y en qué línea y fechas se van a envasar.</li>
+            <li><b>Se envasa ← se cocinó:</b> para cada día, qué se envasa en cada línea y cuándo se cocinó (en el plan T-minus o en los tanques del inventario).</li>
+            <li><b>Carga de frío (amoníaco):</b> el frío que pide el proceso (enfriar mosto, fermentar, trasegar y madurar). Es un estimado para saber <b>cuándo</b> sube y prender compresores a tiempo.</li>
+          </ul>
+          <p class="gantt-intro-pie">Elija el momento (por defecto, ahora): las tablas muestran lo que fue (7 días antes), ese día y lo que viene (7 días después). Abajo está la línea de tiempo con cada cocimiento unido a lo que alimenta.</p>
+        </div>
         <div class="pc-filtros trz-filtros">
           <div class="pc-fgrupo"><span class="pc-flab">Momento</span>
             <input type="datetime-local" class="pc-fecha" id="trzAhora" value="${d2i(t)}" aria-label="Momento a mirar">
@@ -343,16 +352,17 @@ function renderTrazabilidad() {
           </div>
         </div>
         <div class="acu-kpis">${kpis}</div>
+        ${trzHtmlRelacion(d, t)}
         <div class="pc-layout">
           <div class="acu-card">
             <div class="acu-card-tit">Línea de tiempo <small class="pc-sub">· arriba la cocina (plan T-minus${d.atras && d.atras.length ? " y, antes del I0, lo que debió cocinarse" : ""}), abajo las líneas de envasado · cada curva une un cocimiento con lo que alimenta · la línea amarilla es el momento elegido · clic en un cocimiento o en un bloque de envasado</small></div>
             <div id="trzLinea" class="trz-linea"></div>
-            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-inv"></span>Sale del inventario</div><div class="item"><span class="sw trz-sw-noalc"></span>No alcanzable desde el I0</div>${d.atras && d.atras.length ? '<div class="item"><span class="sw trz-sw-atras"></span>Debió cocinarse (plan T-minus hacia atrás)</div>' : ""}<div class="item"><span class="sw trz-sw-frio"></span>Índice de frío (estimado)</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
+            <div class="legend pc-leyenda">${Object.keys(TRZ_MOSTO_CLS).map((k) => `<div class="item"><span class="sw ${TRZ_MOSTO_CLS[k]}"></span>${escapeHtml(trzNombreMosto(k))}</div>`).join("")}<div class="item"><span class="sw trz-sw-otro"></span>DPA / NST</div><div class="item"><span class="sw trz-sw-inv"></span>Sale del inventario</div><div class="item"><span class="sw trz-sw-noalc"></span>No alcanzable desde el I0</div>${d.atras && d.atras.length ? '<div class="item"><span class="sw trz-sw-atras"></span>Debió cocinarse (plan T-minus hacia atrás)</div>' : ""}<div class="item"><span class="sw trz-sw-frio"></span>Carga de frío (amoníaco), estimada</div><div class="item"><span class="trz-ley-sube">▲</span>Sube la demanda de frío</div><div class="item"><span class="trz-ley-ahora"></span>Momento elegido</div></div>
           </div>
           <div class="acu-card" id="trzDetalle">${trzHtmlDetalle(d)}</div>
         </div>
         <div class="acu-card" style="margin-top:14px;">
-          <div class="acu-card-tit">¿Cuándo sube la demanda de frío? <small class="pc-sub">· para prender compresores a tiempo · estimado desde el plan de cocinas y la asignación de tanques</small></div>
+          <div class="acu-card-tit">¿Cuándo sube la carga de frío (amoníaco)? <small class="pc-sub">· para prender compresores a tiempo · estimado desde el plan de cocinas y la asignación de tanques</small></div>
           ${trzHtmlSubidas(d, t)}
           ${pliegue("trz-pesos", "Pesos del índice de frío", trzHtmlPesos(cfg), "ajustables por Utilities · se guardan en este navegador")}
         </div>
@@ -459,6 +469,101 @@ function trzHtmlDetalle(d) {
             .join("")
         : `<p class="empty-note">${b.tipo !== "production" ? "Es un DPA o NST: no envasa." : invHL > 1 || noHL > 1 ? "Ningún cocimiento nuevo: ver arriba de dónde sale." : "Ningún cocimiento del plan alimenta este bloque (quedó antes del I0)."}</p>`
     }${htmlAtras}`;
+}
+
+// Relación por día entre cocinas y envasado, para lo que fue, el día elegido
+// y lo que viene. Solo reorganiza lo que ya calcula calcularTrazabilidad.
+const TRZ_DIA = 24 * TRZ_H;
+function trzDiaDe(ms) {
+  const d = new Date(ms + 2 * TRZ_H); // el día de producción arranca a las 22:00
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+function trzFrioDia(d, dia) {
+  const a = dia - 2 * TRZ_H, z = a + TRZ_DIA;
+  let v0 = 0;
+  d.curva.forEach((p) => {
+    if (p.t <= a) v0 = p.v;
+  });
+  const dentro = d.curva.filter((p) => p.t > a && p.t < z).map((p) => p.v);
+  const max = Math.max(v0, ...dentro);
+  const sub = d.subidas.filter((s) => s.t >= a && s.t < z);
+  return { max, sub };
+}
+function trzHtmlRelacion(d, t) {
+  const hoy = trzDiaDe(t);
+  const fDia = (dia) => (typeof fmtDate === "function" ? fmtDate(new Date(dia)) : new Date(dia).toISOString().slice(0, 10));
+  const rangoTxt = (a, z) => (trzDiaDe(a) === trzDiaDe(z - 1) ? `${trzF(a)} → ${trzF(z).slice(-5)}` : `${trzF(a)} → ${trzF(z)}`);
+  const filtroMosto = (id) => TRZ.mosto === "todos" || id === TRZ.mosto;
+  const cocinaFila = (dia) => {
+    const cs = d.cocs.filter((c) => trzDiaDe(c.ms) === dia && filtroMosto(c.mostoId));
+    const fr = trzFrioDia(d, dia);
+    const frio = `<td class="num">${MOD_NF(fr.max, 1)}${fr.sub.length ? ` <span class="trz-ley-sube" title="${escapeHtml(fr.sub.map((s) => trzF(s.t) + ": " + (s.motivos[0] || "")).join(" · "))}">▲${fr.sub.length}</span>` : ""}</td>`;
+    if (!cs.length) return `<tr><td>${escapeHtml(fDia(dia))}</td><td class="pc-sub">Sin cocimientos</td><td>—</td>${frio}</tr>`;
+    const porMosto = {};
+    cs.forEach((c) => (porMosto[c.mostoId] = (porMosto[c.mostoId] || 0) + 1));
+    const destinos = {};
+    cs.forEach((c) =>
+      c.consumo.forEach((x) => {
+        const k = x.train;
+        const o = destinos[k] || { a: x.desde, z: x.hasta, skus: new Set() };
+        o.a = Math.min(o.a, x.desde);
+        o.z = Math.max(o.z, x.hasta);
+        if (x.name) o.skus.add(x.name);
+        destinos[k] = o;
+      }),
+    );
+    const dest = Object.keys(destinos).length
+      ? Object.keys(destinos)
+          .sort()
+          .map((k) => `<b>L${escapeHtml(k)}</b> ${escapeHtml(trzF(destinos[k].a))} → ${escapeHtml(trzF(destinos[k].z))} <small class="pc-sub">${escapeHtml([...destinos[k].skus].slice(0, 2).join(", "))}${destinos[k].skus.size > 2 ? "…" : ""}</small>`)
+          .join("<br>")
+      : '<span class="pc-sub">Sin destino en el instructivo (se envasaría después del plan)</span>';
+    return `<tr><td>${escapeHtml(fDia(dia))}</td><td>${Object.keys(porMosto)
+      .map((m) => `<span class="pc-dot ${TRZ_MOSTO_CLS[m] || "pc-otro"}"></span>${escapeHtml(trzNombreMosto(m))} ${porMosto[m]}`)
+      .join(" · ")} <small class="pc-sub">(${cs.length})</small></td><td class="trz-dest-c">${dest}</td>${frio}</tr>`;
+  };
+  const envasadoFila = (dia) => {
+    const es = d.envasado.filter((e) => e.tipo === "production" && trzDiaDe(e.ms) === dia && filtroMosto(e.mostoId));
+    if (!es.length) return `<tr><td>${escapeHtml(fDia(dia))}</td><td class="pc-sub">Sin envasado</td><td>—</td></tr>`;
+    const porLinea = {};
+    es.forEach((e) => (porLinea[e.train] = porLinea[e.train] || []).push(e));
+    return Object.keys(porLinea)
+      .sort()
+      .map((tr, i) => {
+        const bs = porLinea[tr];
+        const hl = bs.reduce((s, e) => s + e.hL, 0);
+        const skus = [...new Set(bs.map((e) => e.name))];
+        const origen = [];
+        const cocs = d.cocs.filter((c) => c.consumo.some((x) => String(x.train) === String(tr) && bs.some((e) => x.desde < e.fin && x.hasta > e.ms)));
+        if (cocs.length) {
+          const a = Math.min(...cocs.map((c) => c.ms)), z = Math.max(...cocs.map((c) => c.ms));
+          origen.push(`Plan T-minus: ${cocs.length} cocimiento(s), ${escapeHtml(a === z ? trzF(a) : rangoTxt(a, z + 1))}`);
+        }
+        const inv = bs.flatMap((e) => trzFuentesInventario(e.inv));
+        if (inv.length) {
+          const con = inv.filter((f) => f.cocinadoEn);
+          origen.push(
+            `Inventario: ${escapeHtml([...new Set(inv.map((f) => f.equipo))].slice(0, 3).join(", "))}${con.length ? `, cocinado ${escapeHtml(trzF(Math.min(...con.map((f) => f.cocinadoEn))))}${con.length > 1 ? ` → ${escapeHtml(trzF(Math.max(...con.map((f) => f.cocinadoEn))))}` : ""}` : " (sin fecha de cocimiento en el Excel)"}`,
+          );
+        }
+        if (bs.some((e) => e.noAlc && e.noAlc.length)) origen.push('<span class="pvr-no">Parte no alcanzable desde el I0</span>');
+        if (!origen.length) origen.push('<span class="pc-sub">Antes del I0 (ya envasado)</span>');
+        return `<tr>${i === 0 ? `<td rowspan="${Object.keys(porLinea).length}">${escapeHtml(fDia(dia))}</td>` : ""}<td><b>L${escapeHtml(tr)}</b> · ${MOD_NF(hl)} hL <small class="pc-sub">${escapeHtml(skus.slice(0, 2).join(", "))}${skus.length > 2 ? "…" : ""}</small></td><td>${origen.join("<br>")}</td></tr>`;
+      })
+      .join("");
+  };
+  const tablas = (dias) => `<div class="trz-rel-grid">
+      <div><div class="trz-rel-tit">Se cocina → se envasa</div><div class="table-scroll"><table class="acu-tabla trz-rel"><thead><tr><th>Día</th><th>Cocimientos</th><th>Se envasan en</th><th class="num" title="Carga de frío (amoníaco) estimada: máximo del día · ▲ subidas">Frío NH3</th></tr></thead><tbody>${dias.map(cocinaFila).join("")}</tbody></table></div></div>
+      <div><div class="trz-rel-tit">Se envasa ← se cocinó</div><div class="table-scroll"><table class="acu-tabla trz-rel"><thead><tr><th>Día</th><th>Se envasa</th><th>Se cocinó</th></tr></thead><tbody>${dias.map(envasadoFila).join("")}</tbody></table></div></div>
+    </div>`;
+  const rango = (a, n) => Array.from({ length: n }, (_, i) => a + i * TRZ_DIA);
+  return `<div class="acu-card trz-relacion">
+      <div class="acu-card-tit">Cocinas ↔ envasado, día a día <small class="pc-sub">· alrededor del ${escapeHtml(fDia(hoy))} · el día de producción va de 22:00 a 22:00${TRZ.mosto !== "todos" ? ` · solo ${escapeHtml(trzNombreMosto(TRZ.mosto))}` : ""}</small></div>
+      ${pliegue("trz-rel-fue", "Lo que fue", tablas(rango(hoy - 7 * TRZ_DIA, 7)), "7 días antes")}
+      <div class="trz-rel-hoy"><div class="trz-rel-h">${escapeHtml(fDia(hoy))} · día elegido</div>${tablas([hoy])}</div>
+      ${pliegue("trz-rel-viene", "Lo que viene", tablas(rango(hoy + TRZ_DIA, 7)), "7 días después")}
+      <p class="acu-nota">Frío NH3: carga de frío estimada (máximo del día, en las unidades del índice de abajo); ▲ = veces que sube de golpe ese día. Pase el mouse para ver por qué.</p>
+    </div>`;
 }
 
 function trzHtmlSubidas(d, t) {
