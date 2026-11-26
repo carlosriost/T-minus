@@ -3632,3 +3632,11 @@ details.srv-card.srv-det > summary.srv-card-t { margin: 0; }
 .trz-rel td.num { font-family: var(--mono); }
 .trz-rel-hoy { border: 1px solid var(--accent); border-radius: 10px; padding: 8px 10px; margin: 10px 0; }
 .trz-rel-h { font-weight: 700; margin-bottom: 4px; }
+
+/* Servicios: proyección y real vs. proyectado */
+.px-tabla { max-height: 560px; }
+.px-tabla .px-real td { background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.px-tabla .px-col { font-weight: 700; }
+.px-tabla .px-sin td { opacity: .6; }
+.rp-mal { color: var(--danger); }
+.rp-bien { color: var(--ok); }

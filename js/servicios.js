@@ -20,7 +20,9 @@
   // Pestañas de uso diario a la vista; las técnicas quedan en «Más».
   const VISTAS_MAS = ["simulador", "planificacion", "historico", "evaluacion", "calidad", "formulas", "guia"];
   const VISTAS = [
-    ["reporte", "Reporte"],
+    ["proyeccion", "Consumo de servicios"],
+    ["reporte", "Modulación"],
+    ["realproy", "Real vs. proyectado"],
     ["general", "Planta"],
     ["plan", "Envasado"],
     ["elaboracion", "Elaboración"],
@@ -33,7 +35,7 @@
     ["formulas", "Fórmulas"],
     ["guia", "Guía de uso"],
   ];
-  const S = { B: null, vista: "reporte", rep: { periodo: "", criterio: "normal", servicio: "electricidad" }, sim: { linea: "L5", cantidad: "", unidad: "hL", res: null }, hist: { linea: "L5", servicio: "vapor" }, ev: { clave: null }, cal: { servicio: "", linea: "", decision: "" }, plan: {}, planRes: null, corte: 22, estado: "", elab: { coc: "", fil: "", env: "", variante: "oficial" }, coccion: "auto" };
+  const S = { B: null, vista: "proyeccion", rep: { periodo: "", criterio: "normal", servicio: "electricidad" }, sim: { linea: "L5", cantidad: "", unidad: "hL", res: null }, hist: { linea: "L5", servicio: "vapor" }, ev: { clave: null }, cal: { servicio: "", linea: "", decision: "" }, plan: {}, planRes: null, corte: 22, estado: "", elab: { coc: "", fil: "", env: "", variante: "oficial" }, coccion: "auto" };
 
   try { const c = JSON.parse(localStorage.getItem(LS_CFG) || "{}"); if ([0, 6, 22].includes(c.corte)) S.corte = c.corte; if (["auto", "plan", "habitual"].includes(c.coccion)) S.coccion = c.coccion; } catch (_) {}
   function guardarCfg() { try { localStorage.setItem(LS_CFG, JSON.stringify({ corte: S.corte, coccion: S.coccion })); } catch (_) {} }
@@ -260,7 +262,11 @@
       $("#srvJson").onclick = () => descargar(new Blob([JSON.stringify(S.B)], { type: "application/json" }), `modelo_servicios_${S.B.version}.json`);
       $("#srvJsonIn").onchange = (e) => e.target.files[0] && leerPaquete(e.target.files[0]);
       cont.querySelectorAll("[data-srv-vista]").forEach((b) => (b.onclick = () => { S.vista = b.dataset.srvVista; renderServicios(); }));
-      ({ reporte: vReporte, guia: vGuia, general: vGeneral, plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal, formulas: vFormulas })[S.vista]();
+      ({ proyeccion: vProyeccion, realproy: vRealProy, reporte: vReporte, guia: vGuia, general: vGeneral, plan: vPlan, elaboracion: vElab, industriales: vIndustriales, simulador: vSim, planificacion: vPlanif, historico: vHist, evaluacion: vEval, calidad: vCal, formulas: vFormulas })[S.vista]();
+      // Envasado, Elaboración y Servicios industriales abren con los
+      // indicadores de su área: día a día y cierre del mes.
+      const areaPx = { plan: "envasado", elaboracion: "elaboracion", industriales: "servicios" }[S.vista];
+      if (areaPx && $("#srvCuerpo")) pxBloqueArea(areaPx, $("#srvCuerpo"), renderServicios);
     }
     SrvCharts.conectarTips(cont);
   }
@@ -391,7 +397,8 @@
         <div class="srv-campo"><label>Versión de los datos</label><div class="srv-seg">${[["oficial", "Oficial (Excel)"], ["contador", "Contador sin ajustes"]].map(([k, t]) => `<button type="button" data-rv="${k}" class="${S.elab.variante === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
         <div class="srv-campo"><label>Criterio de «bien»</label><div class="srv-seg">${[["normal", "Normal"], ["exigente", "Exigente"]].map(([k, t]) => `<button type="button" data-rc="${k}" class="${S.rep.criterio === k ? "on" : ""}">${t}</button>`).join("")}</div></div>
       </div>
-      <div class="srv-card"><div class="srv-card-t">¿Cómo está el T-minus? <small class="muted">· ${esc(P.etq || P.desde + " a " + P.hasta)} · ${R.dias} días con datos</small></div>
+      <div class="srv-aviso info"><b>Modulación:</b> revisa, con el consumo real del Excel de indicadores, si cada línea fue eficiente en sus arranques y paradas: en una parada, que el consumo de los días parados no pase de lo habitual de esa línea parada; en un arranque, que el consumo quede dentro de lo esperado para los hL de ese día.</div>
+      <div class="srv-card"><div class="srv-card-t">¿Cómo le fue a la modulación? <small class="muted">· ${esc(P.etq || P.desde + " a " + P.hasta)} · ${R.dias} días con datos</small></div>
         <div class="srv-kpis">
           ${kpiEv("arranque", "Arranques bien")}
           ${kpiEv("parada", "Paradas bien")}
@@ -444,6 +451,296 @@
   }
 
 
+  /* ------------------------------------------------------------ CONSUMO DE SERVICIOS (proyección) */
+  // Lo que pidió la planta: desde el plan de producción, cuánta agua, vapor y
+  // electricidad se va a consumir cada día, por línea y por área (envasado,
+  // elaboración, servicios industriales y planta), el indicador del día
+  // (consumo ÷ hL envasados) y en cuánto cerraría el mes: los días que ya
+  // tienen dato en el Excel van con lo real y los demás con la proyección.
+  // Unidades de los indicadores: agua hL/hL, vapor MJ/hL, electricidad kWh/hL.
+  // El vapor de las áreas viene en kg: se pasa a MJ con la relación histórica
+  // de la planta entre la térmica comprada (MJ) y el vapor (kg) de los últimos
+  // 90 días con los dos datos. El vapor de la planta en MJ es la térmica
+  // comprada (el indicador oficial).
+  const PX = {
+    agua: { nombre: "Agua", u: "hL", ind: "hL/hL", dec: 3, color: "var(--srv-agua)" },
+    vapor: { nombre: "Vapor", u: "MJ", ind: "MJ/hL", dec: 1, color: "var(--srv-vapor)" },
+    electricidad: { nombre: "Electricidad", u: "kWh", ind: "kWh/hL", dec: 2, color: "var(--srv-elec)" },
+  };
+  const PX_AREAS = [
+    ["envasado", "Envasado"],
+    ["elaboracion", "Elaboración"],
+    ["servicios", "Servicios industriales"],
+    ["planta", "Planta"],
+  ];
+  S.px = { mes: "", servicio: "agua" };
+  function pxFactorVapor(I, v) {
+    if (!I) return null;
+    const kt = SrvInd.clave(I, "termica_comprada", v), kv = clavePlanta(I, "vapor", v);
+    if (!kt || !kv) return null;
+    const t = new Map(I.modelos[kt].historico.filter((x) => x.c > 0 && usable(x.e)).map((x) => [x.f, x.c]));
+    const pares = I.modelos[kv].historico.filter((x) => x.c > 0 && usable(x.e) && t.has(x.f)).slice(-90);
+    if (pares.length < 10) return null;
+    const mj = pares.reduce((a, x) => a + t.get(x.f), 0), kg = pares.reduce((a, x) => a + x.c, 0);
+    return kg > 0 ? { f: mj / kg, n: pares.length, desde: pares[0].f, hasta: pares[pares.length - 1].f } : null;
+  }
+  // Valores de un día por área para un servicio, con la proyección del plan.
+  function pxDiaPlan(s, fe, de, I, E, v, fv) {
+    const out = { lineas: {}, envasado: null, elaboracion: null, servicios: null, planta: null };
+    const conv = (x) => (x == null ? null : s === "vapor" ? (fv ? x * fv.f : null) : x);
+    if (fe) {
+      Object.keys(S.B.lineas).forEach((ln) => (out.lineas[ln] = conv((fe.res.lineas[ln].servicios[s] || {}).estimado ?? null)));
+      if (s === "electricidad") out.lineas.AUX = conv((fe.res.totales.electricidad_auxiliares || {}).estimado ?? null);
+      const T = fe.res.totales[s];
+      out.envasado = conv(s === "electricidad" && T.estimado_con_auxiliares != null ? T.estimado_con_auxiliares : T.estimado);
+    }
+    if (de) {
+      const ke = TOTAL_ELAB(v)[s];
+      out.elaboracion = conv(de.res && de.res[ke] ? de.res[ke].estimado : null);
+      if (I && de.ind) {
+        const ks = s === "vapor" ? null : SrvInd.clave(I, s === "agua" ? "agua_servicios" : "elec_servicios", v);
+        out.servicios = ks && de.ind[ks] ? de.ind[ks].estimado : null;
+        const kp = s === "vapor" ? SrvInd.clave(I, "termica_comprada", v) || clavePlanta(I, s, v) : clavePlanta(I, s, v);
+        const r = kp && de.ind[kp] ? de.ind[kp].estimado : null;
+        out.planta = s === "vapor" && kp && !/termica/.test(kp) ? conv(r) : r;
+      }
+    }
+    return out;
+  }
+  // Lo real del Excel por día: { fecha → valores por área } para un servicio.
+  function pxReal(s, I, E, v, fv) {
+    const conv = (x) => (x == null ? null : s === "vapor" ? (fv ? x * fv.f : null) : x);
+    const dias = new Map();
+    const dia = (f) => dias.get(f) || (dias.set(f, { lineas: {}, envasado: null, elaboracion: null, servicios: null, planta: null }), dias.get(f));
+    const okE = (e) => e !== "excluido";
+    for (const h of S.B.historico || []) {
+      if (h.s !== s || h.C === null || !okE(h.e) || !G_ENV_LINEAS[s].includes(h.l)) continue;
+      const d = dia(h.f);
+      d.lineas[h.l] = conv(h.C);
+    }
+    dias.forEach((d) => {
+      const ls = G_ENV_LINEAS[s];
+      if (ls.every((l) => d.lineas[l] != null)) d.envasado = ls.reduce((a, l) => a + d.lineas[l], 0);
+    });
+    if (E) {
+      const ke = TOTAL_ELAB(v)[s];
+      (E.modelos[ke] ? E.modelos[ke].historico : []).forEach((x) => { if (x.c !== null && okE(x.e)) dia(x.f).elaboracion = conv(x.c); });
+    }
+    if (I) {
+      const ks = s === "vapor" ? null : SrvInd.clave(I, s === "agua" ? "agua_servicios" : "elec_servicios", v);
+      if (ks) I.modelos[ks].historico.forEach((x) => { if (x.c !== null && usable(x.e)) dia(x.f).servicios = x.c; });
+      const kp = s === "vapor" ? SrvInd.clave(I, "termica_comprada", v) || clavePlanta(I, s, v) : clavePlanta(I, s, v);
+      if (kp) I.modelos[kp].historico.forEach((x) => { if (x.c !== null && usable(x.e)) dia(x.f).planta = s === "vapor" && !/termica/.test(kp) ? conv(x.c) : x.c; });
+    }
+    return dias;
+  }
+  function pxMeses(R) {
+    const set = new Set((R ? R.filas : []).map((f) => f.fecha.slice(0, 7)));
+    const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 7);
+    set.add(hoy);
+    return [...set].sort();
+  }
+  const MES_N = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const pxNomMes = (m) => `${MES_N[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+
+  // Arma el mes: por día, real si hay dato en el Excel, si no, la proyección.
+  function pxCalcular(s) {
+    const I = S.B.industriales, E = S.B.elaboracion, v = S.elab.variante;
+    const R = calcularPlanEnvasado();
+    const pp = E ? planElaboracion() : null;
+    const fv = s === "vapor" ? pxFactorVapor(I, v) : null;
+    const meses = pxMeses(R);
+    if (!S.px.mes || !meses.includes(S.px.mes)) S.px.mes = meses.includes(new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 7)) ? new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 7) : meses[meses.length - 1];
+    const mes = S.px.mes;
+    const fe = new Map(R ? R.filas.map((f) => [f.fecha, f]) : []);
+    const de = new Map(pp ? pp.dias.map((d) => [d.fecha, d]) : []);
+    const prodReal = new Map((S.B.produccion_diaria || []).map((r) => [r[0], r[3] || 0]));
+    const real = pxReal(s, I, E, v, fv);
+    const [y, m] = mes.split("-").map(Number);
+    const nDias = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const ultimaReal = S.B.fuente && S.B.fuente.ultima_fecha;
+    const dias = [];
+    for (let i = 1; i <= nDias; i++) {
+      const f = `${mes}-${String(i).padStart(2, "0")}`;
+      const r = real.get(f);
+      if (r && prodReal.has(f) && r.planta != null && f <= (ultimaReal || f)) {
+        dias.push({ f, fuente: "real", hl: prodReal.get(f), hlL: null, ...r });
+      } else if (fe.has(f) || de.has(f)) {
+        const x = pxDiaPlan(s, fe.get(f), de.get(f), I, E, v, fv);
+        const F = fe.get(f);
+        const hlL = F ? F.hl : {};
+        dias.push({ f, fuente: "plan", parcial: F && F.parcial, hl: F ? Object.values(F.hl).reduce((a, b) => a + b, 0) : de.get(f).prod.env || 0, hlL, ...x });
+      } else dias.push({ f, fuente: "sin dato" });
+    }
+    return { s, mes, dias, fv, ultimaReal, hayPlan: !!R, hayElab: !!pp, I, E };
+  }
+
+  function pxHtml(area) {
+    const s = S.px.servicio;
+    const X = pxCalcular(s);
+    const P = PX[s];
+    const areas = area === "planta" ? PX_AREAS : PX_AREAS.filter(([k]) => k === area);
+    const lineas = (area === "planta" || area === "envasado") ? Object.keys(S.B.lineas).concat(s === "electricidad" ? ["AUX"] : []) : [];
+    const nfV = (x) => (x == null ? "—" : nf(x));
+    const nfI = (x) => (x == null || !isFinite(x) ? "—" : nf(x, P.dec));
+    // Acumulados del mes por área.
+    const acum = {};
+    areas.forEach(([k]) => (acum[k] = { c: 0, hl: 0, ok: true }));
+    let hlAc = 0;
+    const filas = X.dias.map((d) => {
+      if (d.fuente === "sin dato") return `<tr class="px-sin"><td>${esc(d.f.slice(8, 10) + "/" + d.f.slice(5, 7))}</td><td colspan="${2 + lineas.length + areas.length * 1 + 2}" class="muted">Sin dato real ni plan cargado</td></tr>`;
+      hlAc += d.hl || 0;
+      areas.forEach(([k]) => { if (d[k] != null) { acum[k].c += d[k]; acum[k].hl += d.hl || 0; } else acum[k].ok = false; });
+      const kInd = area === "planta" ? "planta" : area;
+      const ind = d[kInd] != null && d.hl > 0 ? d[kInd] / d.hl : null;
+      const a = acum[kInd];
+      const indAc = a && a.hl > 0 ? a.c / a.hl : null;
+      return `<tr class="${d.fuente === "real" ? "px-real" : ""}"><td>${esc(d.f.slice(8, 10) + "/" + d.f.slice(5, 7))} <small class="muted">${d.fuente === "real" ? "real" : d.parcial ? "plan (parcial)" : "plan"}</small></td><td class="n">${nf(d.hl)}</td>${lineas.map((l) => `<td class="n">${nfV(d.lineas ? d.lineas[l] : null)}</td>`).join("")}${areas.map(([k]) => `<td class="n ${k === kInd ? "px-col" : ""}">${nfV(d[k])}</td>`).join("")}<td class="n"><b>${nfI(ind)}</b></td><td class="n">${nfI(indAc)}</td></tr>`;
+    }).join("");
+    const nReal = X.dias.filter((d) => d.fuente === "real").length, nPlan = X.dias.filter((d) => d.fuente === "plan").length, nSin = X.dias.filter((d) => d.fuente === "sin dato").length;
+    const cierre = areas.map(([k, n]) => {
+      const a = acum[k];
+      const ind = a.hl > 0 ? a.c / a.hl : null;
+      return `<div class="srv-kpi" style="--c:${P.color}"><span>${esc(n)} · cierre ${esc(pxNomMes(X.mes))}</span><b>${nfI(ind)} <small>${P.ind}</small></b><small>${nf(a.c / (s === "vapor" ? 1000 : s === "agua" ? 10 : 1000), s === "electricidad" ? 1 : 0)} ${s === "vapor" ? "GJ" : s === "agua" ? "m³" : "MWh"} / ${nf(a.hl)} hL${a.ok ? "" : " · algún día sin valor para esta área"}</small></div>`;
+    }).join("");
+    const avisos = [];
+    if (s === "vapor") avisos.push(X.fv ? `Vapor de las áreas: kg × ${nf(X.fv.f, 2)} MJ/kg (térmica comprada ÷ vapor de la planta en ${X.fv.n} días, ${esc(X.fv.desde)} a ${esc(X.fv.hasta)}). El de la planta es la térmica comprada.` : "No hay datos para pasar el vapor de las áreas a MJ (térmica comprada y vapor de la planta).");
+    if (s === "vapor" && area === "servicios") avisos.push("Servicios industriales no tiene un contador de vapor propio en el Excel.");
+    if (nSin) avisos.push(`${nSin} día(s) del mes sin dato real ni plan: el cierre se calcula solo con los ${nReal + nPlan} días que tienen valor. Para cerrar el mes completo, cargue el plan de envasado que cubra esos días${X.ultimaReal ? ` o el Excel de indicadores actualizado (hoy llega hasta el ${esc(X.ultimaReal)})` : ""}.`);
+    if (!X.hayPlan) avisos.push("No hay plan de envasado cargado: solo se ven los días reales del Excel.");
+    if (X.hayPlan && !X.hayElab && (area === "planta" || area === "elaboracion" || area === "servicios")) avisos.push("Elaboración, servicios y planta necesitan el plan de cocinas (producto en proceso cargado) para proyectar.");
+    const meses = pxMeses(calcularPlanEnvasado());
+    return `<div class="srv-card px-card"><div class="srv-card-t">${area === "planta" ? "Consumo de servicios: proyección día a día y cierre del mes" : "Indicadores del área: día a día y cierre del mes"} <small class="muted">· ${nReal} día(s) reales del Excel + ${nPlan} proyectado(s) con el plan</small></div>
+      <div class="srv-filtros">
+        <div class="srv-campo"><label>Servicio</label><div class="srv-seg">${Object.keys(PX).map((k) => `<button type="button" data-px-s="${k}" class="${s === k ? "on" : ""}">${PX[k].nombre} <small>(${PX[k].ind})</small></button>`).join("")}</div></div>
+        <div class="srv-campo"><label>Mes</label><select data-px-mes>${meses.map((m) => `<option value="${m}" ${m === X.mes ? "selected" : ""}>${esc(pxNomMes(m))}</option>`).join("")}</select></div>
+      </div>
+      <div class="srv-kpis">${cierre}</div>
+      ${avisos.map((a) => `<div class="srv-aviso info">${a}</div>`).join("")}
+      <div class="srv-tabla-wrap px-tabla"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL envasados</th>${lineas.map((l) => `<th class="n">${esc(l === "AUX" ? "Aux." : l)}</th>`).join("")}${areas.map(([, n]) => `<th class="n">${esc(n)}</th>`).join("")}<th class="n">Indicador del día<br><small>${P.ind}</small></th><th class="n">Acumulado del mes<br><small>${P.ind}</small></th></tr></thead><tbody>${filas}</tbody></table></div>
+      <p class="muted">Consumo en ${P.u}${s === "vapor" ? " (de kg de vapor a MJ con la relación de arriba)" : ""}. Indicador = consumo ${area === "planta" ? "de la planta" : "del área"} ÷ hL envasados de la planta ese día; acumulado = suma del consumo del mes ÷ suma de los hL del mes hasta ese día. Filas sombreadas: dato real del Excel de indicadores; las demás, proyección con el plan de envasado (y el plan de cocinas para elaboración, servicios y planta). La planta incluye también áreas que no salen por separado (perímetros, oficinas…), por eso no es la suma exacta de las columnas.</p>
+    </div>`;
+  }
+  function pxConectar(el, rerender) {
+    el.querySelectorAll("[data-px-s]").forEach((b) => (b.onclick = () => { S.px.servicio = b.dataset.pxS; rerender(); }));
+    el.querySelectorAll("[data-px-mes]").forEach((x) => (x.onchange = () => { S.px.mes = x.value; rerender(); }));
+  }
+  function vProyeccion() {
+    const el = $("#srvCuerpo");
+    try {
+      el.innerHTML = pxHtml("planta");
+    } catch (e) {
+      console.error(e);
+      el.innerHTML = `<p class="srv-msg bad">No se pudo calcular la proyección: ${esc(e.message)}</p>`;
+      return;
+    }
+    pxConectar(el, vProyeccion);
+    pxGuardarProyeccion();
+  }
+  // Bloque del área al inicio de las pestañas Envasado, Elaboración y Servicios industriales.
+  function pxBloqueArea(area, el, rerender) {
+    const div = document.createElement("div");
+    try {
+      div.innerHTML = pxHtml(area);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    el.prepend(div);
+    pxConectar(div, rerender);
+    pxGuardarProyeccion();
+  }
+
+
+  /* ------------------------------------------------------------ REAL VS. PROYECTADO */
+  // Cada vez que se proyecta con un plan, se guarda (en este navegador) la
+  // proyección de cada día que todavía no ha pasado: agua, vapor y
+  // electricidad por área y línea, con los hL envasados. Cuando luego se
+  // carga el Excel de indicadores con esos días ya medidos, la pestaña
+  // «Real vs. proyectado» compara lo real con lo que se había proyectado.
+  // Un día que ya pasó no se sobrescribe: queda la última proyección hecha
+  // antes de que ocurriera.
+  const CLAVE_PROY = "servicios.proyecciones";
+  let PROY = null, PROY_LEIDO = null;
+  function pxLeerGuardadas() {
+    if (PROY_LEIDO) return PROY_LEIDO;
+    PROY_LEIDO = (window.TMAlmacen ? TMAlmacen.leer(CLAVE_PROY) : Promise.resolve(null)).then((v) => { PROY = v && typeof v === "object" && v.dias ? v : { dias: {} }; }).catch((e) => { console.error(e); PROY_LEIDO = null; });
+    return PROY_LEIDO;
+  }
+  function pxGuardarProyeccion() {
+    if (!S.B || !window.TMAlmacen) return;
+    const R = calcularPlanEnvasado();
+    if (!R) return;
+    const I = S.B.industriales, E = S.B.elaboracion, v = S.elab.variante;
+    let pp = null;
+    try { pp = E ? planElaboracion() : null; } catch (e) { console.error(e); }
+    const de = new Map(pp ? pp.dias.map((d) => [d.fecha, d]) : []);
+    const fvs = pxFactorVapor(I, v);
+    const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+    const plan = (typeof STATE !== "undefined" && STATE.parsed && STATE.parsed.weekLabel) || "";
+    pxLeerGuardadas().then(() => {
+      if (!PROY) return;
+      let cambios = 0;
+      R.filas.forEach((f) => {
+        if (f.fecha < hoy && PROY.dias[f.fecha]) return; // ya pasó: se deja la proyección que había
+        const x = { guardado: new Date().toISOString(), plan, hl: Object.values(f.hl).reduce((a, b) => a + b, 0), parcial: !!f.parcial, s: {} };
+        Object.keys(PX).forEach((sv) => {
+          const d = pxDiaPlan(sv, f, de.get(f.fecha), I, E, v, sv === "vapor" ? fvs : null);
+          x.s[sv] = { lineas: d.lineas, envasado: d.envasado, elaboracion: d.elaboracion, servicios: d.servicios, planta: d.planta };
+        });
+        const viejo = PROY.dias[f.fecha];
+        if (viejo && JSON.stringify(viejo.s) === JSON.stringify(x.s) && viejo.hl === x.hl) return;
+        PROY.dias[f.fecha] = x;
+        cambios++;
+      });
+      if (cambios) TMAlmacen.escribir(CLAVE_PROY, PROY).catch((e) => console.error("No se pudo guardar la proyección", e));
+    });
+  }
+
+  function vRealProy() {
+    const el = $("#srvCuerpo");
+    el.innerHTML = `<p class="muted">Leyendo las proyecciones guardadas…</p>`;
+    pxLeerGuardadas().then(() => {
+      const s = S.px.servicio;
+      const P = PX[s];
+      const I = S.B.industriales, E = S.B.elaboracion, v = S.elab.variante;
+      const fv = s === "vapor" ? pxFactorVapor(I, v) : null;
+      const real = pxReal(s, I, E, v, fv);
+      const prodReal = new Map((S.B.produccion_diaria || []).map((r) => [r[0], r[3] || 0]));
+      const fechas = Object.keys((PROY && PROY.dias) || {}).filter((f) => real.has(f) && prodReal.has(f)).sort();
+      const areas = PX_AREAS.filter(([k]) => !(s === "vapor" && k === "servicios"));
+      const nfI = (x) => (x == null || !isFinite(x) ? "—" : nf(x, P.dec));
+      const dif = (r, p) => {
+        if (r == null || p == null) return `<td class="n muted">—</td>`;
+        const d = r - p, pc = p ? d / p : null;
+        return `<td class="n ${pc != null && Math.abs(pc) > 0.1 ? (d > 0 ? "rp-mal" : "rp-bien") : ""}">${nf(r)} <small class="muted">/ ${nf(p)}</small><br><small>${d >= 0 ? "+" : "−"}${nf(Math.abs(d))}${pc != null ? ` (${d >= 0 ? "+" : "−"}${pct(Math.abs(pc), 0)})` : ""}</small></td>`;
+      };
+      const tot = {};
+      areas.forEach(([k]) => (tot[k] = { r: 0, p: 0, hlR: 0, hlP: 0 }));
+      const filas = fechas.map((f) => {
+        const pr = PROY.dias[f], rr = real.get(f), x = pr.s[s] || {};
+        const hlR = prodReal.get(f);
+        areas.forEach(([k]) => { if (rr[k] != null && x[k] != null) { tot[k].r += rr[k]; tot[k].p += x[k]; tot[k].hlR += hlR; tot[k].hlP += pr.hl; } });
+        return `<tr><td>${esc(f.slice(8, 10) + "/" + f.slice(5, 7) + "/" + f.slice(0, 4))}<br><small class="muted">${pr.guardado.slice(0, 10) > f ? `proyectado después del día (${esc(pr.guardado.slice(0, 10))})` : `proyectado el ${esc(pr.guardado.slice(0, 10))}`}</small></td><td class="n">${nf(hlR)} <small class="muted">/ ${nf(pr.hl)}</small></td>${areas.map(([k]) => dif(rr[k], x[k])).join("")}<td class="n">${nfI(rr.planta != null && hlR ? rr.planta / hlR : null)} <small class="muted">/ ${nfI(x.planta != null && pr.hl ? x.planta / pr.hl : null)}</small></td></tr>`;
+      }).join("");
+      const kpis = areas.map(([k, n]) => {
+        const t = tot[k];
+        if (!t.p) return "";
+        const iR = t.hlR ? t.r / t.hlR : null, iP = t.hlP ? t.p / t.hlP : null;
+        return `<div class="srv-kpi" style="--c:${P.color}"><span>${esc(n)}</span><b>${nfI(iR)} <small>real</small></b><small>proyectado ${nfI(iP)} ${P.ind} · consumo ${t.r >= t.p ? "+" : "−"}${pct(Math.abs(t.r / t.p - 1), 1)} vs. lo proyectado</small></div>`;
+      }).join("");
+      const nGuard = Object.keys((PROY && PROY.dias) || {}).length;
+      el.innerHTML = `<div class="srv-card"><div class="srv-card-t">Real vs. proyectado <small class="muted">· lo que midió el Excel de indicadores frente a lo que T-minus había proyectado con el plan</small></div>
+        <div class="srv-filtros"><div class="srv-campo"><label>Servicio</label><div class="srv-seg">${Object.keys(PX).map((k) => `<button type="button" data-px-s="${k}" class="${s === k ? "on" : ""}">${PX[k].nombre} <small>(${PX[k].ind})</small></button>`).join("")}</div></div></div>
+        ${fechas.length ? `<div class="srv-kpis">${kpis}</div>
+        <div class="srv-tabla-wrap px-tabla"><table class="srv-tabla"><thead><tr><th>Día</th><th class="n">hL envasados<br><small>real / plan</small></th>${areas.map(([, n]) => `<th class="n">${esc(n)}<br><small>real / proyectado (${P.u})</small></th>`).join("")}<th class="n">Indicador planta<br><small>real / proyectado</small></th></tr></thead><tbody>${filas}</tbody></table></div>
+        <p class="muted">En rojo, más de 10 % por encima de lo proyectado; en verde, más de 10 % por debajo. Parte de la diferencia viene de que la producción real no fue la del plan (columna hL): el indicador por hL quita ese efecto.</p>`
+        : `<div class="srv-aviso info">Todavía no hay días con proyección guardada y dato real. ${nGuard ? `Hay ${nGuard} día(s) proyectados guardados (del ${esc(Object.keys(PROY.dias).sort()[0])} al ${esc(Object.keys(PROY.dias).sort().slice(-1)[0])}); el Excel de indicadores cargado llega hasta el ${esc((S.B.fuente && S.B.fuente.ultima_fecha) || "—")}. Cuando cargue el Excel con esos días, aquí aparece la comparación.` : "Las proyecciones se empiezan a guardar desde ahora, cada vez que se abre «Consumo de servicios» con un plan cargado."}</div>`}
+      </div>`;
+      pxConectar(el, vRealProy);
+      SrvCharts.conectarTips(el);
+    });
+  }
   /* ------------------------------------------------------------ GUÍA DE USO */
   function vGuia() {
     const el = $("#srvCuerpo");
@@ -464,7 +761,7 @@
       </ol>
       <h4>3. Qué responde cada pestaña</h4>
       <dl>
-        <dt>Reporte</dt><dd>¿Cómo está el T-minus? Arranques y paradas, focos y pareto del periodo.</dd>
+        <dt>Consumo de servicios</dt><dd>Proyección día a día de agua, vapor y electricidad por línea y por área, con el indicador por hL envasado y el cierre estimado del mes.</dd><dt>Modulación</dt><dd>Si las líneas fueron eficientes en sus arranques y paradas: focos y pareto del periodo.</dd>
         <dt>Planta</dt><dd>Vapor, agua y electricidad de toda la planta: últimos 30 días, reparto por área, proyección del plan y mensual.</dd>
         <dt>Envasado</dt><dd>Consumo esperado por línea y día para el plan cargado, con su margen.</dd>
         <dt>Elaboración</dt><dd>Cocinas, cavas y filtración según lo que se va a cocinar y filtrar.</dd>
