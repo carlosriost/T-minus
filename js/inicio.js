@@ -144,35 +144,82 @@
 
   // Semana a semana: envasado (semana completa del instructivo) y cocinado
   // (cocimientos que arrancan en la semana), separando cerveza y Pony Malta.
+  // Cocimientos del Programa de cocinas real (Excel de Elaboración), si se
+  // cargó. hL de producto = hL por cocimiento del catálogo × dilución.
+  function cocimientosReales() {
+    const f = typeof PC !== "undefined" && PC && Array.isArray(PC.filas) ? PC.filas : [];
+    return f
+      .filter((x) => x.tipo === "coc" && x.inicio != null)
+      .map((x) => {
+        const id = x.id === "ponyhg" || x.id === "ponygo" ? "pony" : x.id;
+        const m = mosto(id);
+        return { ms: x.inicio, pony: esPony(id), hl: (Number(m.volumenPorCocimiento) || 0) * (Number(m.factorDilucion) || 1) };
+      });
+  }
+
   function porSemana() {
     if (!hayPlan() || typeof semanasAcuerdos !== "function") return "";
     const sem = semanasAcuerdos();
     if (!sem.length) return "";
     const prod = typeof bloquesProduccion === "function" ? bloquesProduccion() : [];
     const coc = cocimientos();
+    const real = cocimientosReales();
+    // Fin del horizonte: la cerveza tarda semanas entre cocimiento y envase,
+    // así que T-minus solo proyecta cocimientos para lo que se envasa dentro
+    // del instructivo. Después de su último cocimiento de cerveza (o de Pony),
+    // las semanas quedan sin proyección aunque Cocinas sí esté cocinando.
+    const ultC = coc.filter((r) => !esPony(r.mostoId)).reduce((m, r) => Math.max(m, r.start.getTime()), -Infinity);
+    const ultP = coc.filter((r) => esPony(r.mostoId)).reduce((m, r) => Math.max(m, r.start.getTime()), -Infinity);
     const filas = sem.map((w) => {
       const p = prod.filter((b) => enSemana(b.start, w));
       const c = coc.filter((r) => enSemana(r.start, w));
+      const rr = real.filter((x) => enSemana(new Date(x.ms), w));
       const envP = p.filter((b) => esPony(b.familiaId)).reduce((a, b) => a + b.hl, 0);
       const envC = p.reduce((a, b) => a + b.hl, 0) - envP;
       const cP = c.filter((r) => esPony(r.mostoId));
       const cC = c.filter((r) => !esPony(r.mostoId));
-      return { w, envC, envP, nC: cC.length, nP: cP.length, hlC: cC.reduce((a, r) => a + hlProducto(r), 0), hlP: cP.reduce((a, r) => a + hlProducto(r), 0) };
+      const rP = rr.filter((x) => x.pony);
+      const rC = rr.filter((x) => !x.pony);
+      const ini = w.start - 2 * 3600000;
+      return {
+        w,
+        envC,
+        envP,
+        nC: cC.length,
+        nP: cP.length,
+        hlC: cC.reduce((a, r) => a + hlProducto(r), 0),
+        hlP: cP.reduce((a, r) => a + hlProducto(r), 0),
+        rnC: rC.length,
+        rnP: rP.length,
+        rhlC: rC.reduce((a, x) => a + x.hl, 0),
+        rhlP: rP.reduce((a, x) => a + x.hl, 0),
+        finC: !cC.length && ini > ultC,
+        finP: !cP.length && ini > ultP,
+      };
     });
     const T = filas.reduce((t, f) => {
-      ["envC", "envP", "nC", "nP", "hlC", "hlP"].forEach((k) => (t[k] = (t[k] || 0) + f[k]));
+      ["envC", "envP", "nC", "nP", "hlC", "hlP", "rnC", "rnP", "rhlC", "rhlP"].forEach((k) => (t[k] = (t[k] || 0) + f[k]));
       return t;
     }, {});
-    const celda = (n, hl) => (n ? `${nf(hl)} <small>· ${nf(n)} coc.</small>` : `<span class="ini-cero">—</span>`);
-    const fila = (lbl, f, cls) => `<tr class="${cls || ""}"><td>${lbl}</td><td class="num">${f.envC ? nf(f.envC) : "—"}</td><td class="num">${f.envP ? nf(f.envP) : "—"}</td><td class="num">${celda(f.nC, f.hlC)}</td><td class="num">${celda(f.nP, f.hlP)}</td></tr>`;
+    const conReal = real.length > 0;
+    const hayFin = filas.some((f) => f.finC || f.finP);
+    const fueraTxt = `<span class="ini-cero ini-fuera" title="Fuera del horizonte del plan: lo que se cocine esta semana se envasaría después de la última semana del instructivo, así que T-minus no lo proyecta.">fuera del horizonte*</span>`;
+    const celda = (n, hl, fin) => (n ? `${nf(hl)} <small>· ${nf(n)} coc.</small>` : fin ? fueraTxt : `<span class="ini-cero">—</span>`);
+    const fila = (lbl, f, cls) =>
+      `<tr class="${cls || ""}"><td>${lbl}</td><td class="num">${f.envC ? nf(f.envC) : "—"}</td><td class="num">${f.envP ? nf(f.envP) : "—"}</td><td class="num">${celda(f.nC, f.hlC, f.finC)}</td><td class="num">${celda(f.nP, f.hlP, f.finP)}</td>${
+        conReal ? `<td class="num ini-real">${celda(f.rnC, f.rhlC)}</td><td class="num ini-real">${celda(f.rnP, f.rhlP)}</td>` : ""
+      }</tr>`;
     return `<section class="ini-sec">
       <div class="ini-sec-h"><h2>Semana a semana</h2><span>Envasado: la semana completa del instructivo. Cocinado: los cocimientos que arrancan en la semana, en hL de producto ya diluido (comparables con lo envasado).</span></div>
       <div class="table-scroll ini-tabla-wrap"><table class="ini-tabla">
-        <thead><tr><th rowspan="2">Semana</th><th colspan="2" class="grp">Envasado (hL)</th><th colspan="2" class="grp">Cocinado (hL)</th></tr>
-        <tr><th class="num">Cerveza</th><th class="num">Pony Malta</th><th class="num">Cerveza</th><th class="num">Pony Malta</th></tr></thead>
+        <thead><tr><th rowspan="2">Semana</th><th colspan="2" class="grp">Envasado (hL)</th><th colspan="2" class="grp">Cocinado proyectado T-minus (hL)</th>${conReal ? `<th colspan="2" class="grp ini-real">Cocinado real · Programa de cocinas (hL)</th>` : ""}</tr>
+        <tr><th class="num">Cerveza</th><th class="num">Pony Malta</th><th class="num">Cerveza</th><th class="num">Pony Malta</th>${conReal ? `<th class="num ini-real">Cerveza</th><th class="num ini-real">Pony Malta</th>` : ""}</tr></thead>
         <tbody>${filas.map((f) => fila(`<b>${esc(f.w.corto)}</b> <small>${esc(f.w.label.replace(/^Semana \d+ · /, ""))}</small>`, f)).join("")}</tbody>
         <tfoot>${fila("<b>Total</b>", T, "tot")}</tfoot>
-      </table></div></section>`;
+      </table></div>
+      ${hayFin ? `<p class="ini-nota">* <b>Fuera del horizonte:</b> la cerveza se envasa unas semanas después de cocinarla, así que T-minus solo proyecta los cocimientos que alimentan las semanas del instructivo cargado. En las últimas semanas ya no proyecta cerveza (lo que se cocine ahí se envasaría después del plan), aunque Cocinas sí esté cocinando. Para verlas, cargue el instructivo con las semanas siguientes.</p>` : ""}
+      ${conReal ? "" : `<p class="ini-nota">Cargue el Programa de cocinas en Datos de entrada para ver aquí también lo que Cocinas tiene programado de verdad.</p>`}
+    </section>`;
   }
 
   // Eventos de modulación: paradas de líneas (las mismas de la modulación de

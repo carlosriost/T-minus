@@ -3618,3 +3618,6 @@ details.srv-card.srv-det > summary.srv-card-t { margin: 0; }
 .cp-tabla td.num, .cp-tabla td.ie-lin { font-family: var(--mono); }
 .cp-base td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .ie-mes ul { margin: 4px 0; }
+.ini-tabla .ini-real { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.ini-fuera { font-size: 11.5px; cursor: help; white-space: nowrap; }
+.ini-nota { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
