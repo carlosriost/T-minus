@@ -183,6 +183,33 @@
   }
 
   /* --------------------------------------------------------- resúmenes */
+  const cacheParadas = new Map();
+  function paradasDe(s) {
+    if (cacheParadas.has(s.id)) return cacheParadas.get(s.id);
+    let out = [];
+    if (typeof calcularModulacion === "function" && typeof modlConfig === "function") {
+      try {
+        out = calcularModulacion(merged(s), modlConfig()).paradas.map((p) => ({ tren: p.tren, para: p.para, arranca: p.arranca, dur: p.arranca - p.para, motivo: p.motivo, desdeInicio: p.desdeInicio, hastaFin: p.hastaFin }));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    cacheParadas.set(s.id, out);
+    return out;
+  }
+
+  // Semanas de producción (lunes 22:00 del domingo anterior → domingo 22:00)
+  // que tocan el mes elegido, con su número ISO.
+  function semanasDelMes(clave) {
+    const [ma, mz] = ventanaMes(clave);
+    const out = [];
+    for (let lun = lunesDe(ma); lun - DESFASE < mz; lun += 7 * DIA) {
+      const a = lun - DESFASE, z = lun + 7 * DIA - DESFASE;
+      out.push({ num: numSemanaIso(lun), lun, a, z, txt: `${fmtDate(new Date(lun)).slice(4)} al ${fmtDate(new Date(lun + 6 * DIA)).slice(4)}` });
+    }
+    return out;
+  }
+
   function resumen(s, a, z) {
     const m = merged(s);
     const IE = window.IndicadoresEnvasado;
@@ -202,22 +229,30 @@
           porSku[k].hl += hl;
         } else if (b.type === "changeover" && b.start.getTime() >= a) cambios++;
       });
-      porLinea[t] = Object.assign({ cambios }, r || {});
-    });
-    let paradas = [];
-    if (typeof calcularModulacion === "function" && typeof modlConfig === "function") {
-      try {
-        paradas = calcularModulacion(m, modlConfig())
-          // Las paradas que empiezan con el plan o siguen hasta su final no se
-          // comparan: cada plan cubre fechas distintas y saldrían «movidas».
-          .paradas.filter((p) => !p.desdeInicio && !p.hastaFin && p.para < z && p.arranca > a)
-          .map((p) => ({ tren: p.tren, para: p.para, arranca: p.arranca, dur: p.arranca - p.para, motivo: p.motivo, desdeInicio: p.desdeInicio, hastaFin: p.hastaFin }));
-      } catch (e) {
-        console.error(e);
+      // Cambios de formato (mismo criterio que el acuerdo L4 de Logística):
+      // dos bloques de producción seguidos de la línea con distinto formato;
+      // cuenta en la ventana donde arranca el bloque nuevo.
+      let cambiosFormato = 0;
+      const prod = (m[t] || []).filter((b) => b.type === "production").sort((x, y) => x.start - y.start);
+      for (let i = 1; i < prod.length; i++) {
+        const ini = prod[i].start.getTime();
+        if (ini >= a && ini < z && formatoDeSKU(prod[i].name) !== formatoDeSKU(prod[i - 1].name)) cambiosFormato++;
       }
-    }
+      // Paradas (la línea para) y arranques (vuelve a arrancar) de 2 h o más
+      // que caen en la ventana.
+      const pl = paradasDe(s).filter((p) => p.tren === t);
+      const paradasN = pl.filter((p) => !p.desdeInicio && p.para >= a && p.para < z).length;
+      const arranquesN = pl.filter((p) => !p.hastaFin && p.arranca >= a && p.arranca < z).length;
+      porLinea[t] = Object.assign({ cambios, cambiosFormato, paradasN, arranquesN }, r || {});
+    });
+    // Las paradas que empiezan con el plan o siguen hasta su final no se
+    // comparan: cada plan cubre fechas distintas y saldrían «movidas».
+    const paradas = paradasDe(s).filter((p) => !p.desdeInicio && !p.hastaFin && p.para < z && p.arranca > a);
     const tot = (k) => TRAINS.reduce((acc, t) => acc + (porLinea[t][k] || 0), 0);
-    return { porLinea, porSku, paradas, hl: tot("hl"), prod: tot("prod"), dpa: tot("dpa"), nst: tot("nst"), cambios: tot("cambios"), planta: IE ? IE.indicadores(IE.sumar(TRAINS.map((t) => porLinea[t]))) : null };
+    const hlPony = Object.values(porSku)
+      .filter((x) => /pony|\bpm\b|malta/i.test(x.sku))
+      .reduce((acc, x) => acc + x.hl, 0);
+    return { porLinea, porSku, paradas, hlPony, cambiosFormato: tot("cambiosFormato"), paradasN: tot("paradasN"), arranquesN: tot("arranquesN"), hlCerveza: tot("hl") - hlPony, hl: tot("hl"), prod: tot("prod"), dpa: tot("dpa"), nst: tot("nst"), cambios: tot("cambios"), planta: IE ? IE.indicadores(IE.sumar(TRAINS.map((t) => porLinea[t]))) : null };
   }
 
   // Empareja paradas por línea: misma parada si se traslapan.
@@ -291,8 +326,8 @@
       </div>`;
     let cuerpo;
     if (!(z > a)) cuerpo = `<p class="empty-note">Esos dos planes no tienen días en común dentro de ${esc(nombreMes(SEL.mes))}.</p>`;
-    else if (B.id === C.id) cuerpo = `<p class="empty-note">Solo hay un plan cargado para ${esc(nombreMes(SEL.mes))} (o eligió el mismo dos veces). Cuando se cargue una actualización, aquí se verá qué cambió.</p>${tablaEvolucion(delMes, B)}`;
-    else cuerpo = comparar(B, C, a, z) + tablaEvolucion(delMes, B);
+    else if (B.id === C.id) cuerpo = `<p class="empty-note">Solo hay un plan cargado para ${esc(nombreMes(SEL.mes))} (o eligió el mismo dos veces). Cuando se cargue una actualización, aquí se verá qué cambió.</p>${tablaEvolucion(delMes, B)}${matrizSemanas(delMes)}`;
+    else cuerpo = comparar(B, C, a, z) + tablaEntreVersiones(delMes) + tablaEvolucion(delMes, B) + matrizSemanas(delMes);
     cont.innerHTML = `<div class="panel"><div class="panel-head"><h3>Comparación de plan</h3><span class="sub">${HIST.length} plan(es) guardado(s) en este navegador</span></div><div class="panel-body">${intro}${MSG ? `<div class="dc-msg">${esc(MSG)}</div>` : ""}${selectores}${cuerpo}${pliegue("cp-hist", "Planes guardados", tablaHistorial(), `${HIST.length}`)}${acciones}</div></div>`;
     conectar(cont);
   }
@@ -306,7 +341,8 @@
         ${kpi("Volumen a envasar", rb.hl, rc.hl, 0, " hL", delta(rb.hl, rc.hl, 0, " hL"))}
         ${kpi("Horas de producción", rb.prod, rc.prod, 1, " h", delta(rb.prod, rc.prod, 1, " h"))}
         ${kpi("Paradas de línea", rb.paradas.length, rc.paradas.length, 0, "", Math.abs(hParadas(rc) - hParadas(rb)) < 0.05 ? '<span class="cp-igual">mismas horas de parada</span>' : `${delta(hParadas(rb), hParadas(rc), 1, " h")} de parada`)}
-        ${kpi("Cambios (DPA)", rb.cambios, rc.cambios, 0, "", delta(rb.cambios, rc.cambios, 0))}
+        ${kpi("Cambios de formato", rb.cambiosFormato, rc.cambiosFormato, 0, "", delta(rb.cambiosFormato, rc.cambiosFormato, 0))}
+        ${kpi("Arranques de línea", rb.arranquesN, rc.arranquesN, 0, "", delta(rb.arranquesN, rc.arranquesN, 0))}
         <div class="cp-kpi"><div class="cp-kpi-t">LEF planta</div><div class="cp-kpi-v">${pct(rb.planta && rb.planta.lef)} <span aria-hidden="true">→</span> <b>${pct(rc.planta && rc.planta.lef)}</b></div><div class="cp-kpi-d">${deltaPp(rb.planta && rb.planta.lef, rc.planta && rc.planta.lef)}</div></div>
       </div>`;
     const filasLinea = TRAINS.map((t) => {
@@ -334,7 +370,114 @@
           .map((p) => `<tr><td><span class="acx-tag ${tt[p.tipo][1]}">${tt[p.tipo][0]}</span></td><td class="ie-lin">L${esc((p.b || p.c).tren)}</td><td>${p.b ? tiempo(p.b) : "—"}</td><td>${p.c ? tiempo(p.c) : "—"}</td></tr>`)
           .join("")}</tbody></table></div>`
       : `<p class="empty-note">Las paradas y arranques son los mismos (con diferencias menores a 1 h).</p>`}`;
-    return `<p class="cp-ventana">Se comparan los días ${esc(fdt(a))} → ${esc(fdt(z))}, que cubren los dos planes.</p>${kpis}${tablaLinea}${tablaSku}${tablaPar}`;
+    return `<p class="cp-ventana">Se comparan los días ${esc(fdt(a))} → ${esc(fdt(z))}, que cubren los dos planes.</p>${kpis}${tablaSemanas(B, C)}${tablasSemanaLinea(B, C)}${tablaLinea}${tablaSku}${tablaPar}`;
+  }
+
+  // Semana a semana: plan base vs. el plan con que se compara.
+  function tablaSemanas(B, C) {
+    const filas = semanasDelMes(SEL.mes)
+      .map((w) => {
+        const a = Math.max(w.a, B.desde, C.desde), z = Math.min(w.z, B.hasta, C.hasta);
+        const lbl = `<b>S${w.num}</b> <small>${esc(w.txt)}</small>`;
+        if (!(z > a)) return `<tr><td>${lbl}</td><td colspan="7" class="cp-igual">Algún plan no cubre esta semana</td></tr>`;
+        const parcial = a > w.a || z < w.z;
+        const rb = resumen(B, a, z), rc = resumen(C, a, z);
+        return `<tr><td>${lbl}${parcial ? ` <span class="acx-tag acx-cambia" title="Solo se comparan ${esc(fdt(a))} → ${esc(fdt(z))}">parcial</span>` : ""}</td>
+          <td class="num">${nf(rb.hlCerveza)} → ${nf(rc.hlCerveza)}<br>${delta(rb.hlCerveza, rc.hlCerveza, 0)}</td>
+          <td class="num">${nf(rb.hlPony)} → ${nf(rc.hlPony)}<br>${delta(rb.hlPony, rc.hlPony, 0)}</td>
+          <td class="num"><b>${nf(rb.hl)} → ${nf(rc.hl)}</b><br>${delta(rb.hl, rc.hl, 0)}</td>
+          <td class="num">${nf(rb.prod, 1)} → ${nf(rc.prod, 1)}</td>
+          <td class="num">${rb.paradas.length} → ${rc.paradas.length}</td>
+          <td class="num">${rb.cambios} → ${rc.cambios}</td>
+          <td class="num">${pct(rb.planta && rb.planta.lef)} → ${pct(rc.planta && rc.planta.lef)}<br>${deltaPp(rb.planta && rb.planta.lef, rc.planta && rc.planta.lef)}</td></tr>`;
+      })
+      .join("");
+    return `<h4 class="acx-sub">Semana a semana <small>plan base → plan comparado</small></h4><div class="table-scroll"><table class="acu-tabla cp-tabla cp-sem"><thead><tr><th>Semana</th><th class="num">Cerveza (hL)</th><th class="num">Pony Malta (hL)</th><th class="num">Total (hL)</th><th class="num">Horas producción</th><th class="num">Paradas</th><th class="num">Cambios</th><th class="num">LEF planta</th></tr></thead><tbody>${filas}</tbody></table></div><p class="acu-nota">La semana va de lunes a domingo, con el día de producción de 22:00 a 22:00. «Parcial»: uno de los planes no cubre la semana completa y solo se comparan los días en común.</p>`;
+  }
+
+  // Por semana y por línea: cuánto cambian los hL, los cambios de formato y
+  // las paradas y arranques entre el plan base y el comparado.
+  function tablasSemanaLinea(B, C) {
+    const sem = semanasDelMes(SEL.mes)
+      .map((w) => {
+        const a = Math.max(w.a, B.desde, C.desde), z = Math.min(w.z, B.hasta, C.hasta);
+        return z > a ? { w, parcial: a > w.a || z < w.z, rb: resumen(B, a, z), rc: resumen(C, a, z) } : null;
+      })
+      .filter(Boolean);
+    if (!sem.length) return "";
+    const cols = TRAINS.map((t) => `<th class="num">L${t}</th>`).join("") + `<th class="num">Total</th>`;
+    const lbl = (x) => `<td><b>S${x.w.num}</b> <small>${esc(x.w.txt)}</small>${x.parcial ? ' <span class="acx-tag acx-cambia">parcial</span>' : ""}</td>`;
+    const cuenta = (b, c) => {
+      const d = c - b;
+      return `${b} → ${c}${d ? ` <span class="${d > 0 ? "cp-menos" : "cp-mas"}">(${d > 0 ? "+" : "−"}${Math.abs(d)})</span>` : ""}`;
+    };
+    const hlCel = (b, c) => `<td class="num" title="${nf(b)} → ${nf(c)} hL">${delta(b, c, 0)}<br><small class="cp-igual">${nf(b)} → ${nf(c)}</small></td>`;
+    const tabla = (tit, nota, celda, total) => `<h4 class="acx-sub">${tit}</h4><div class="table-scroll"><table class="acu-tabla cp-tabla cp-sem"><thead><tr><th>Semana</th>${cols}</tr></thead><tbody>${sem
+      .map((x) => `<tr>${lbl(x)}${TRAINS.map((t) => celda(x.rb.porLinea[t], x.rc.porLinea[t])).join("")}${total(x.rb, x.rc)}</tr>`)
+      .join("")}</tbody></table></div>${nota ? `<p class="acu-nota">${nota}</p>` : ""}`;
+    return (
+      tabla("Hectolitros por semana y línea <small>cuánto aumentó o disminuyó</small>", "", (b, c) => hlCel(b.hl, c.hl), (b, c) => hlCel(b.hl, c.hl)) +
+      tabla(
+        "Cambios de formato por semana y línea <small>plan base → plan comparado</small>",
+        "Cambio de formato: dos producciones seguidas de la línea con distinto envase o tamaño (mismo criterio del acuerdo L4 de Logística).",
+        (b, c) => `<td class="num">${cuenta(b.cambiosFormato, c.cambiosFormato)}</td>`,
+        (b, c) => `<td class="num"><b>${cuenta(b.cambiosFormato, c.cambiosFormato)}</b></td>`,
+      ) +
+      tabla(
+        "Paradas y arranques por semana y línea <small>P = la línea para · A = vuelve a arrancar</small>",
+        "Paradas de 2 h o más por mantenimiento programado o sin programación (las de la modulación de equipos). En rojo, las que hay de más en el plan comparado.",
+        (b, c) => `<td class="num">P ${cuenta(b.paradasN, c.paradasN)}<br>A ${cuenta(b.arranquesN, c.arranquesN)}</td>`,
+        (b, c) => `<td class="num"><b>P ${cuenta(b.paradasN, c.paradasN)}<br>A ${cuenta(b.arranquesN, c.arranquesN)}</b></td>`,
+      )
+    );
+  }
+
+  // Entre cada versión del plan y la siguiente, en los días que cubren las dos.
+  function tablaEntreVersiones(delMes) {
+    if (delMes.length < 2) return "";
+    const [ma, mz] = ventanaMes(SEL.mes);
+    const filas = [];
+    for (let i = 1; i < delMes.length; i++) {
+      const P = delMes[i - 1], N = delMes[i];
+      const a = Math.max(ma, P.desde, N.desde), z = Math.min(mz, P.hasta, N.hasta);
+      if (!(z > a)) {
+        filas.push(`<tr><td><b>V${i} → V${i + 1}</b></td><td colspan="${TRAINS.length + 5}" class="cp-igual">No tienen días en común en el mes</td></tr>`);
+        continue;
+      }
+      const rp = resumen(P, a, z), rn = resumen(N, a, z);
+      const dc = (b, c) => {
+        const d = c - b;
+        return d ? `<span class="${d > 0 ? "cp-menos" : "cp-mas"}">${d > 0 ? "+" : "−"}${Math.abs(d)}</span>` : `<span class="cp-igual">0</span>`;
+      };
+      filas.push(`<tr><td><b>V${i} → V${i + 1}</b><br><small>${esc(fCarga(N.cargado))}</small></td><td><small>${esc(fd(a))} → ${esc(fd(z - 1))}</small></td>${TRAINS.map(
+        (t) => `<td class="num">${delta(rp.porLinea[t].hl, rn.porLinea[t].hl, 0)}</td>`,
+      ).join("")}<td class="num"><b>${delta(rp.hl, rn.hl, 0)}</b></td><td class="num">${dc(rp.cambiosFormato, rn.cambiosFormato)}</td><td class="num">${dc(rp.paradasN, rn.paradasN)}</td><td class="num">${dc(rp.arranquesN, rn.arranquesN)}</td></tr>`);
+    }
+    return `<h4 class="acx-sub">Entre cada versión del plan <small>qué cambió de una actualización a la siguiente</small></h4><div class="table-scroll"><table class="acu-tabla cp-tabla cp-sem"><thead><tr><th>Versiones</th><th>Días comparados</th>${TRAINS.map((t) => `<th class="num">hL L${t}</th>`).join("")}<th class="num">hL total</th><th class="num">Cambios de formato</th><th class="num">Paradas</th><th class="num">Arranques</th></tr></thead><tbody>${filas.join("")}</tbody></table></div><p class="acu-nota">${delMes.map((s, i) => `V${i + 1} = ${esc(s.archivo)} (cargado ${esc(fCarga(s.cargado))})`).join(" · ")}. Cambios, paradas y arranques: cuántos hay de más (+) o de menos (−) en la versión nueva.</p>`;
+  }
+
+  // Cada semana del mes en cada versión del plan (hL a envasar).
+  function matrizSemanas(delMes) {
+    const sem = semanasDelMes(SEL.mes);
+    const cab = delMes.map((s, i) => `<th class="num" title="${esc(s.archivo)}">V${i + 1}<br><small>${esc(fCarga(s.cargado))}</small></th>`).join("");
+    const filas = sem
+      .map((w) => {
+        let prev = null;
+        const celdas = delMes
+          .map((s) => {
+            const a = Math.max(w.a, s.desde), z = Math.min(w.z, s.hasta);
+            if (!(z > a)) return `<td class="num cp-igual">—</td>`;
+            const r = resumen(s, a, z);
+            const parcial = a > w.a || z < w.z;
+            const d = prev != null && !parcial && !prev.parcial ? `<br>${delta(prev.hl, r.hl, 0)}` : "";
+            prev = { hl: r.hl, parcial };
+            return `<td class="num">${nf(r.hl)}${parcial ? ' <small class="cp-igual" title="Este plan no cubre la semana completa">(parcial)</small>' : ""}${d}</td>`;
+          })
+          .join("");
+        return `<tr><td><b>S${w.num}</b> <small>${esc(w.txt)}</small></td>${celdas}</tr>`;
+      })
+      .join("");
+    return `<h4 class="acx-sub">Cada semana en cada versión del plan <small>hL a envasar · la diferencia es contra la versión anterior</small></h4><div class="table-scroll"><table class="acu-tabla cp-tabla cp-sem"><thead><tr><th>Semana</th>${cab}</tr></thead><tbody>${filas}</tbody></table></div><p class="acu-nota">${delMes.map((s, i) => `V${i + 1} = ${esc(s.archivo)}`).join(" · ")}</p>`;
   }
 
   function tablaEvolucion(delMes, B) {
